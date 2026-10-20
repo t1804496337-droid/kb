@@ -1471,6 +1471,7 @@ export default function StudioPage() {
       label: m.label,
       en: m.en,
       count: customModuleCount(m),
+      beam: moduleJellyBeam(m.id),
     }));
   // Workspace module map: one pseudo-hub per custom module, standing in the
   // same hub column as the five built-ins and fanning its own rows.

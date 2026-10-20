@@ -1399,8 +1399,8 @@ div.studio-orb.studio-orb-bg,
   -webkit-mask-image: radial-gradient(ellipse closest-side at 50% 46%, #000 62%, transparent 84%);
   mask-image: radial-gradient(ellipse closest-side at 50% 46%, #000 62%, transparent 84%);
 }
-.lp-node:hover img,
-.lp-node:focus-visible img { filter: brightness(1.45) drop-shadow(0 0 12px rgba(220,225,255,.45)); }
+.lp-node:hover :is(img, video),
+.lp-node:focus-visible :is(img, video) { filter: brightness(1.45) drop-shadow(0 0 12px rgba(220,225,255,.45)); }
 .lp-node:focus-visible { outline: 1px solid rgba(236,236,233,.5); outline-offset: 2px; }
 .lp-card {
   z-index: 4;
@@ -1654,7 +1654,7 @@ div.studio-orb.studio-orb-bg,
   animation: lp-node-in .8s cubic-bezier(.2,.8,.2,1) both; transition: width .35s ease, top .35s ease;
 }
 .ws-jelly img { width: 100%; height: 100%; }
-.ws-jelly:hover img { filter: brightness(1.4) drop-shadow(0 0 10px rgba(220,225,255,.45)); }
+.ws-jelly:hover :is(img, video) { filter: brightness(1.4) drop-shadow(0 0 10px rgba(220,225,255,.45)); }
 /* Glass orb with the module's initial: fallback only, shown if a hub's
    jelly image fails to load (custom modules normally render their real
    shared-assignment jellyfish, same as the landing). */
@@ -1893,7 +1893,7 @@ div.studio-orb.studio-orb-bg,
   background: radial-gradient(circle at 47% 40%, #2c2e34 0%, #17181c 55%, #0c0d0f 100%);
   box-shadow: var(--pl-well-shadow);
 }
-.xuan-stage:is(.theme-warm, .theme-neu) :is(.lp-node, .ws-jelly) img {
+.xuan-stage:is(.theme-warm, .theme-neu) :is(.lp-node, .ws-jelly) :is(img, video) {
   -webkit-mask-image: radial-gradient(circle closest-side, #000 76%, transparent 90%);
   mask-image: radial-gradient(circle closest-side, #000 76%, transparent 90%);
 }
@@ -1914,7 +1914,7 @@ div.studio-orb.studio-orb-bg,
   mask-image: radial-gradient(circle closest-side, transparent calc(100% - 3px), #000 calc(100% - 2.5px));
   opacity: 0.9; animation: pl-spin 60s linear infinite;
 }
-.xuan-stage.theme-warm :is(.lp-orb-plate, .ws-orb img, .lp-node img, .ws-jelly img) { filter: sepia(0.16) saturate(0.95); }
+.xuan-stage.theme-warm :is(.lp-orb-plate, .ws-orb img, .lp-node img, .ws-jelly img, .lp-node video, .ws-jelly video) { filter: sepia(0.16) saturate(0.95); }
 .xuan-stage:is(.theme-warm, .theme-neu) .lp-orb-rays { opacity: 0.35; }
 
 /* motion: cage sway + sheen, jellyfish tilt + glint, pointer parallax (stills feel alive) */
@@ -1939,6 +1939,19 @@ div.studio-orb.studio-orb-bg,
    beams never move. Individual transform properties (translate / rotate /
    scale) keep the four animations from clobbering each other. */
 .jelly-alive { display: block; width: 100%; height: 100%; will-change: transform, filter; }
+/* The shared jelly loop (jelly-media.tsx): a black-backed H.264 clip.
+   A screen blend can't melt its rectangle here — the node button's
+   entrance animation (fill both, transform scale(1)) makes it a permanent
+   stacking context, trapping any blend inside the button — so the clip
+   feathers its own edges instead: an ellipse tuned to this footage (dome,
+   streak and tentacle tips stay inside the solid zone; only the pure-black
+   corners/rim melt away), wider than the stills' lp-feather because the
+   generated frame fills more of the box. */
+.jelly-video {
+  width: 100%; height: 100%; display: block; object-fit: cover; transition: filter .25s ease;
+  -webkit-mask-image: radial-gradient(ellipse 74% 70% at 50% 46%, #000 64%, transparent 98%);
+  mask-image: radial-gradient(ellipse 74% 70% at 50% 46%, #000 64%, transparent 98%);
+}
 @media (prefers-reduced-motion: no-preference) {
   .jelly-alive, .ws-jelly-orb {
     animation:
@@ -1946,6 +1959,14 @@ div.studio-orb.studio-orb-bg,
       jelly-sway var(--jelly-dur, 11s) ease-in-out var(--jelly-delay, 0s) infinite,
       jelly-pulse var(--jelly-bdur, 5.5s) ease-in-out var(--jelly-bdelay, 0s) infinite,
       jelly-breathe var(--jelly-bdur, 5.5s) ease-in-out var(--jelly-bdelay, 0s) infinite;
+  }
+  /* Video instances: the clip already pulses its bell and breathes its own
+     glow, so the CSS pulse/breathe would double up — keep only the
+     positional drift + sway, which never fight the footage. */
+  .jelly-alive-video {
+    animation:
+      jelly-drift var(--jelly-dur, 11s) ease-in-out var(--jelly-delay, 0s) infinite,
+      jelly-sway var(--jelly-dur, 11s) ease-in-out var(--jelly-delay, 0s) infinite;
   }
 }
 @keyframes jelly-drift {
