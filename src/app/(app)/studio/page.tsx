@@ -33,6 +33,14 @@ type CustomModule = { id: string; label: string; en: string };
 type CustomRow = { id: string; title: string; a: string; b: string; c?: string };
 const CUSTOM_MODULES_KEY = "studio_custom_modules_v1";
 const CUSTOM_ROWS_KEY = "studio_custom_rows_v1";
+const SEEDED_MODULES_KEY = "studio_seeded_modules_v1";
+/** Default modules seeded once per browser profile. They behave exactly like
+ *  user-created modules (rows, delete) — the seed marker below just stops a
+ *  deleted one from being re-seeded on the next load. */
+const SEED_MODULES: CustomModule[] = [
+  { id: "health", label: "身体健康", en: "HEALTH" },
+  { id: "finance", label: "财务系统管理", en: "FINANCE" },
+];
 const SECTION_TO_HUB: Partial<Record<string, HubKey>> = {
   ideas: "top", drafts: "ll", works: "left", database: "right", calendar: "lr",
 };
@@ -446,8 +454,26 @@ export default function StudioPage() {
   }, []);
   React.useEffect(() => {
     try {
+      let modules: CustomModule[] = [];
       const rawM = window.localStorage.getItem(CUSTOM_MODULES_KEY);
-      if (rawM) setCustomModules(JSON.parse(rawM) as CustomModule[]);
+      if (rawM) modules = JSON.parse(rawM) as CustomModule[];
+      // One-time seed of the default modules. Guarded by SEEDED_MODULES_KEY so
+      // a seed the user deleted never comes back; modules already present
+      // (matched by id) are left untouched.
+      if (!window.localStorage.getItem(SEEDED_MODULES_KEY)) {
+        const missing = SEED_MODULES.filter(
+          (s) => !modules.some((m) => m.id === s.id),
+        );
+        if (missing.length > 0) {
+          modules = [...modules, ...missing];
+          window.localStorage.setItem(
+            CUSTOM_MODULES_KEY,
+            JSON.stringify(modules),
+          );
+        }
+        window.localStorage.setItem(SEEDED_MODULES_KEY, "1");
+      }
+      setCustomModules(modules);
       const rawR = window.localStorage.getItem(CUSTOM_ROWS_KEY);
       if (rawR) setCustomRows(JSON.parse(rawR) as Record<string, CustomRow[]>);
     } catch {
