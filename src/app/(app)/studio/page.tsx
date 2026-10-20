@@ -244,25 +244,28 @@ const ALL_SKILLS_FALLBACK: SkillEntry[] = SKILL_AGENTS_FALLBACK.flatMap(
 );
 const SKILL_TOTAL_FALLBACK = ALL_SKILLS_FALLBACK.length;
 
-/** 8-step AIGC 网文拉新 — current roles (not DeepSeek for active). */
-const WORKFLOW_STEPS: {
-  id: string;
-  n: number;
-  title: string;
-  role: string;
-  status: "ready" | "pending" | "blocked";
-  next: string;
-  notes: string;
-}[] = [
-  { id: "w1", n: 1, title: "学课", role: "飞书通", status: "ready", next: "打开飞书通课表，勾完今日小节", notes: "aigc-course/skills/01-学课 · 飞书通文档是唯一课表入口" },
-  { id: "w2", n: 2, title: "搭账号", role: "Muse", status: "ready", next: "用 Muse 建号 / 对齐人设卡", notes: "账号资料、头像、简介一次配齐，避免中途改人设" },
-  { id: "w3", n: 3, title: "养号", role: "运营助手 / WorkBuddy", status: "ready", next: "按运营助手日程互动 20 分钟", notes: "WorkBuddy 拉起养号清单 · 不发硬广" },
-  { id: "w4", n: 4, title: "写大纲", role: "待改派", status: "pending", next: "改派大纲写手（DeepSeek 待命）", notes: "omp DeepSeek 余额不足 · 充值后接 01/04/08" },
-  { id: "w5", n: 5, title: "出分镜", role: "分镜工 / 豆包", status: "ready", next: "把大纲丢给分镜工 / 豆包出镜", notes: "aigc-course/skills/05-分镜 · 输出可剪镜号表" },
-  { id: "w6", n: 6, title: "剪视频", role: "WorkBuddy + 本人导出", status: "ready", next: "WorkBuddy 粗剪 → 本人导出成片", notes: "成片进作品库 ep 槽，不直接发" },
-  { id: "w7", n: 7, title: "发布", role: "Muse + 本人点发", status: "ready", next: "Muse 配音就绪后本人点发", notes: "卡点：Fish Audio 配音 · 见待办 ep01" },
-  { id: "w8", n: 8, title: "数据回炉", role: "待改派", status: "pending", next: "回收播放数据，回写大纲/分镜", notes: "待改派分析角色 · 充值后可自动跑" },
+/**
+ * Workflow steps (灵感池) — user-managed state, grouped by executor zone.
+ * The built-in 8-step AIGC list (学课/搭账号/养号/写大纲/出分镜/剪视频/发布/
+ * 数据回炉 + 派给角色) was cleared on 2026-10-20 at the user's request;
+ * it survives in git history (pre-PR #11) if it is ever needed again.
+ * Steps live in React state + localStorage `studio_workflow_steps_v2`,
+ * start empty, and every "步数" count in the app derives from that state.
+ */
+type FlowZone = "me" | "ai" | "agent";
+type FlowStep = { id: string; title: string; zone: FlowZone; note?: string };
+const FLOW_ZONES: { id: FlowZone; label: string; en: string }[] = [
+  { id: "me", label: "我", en: "ME" },
+  { id: "ai", label: "AI", en: "AI" },
+  { id: "agent", label: "Agent", en: "AGENT" },
 ];
+const FLOW_STEPS_KEY = "studio_workflow_steps_v2";
+/** Ids of the cleared built-in steps — stripped from persisted hub rows. */
+const LEGACY_STEP_IDS = new Set([
+  "w1", "w2", "w3", "w4", "w5", "w6", "w7", "w8",
+]);
+const flowZoneLabel = (z: FlowZone): string =>
+  FLOW_ZONES.find((x) => x.id === z)?.label ?? z;
 
 const PENDING_TICKETS: {
   id: string;
@@ -304,15 +307,6 @@ const WORK_SLOTS: {
 ];
 
 const BOARD_ITEMS: BoardItem[] = [
-  ...WORKFLOW_STEPS.map((s) => ({
-    id: s.id,
-    title: `${s.n} ${s.title} · ${s.role}`,
-    subtitle: s.status === "pending" ? "待改派" : s.status === "blocked" ? "阻塞" : "可派发",
-    meta: `步骤 ${s.n}/8`,
-    hub: "ideas" as SectionId,
-    status: s.status === "ready" ? "就绪" : "待改派",
-    kind: "workflow" as const,
-  })),
   ...PENDING_TICKETS.map((t) => ({
     id: t.id,
     title: t.title,
@@ -346,11 +340,8 @@ type ModalKind = null | "edit" | "manage" | "create" | "step" | "newmodule";
 
 const WS_HUBS: WsHub[] = [
   {
-    key: "top", section: "ideas", n: WORKFLOW_STEPS.length, label: "灵感池", en: "Workflow", sub: `${WORKFLOW_STEPS.length} 步拉新流水线`,
-    rows: WORKFLOW_STEPS.map((w) => ({
-      id: w.id, title: `${w.n} ${w.title} · ${w.role}`, a: `步骤 ${w.n}/8`,
-      b: w.status === "ready" ? "就绪" : "待改派", c: w.status === "ready" ? undefined : "待派",
-    })),
+    key: "top", section: "ideas", n: 0, label: "灵感池", en: "Workflow", sub: "0 步拉新流水线",
+    rows: [],
   },
   {
     key: "ll", section: "drafts", n: SKILL_TOTAL_FALLBACK, label: "技能库", en: "Skills", sub: "已装 Skill",
@@ -364,9 +355,8 @@ const WS_HUBS: WsHub[] = [
     ],
   },
   {
-    key: "right", section: "database", n: SKILL_TOTAL_FALLBACK + WORKFLOW_STEPS.length, label: "数据库", en: "Database", sub: "Skill + 流程",
+    key: "right", section: "database", n: SKILL_TOTAL_FALLBACK, label: "数据库", en: "Database", sub: "Skill + 流程",
     rows: [
-      ...WORKFLOW_STEPS.map((w) => ({ id: `db-${w.id}`, title: `${w.n} ${w.title}`, a: "流水线", b: w.role })),
       ...ALL_SKILLS_FALLBACK.map((k) => ({ id: `db-${k.id}`, title: `${k.zh} · ${k.name}`, a: "Skill", b: k.source })),
     ],
   },
@@ -403,6 +393,13 @@ export default function StudioPage() {
   // (each agent maintains its own block; fallback = built-in mirror).
   const [skillAgents, setSkillAgents] =
     React.useState<SkillAgentGroup[]>(SKILL_AGENTS_FALLBACK);
+  // Workflow steps (灵感池): user-managed, zoned by executor, persisted
+  // locally. Starts empty — the built-in 8 steps were cleared by request.
+  const [flowSteps, setFlowSteps] = React.useState<FlowStep[]>([]);
+  const [flowDraft, setFlowDraft] = React.useState<{
+    zone: FlowZone;
+    title: string;
+  } | null>(null);
   const [activeCustom, setActiveCustom] = React.useState<string | null>(null);
   const [newModuleLabel, setNewModuleLabel] = React.useState("");
   const [newModuleEn, setNewModuleEn] = React.useState("");
@@ -471,6 +468,57 @@ export default function StudioPage() {
       /* ignore */
     }
   }, []);
+  React.useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(FLOW_STEPS_KEY);
+      if (raw) {
+        const arr = JSON.parse(raw) as FlowStep[];
+        if (Array.isArray(arr)) {
+          setFlowSteps(
+            arr.filter(
+              (s) =>
+                s &&
+                typeof s.id === "string" &&
+                typeof s.title === "string" &&
+                (s.zone === "me" || s.zone === "ai" || s.zone === "agent"),
+            ),
+          );
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+  }, []);
+  const persistFlowSteps = React.useCallback((next: FlowStep[]) => {
+    try {
+      window.localStorage.setItem(FLOW_STEPS_KEY, JSON.stringify(next));
+    } catch {
+      /* ignore */
+    }
+  }, []);
+  const addFlowStep = React.useCallback(
+    (title: string, zone: FlowZone) => {
+      const step: FlowStep = { id: `flow-${Date.now()}`, title, zone };
+      setFlowSteps((prev) => {
+        const next = [...prev, step];
+        persistFlowSteps(next);
+        return next;
+      });
+      return step;
+    },
+    [persistFlowSteps],
+  );
+  const deleteFlowStep = React.useCallback(
+    (id: string) => {
+      setFlowSteps((prev) => {
+        const next = prev.filter((s) => s.id !== id);
+        persistFlowSteps(next);
+        return next;
+      });
+    },
+    [persistFlowSteps],
+  );
+  const flowCount = flowSteps.length;
   const allSkills = React.useMemo(
     () => skillAgents.flatMap((a) => a.skills),
     [skillAgents],
@@ -515,10 +563,12 @@ export default function StudioPage() {
       cancelled = true;
     };
   }, []);
-  // Keep the workspace skill/database hub rows in step with the library
-  // data (rows a user added by hand to those hubs are preserved).
+  // Keep the workspace skill/database/inspiration hub rows in step with
+  // the library + workflow data (rows a user added by hand are preserved;
+  // rows of the cleared built-in steps are stripped).
   React.useEffect(() => {
     const skillIds = new Set(allSkills.map((s) => s.id));
+    const flowIds = new Set(flowSteps.map((s) => s.id));
     setHubs((prev) =>
       prev.map((h) => {
         if (h.key === "ll") {
@@ -534,14 +584,37 @@ export default function StudioPage() {
           ];
           return { ...h, rows, n: rows.length };
         }
+        if (h.key === "top") {
+          const extra = h.rows.filter(
+            (r) =>
+              !flowIds.has(r.id) &&
+              !LEGACY_STEP_IDS.has(r.id) &&
+              !r.id.startsWith("flow-"),
+          );
+          const rows = [
+            ...flowSteps.map((s, i) => ({
+              id: s.id,
+              title: s.title,
+              a: `步骤 ${i + 1}/${flowSteps.length}`,
+              b: `${flowZoneLabel(s.zone)}区`,
+            })),
+            ...extra,
+          ];
+          return {
+            ...h,
+            rows,
+            n: rows.length,
+            sub: `${flowSteps.length} 步拉新流水线`,
+          };
+        }
         if (h.key === "right") {
           const extra = h.rows.filter((r) => !r.id.startsWith("db-"));
           const rows = [
-            ...WORKFLOW_STEPS.map((w) => ({
-              id: `db-${w.id}`,
-              title: `${w.n} ${w.title}`,
+            ...flowSteps.map((s) => ({
+              id: `db-${s.id}`,
+              title: s.title,
               a: "流水线",
-              b: w.role,
+              b: `${flowZoneLabel(s.zone)}区`,
             })),
             ...allSkills.map((k) => ({
               id: `db-${k.id}`,
@@ -556,7 +629,7 @@ export default function StudioPage() {
         return h;
       }),
     );
-  }, [allSkills]);
+  }, [allSkills, flowSteps]);
   React.useEffect(() => {
     try {
       const t = window.localStorage.getItem(TITLE_KEY);
@@ -756,14 +829,14 @@ export default function StudioPage() {
   // node counts — each node's hub rows in state; calendar sub shows live tickets.
   const landingStats = [
     { key: "skills", value: skillTotal, label: "已装 Skill", en: "Skills" },
-    { key: "steps", value: WORKFLOW_STEPS.length, label: "流水线步", en: "Steps" },
+    { key: "steps", value: flowCount, label: "流水线步", en: "Steps" },
     { key: "tickets", value: tickets.length, label: "待办票", en: "Tickets" },
     { key: "slots", value: WORK_SLOTS.length, label: "成片槽", en: "Slots" },
   ];
   // Works-section metric cards — same sources as the landing stats.
   const metrics = [
     { value: skillTotal, label: "已装 Skill", en: "Skills" },
-    { value: WORKFLOW_STEPS.length, label: "流水线步", en: "Steps" },
+    { value: flowCount, label: "流水线步", en: "Steps" },
     { value: PENDING_TICKETS.length, label: "待办票", en: "Tickets" },
     { value: WORK_SLOTS.length, label: "成片槽", en: "Slots" },
   ];
@@ -771,9 +844,11 @@ export default function StudioPage() {
     const hk = SECTION_TO_HUB[node.section];
     const hub = hk ? hubs.find((h) => h.key === hk) : undefined;
     const live = hub ? hub.rows.length : node.n;
-    return node.section === "calendar"
-      ? { ...node, n: live, sub: `${tickets.length} 条待办` }
-      : { ...node, n: live };
+    if (node.section === "calendar")
+      return { ...node, n: live, sub: `${tickets.length} 条待办` };
+    if (node.section === "ideas")
+      return { ...node, n: live, sub: `${flowCount} 步拉新流水线` };
+    return { ...node, n: live };
   });
   const landingCustomCards = customModules.map((m) => ({
     id: m.id,
@@ -802,9 +877,26 @@ export default function StudioPage() {
     el?.scrollIntoView({ block: "nearest", behavior: "smooth" });
   }, [section, selectedBoardId]);
 
+  // Board items = workflow steps from state + the static ticket/skill base.
+  const boardItems = React.useMemo<BoardItem[]>(
+    () => [
+      ...flowSteps.map((s, i) => ({
+        id: s.id,
+        title: s.title,
+        subtitle: `灵感池 · ${flowZoneLabel(s.zone)}区`,
+        meta: `步骤 ${i + 1}/${flowSteps.length}`,
+        hub: "ideas" as SectionId,
+        status: "自建",
+        kind: "workflow" as const,
+      })),
+      ...BOARD_ITEMS,
+    ],
+    [flowSteps],
+  );
+
   const selected =
-    (selectedBoardId && BOARD_ITEMS.find((b) => b.id === selectedBoardId)) ||
-    BOARD_ITEMS[0] ||
+    (selectedBoardId && boardItems.find((b) => b.id === selectedBoardId)) ||
+    boardItems[0] ||
     null;
 
   const showToast = (msg: string) => {
@@ -812,13 +904,12 @@ export default function StudioPage() {
     window.setTimeout(() => setToast(null), 2200);
   };
   const openStepDetail = (id: string) => {
-    const step = WORKFLOW_STEPS.find((w) => w.id === id);
+    const step = flowSteps.find((s) => s.id === id);
     if (!step) return;
     setSelectedBoardId(step.id);
     setSection("ideas");
     setModal("step");
-    setToast(`步骤 ${step.n} · ${step.title}`);
-    window.setTimeout(() => setToast(null), 1800);
+    showToast(`步骤 · ${step.title}`);
   };
 
   const copyPrompt = async (id: string, body: string) => {
@@ -1080,7 +1171,7 @@ export default function StudioPage() {
                 TANG / NEURAL
               </p>
               <p className="mt-0.5 truncate text-[10px] text-[color:var(--studio-muted)]">
-                Skill · 工作流 · {WORKFLOW_STEPS.length} 步拉新流水线
+                Skill · 工作流 · {flowCount} 步拉新流水线
               </p>
             </div>
 
@@ -1239,7 +1330,7 @@ export default function StudioPage() {
                 <NeuralWorkspace
                   hubs={hubs}
                   moduleCount={NEURAL_MODULES.length + customModules.length}
-                  stepCount={WORKFLOW_STEPS.length}
+                  stepCount={flowCount}
                   themeLabel={currentTheme.label}
                   themeEn={currentTheme.en}
                   onSelectHub={(k) => setActiveHubKey(k)}
@@ -1254,7 +1345,7 @@ export default function StudioPage() {
                   }}
                   onReturnLanding={returnToLanding}
                   onPickRow={(row, hub) => {
-                    if (hub.section === "ideas" && WORKFLOW_STEPS.some((w) => w.id === row.id)) {
+                    if (hub.section === "ideas" && flowSteps.some((w) => w.id === row.id)) {
                       openStepDetail(row.id);
                       return;
                     }
@@ -1281,7 +1372,7 @@ export default function StudioPage() {
                   }}
                   onReturnLanding={returnToLanding}
                   onPickRow={(row, hub) => {
-                    if (hub.section === "ideas" && WORKFLOW_STEPS.some((w) => w.id === row.id)) {
+                    if (hub.section === "ideas" && flowSteps.some((w) => w.id === row.id)) {
                       openStepDetail(row.id);
                       return;
                     }
@@ -1310,19 +1401,21 @@ export default function StudioPage() {
                         让每一条链接，双向生长。
                       </h2>
                       <p className="mt-0.5 text-[12px] text-[color:var(--studio-muted)]">
-                        AIGC 网文拉新 · 8 步流水线 + 已装 Skill
+                        AIGC 网文拉新 · {flowCount} 步流水线 + 已装 Skill
                       </p>
                     </header>
                     <NeuralModuleMap
-                      items={BOARD_ITEMS}
+                      items={boardItems}
                       selectedId={selectedBoardId}
                       modules={[
                         ...NEURAL_MODULES.map((m) =>
                           m.id === "drafts"
                             ? { ...m, n: skillTotal }
                             : m.id === "database"
-                              ? { ...m, n: skillTotal + WORKFLOW_STEPS.length }
-                              : m,
+                              ? { ...m, n: skillTotal + flowCount }
+                              : m.id === "ideas" || m.id === "workspace"
+                                ? { ...m, n: flowCount }
+                                : m,
                         ),
                         ...customModules.map((m) => ({
                           id: m.id as SectionId,
@@ -1510,45 +1603,162 @@ export default function StudioPage() {
                 {section === "ideas" && !activeCustomModule && (
                   <SectionPane
                     icon={<Workflow className="h-4 w-4" />}
-                    title="灵感池 · 8 步工作流"
+                    title="灵感池 · 工作流"
                     en="Workflow"
-                    desc="AIGC 网文拉新 · 当前角色表"
+                    desc="按执行者分区 · 我 / AI / Agent · 步骤保存在本机浏览器"
                   >
-                    <ol className="space-y-2">
-                      {WORKFLOW_STEPS.map((step) => (
-                        <li key={step.id}>
-                          <button
-                            type="button"
-                            data-step={step.id}
-                            className={cn(
-                              "studio-glass flex w-full items-center gap-3 px-4 py-3 text-left",
-                              selectedBoardId === step.id && "studio-row-on",
-                            )}
-                            onClick={() => openStepDetail(step.id)}
+                    <div data-testid="flow-zones" className="space-y-5">
+                      {FLOW_ZONES.map((zone) => {
+                        const steps = flowSteps.filter(
+                          (s) => s.zone === zone.id,
+                        );
+                        const drafting = flowDraft?.zone === zone.id;
+                        return (
+                          <div
+                            key={zone.id}
+                            data-testid={`flow-zone-${zone.id}`}
                           >
-                            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[12px] font-bold studio-pill-active">
-                              {step.n}
-                            </span>
-                            <div className="min-w-0 flex-1">
-                              <p className="text-sm font-medium">{step.title}</p>
-                              <p className="text-[10px] text-[color:var(--studio-muted)]">
-                                派给 · {step.role}
+                            <div className="mb-2 flex items-center justify-between gap-2 px-1">
+                              <p className="text-[13px] font-semibold">
+                                {zone.label}
+                                <span className="ml-2 text-[10px] font-normal tracking-wider text-[color:var(--studio-muted)]">
+                                  {zone.en}
+                                </span>
+                                <span className="ml-2 text-[11px] font-normal tabular-nums text-[color:var(--studio-muted)]">
+                                  {steps.length} 步
+                                </span>
                               </p>
+                              <button
+                                type="button"
+                                data-testid={`flow-add-${zone.id}`}
+                                className="xuan-btn shrink-0"
+                                onClick={() =>
+                                  setFlowDraft({ zone: zone.id, title: "" })
+                                }
+                              >
+                                ＋ 加步骤
+                              </button>
                             </div>
-                            <span
-                              className={cn(
-                                "rounded-full px-2 py-0.5 text-[10px]",
-                                step.status === "ready"
-                                  ? "studio-pill-active"
-                                  : "text-[color:var(--studio-muted)]",
-                              )}
-                            >
-                              {step.status === "ready" ? "就绪" : "待改派"}
-                            </span>
-                          </button>
-                        </li>
-                      ))}
-                    </ol>
+                            {drafting && (
+                              <div
+                                className="mb-2 flex items-center gap-2"
+                                data-testid={`flow-add-form-${zone.id}`}
+                              >
+                                <input
+                                  data-testid="flow-add-input"
+                                  autoFocus
+                                  value={flowDraft.title}
+                                  onChange={(e) =>
+                                    setFlowDraft({
+                                      zone: zone.id,
+                                      title: e.target.value,
+                                    })
+                                  }
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter") {
+                                      const title = flowDraft.title.trim();
+                                      if (!title) {
+                                        showToast("先给步骤起个名");
+                                        return;
+                                      }
+                                      addFlowStep(title, zone.id);
+                                      setFlowDraft({ zone: zone.id, title: "" });
+                                      showToast(`已加步骤 · ${title}`);
+                                    }
+                                    if (e.key === "Escape") setFlowDraft(null);
+                                  }}
+                                  placeholder={`给「${zone.label}」区加一步…`}
+                                  className="min-w-0 flex-1 rounded-[10px] border border-[color:var(--studio-border)] bg-black/20 px-3 py-2 text-[13px] outline-none"
+                                />
+                                <button
+                                  type="button"
+                                  data-testid="flow-add-confirm"
+                                  className="xuan-btn xuan-btn-primary shrink-0"
+                                  onClick={() => {
+                                    const title = flowDraft.title.trim();
+                                    if (!title) {
+                                      showToast("先给步骤起个名");
+                                      return;
+                                    }
+                                    addFlowStep(title, zone.id);
+                                    setFlowDraft({ zone: zone.id, title: "" });
+                                    showToast(`已加步骤 · ${title}`);
+                                  }}
+                                >
+                                  添加
+                                </button>
+                                <button
+                                  type="button"
+                                  className="xuan-btn shrink-0"
+                                  onClick={() => setFlowDraft(null)}
+                                >
+                                  取消
+                                </button>
+                              </div>
+                            )}
+                            {steps.length === 0 ? (
+                              <p className="px-1 text-[12px] text-[color:var(--studio-muted)]">
+                                暂无步骤 · 点右上「＋ 加步骤」往这个区里加
+                              </p>
+                            ) : (
+                              <ol className="space-y-2">
+                                {steps.map((step, i) => (
+                                  <li key={step.id}>
+                                    <div
+                                      className={cn(
+                                        "studio-glass flex w-full items-center gap-3 px-4 py-3 text-left",
+                                        selectedBoardId === step.id &&
+                                          "studio-row-on",
+                                      )}
+                                    >
+                                      <button
+                                        type="button"
+                                        data-step={step.id}
+                                        className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                                        onClick={() => openStepDetail(step.id)}
+                                      >
+                                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[12px] font-bold studio-pill-active">
+                                          {i + 1}
+                                        </span>
+                                        <span className="min-w-0 flex-1">
+                                          <span className="block truncate text-sm font-medium">
+                                            {step.title}
+                                          </span>
+                                          <span className="block truncate text-[10px] text-[color:var(--studio-muted)]">
+                                            {zone.label}区
+                                            {step.note ? ` · ${step.note}` : ""}
+                                          </span>
+                                        </span>
+                                      </button>
+                                      <button
+                                        type="button"
+                                        data-testid={`flow-del-${step.id}`}
+                                        aria-label={`删除步骤 ${step.title}`}
+                                        className="shrink-0 rounded-full px-2 py-1 text-[11px] text-[color:var(--studio-muted)] transition-colors hover:bg-white/10 hover:text-red-300"
+                                        onClick={() => {
+                                          if (
+                                            !window.confirm(
+                                              `删除步骤「${step.title}」？`,
+                                            )
+                                          )
+                                            return;
+                                          deleteFlowStep(step.id);
+                                          if (selectedBoardId === step.id)
+                                            setSelectedBoardId(null);
+                                          showToast(`已删除 · ${step.title}`);
+                                        }}
+                                      >
+                                        删除
+                                      </button>
+                                    </div>
+                                  </li>
+                                ))}
+                              </ol>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
                   </SectionPane>
                 )}
 
@@ -1655,21 +1865,21 @@ export default function StudioPage() {
                               </td>
                             </tr>
                           ))}
-                          {WORKFLOW_STEPS.map((w) => (
+                          {flowSteps.map((s, i) => (
                             <tr
-                              key={w.id}
+                              key={s.id}
                               className="cursor-pointer border-b border-[color:var(--studio-border)] last:border-0 hover:bg-white/5"
-                              onClick={() => openStepDetail(w.id)}
+                              onClick={() => openStepDetail(s.id)}
                             >
                               <td className="px-3 py-2.5">
-                                {w.n} {w.title}
+                                {i + 1} {s.title}
                               </td>
                               <td className="px-3 py-2.5">流水线</td>
                               <td className="px-3 py-2.5">
-                                {w.status === "ready" ? "就绪" : "待改派"}
+                                {flowZoneLabel(s.zone)}区
                               </td>
                               <td className="px-3 py-2.5 text-[color:var(--studio-muted)]">
-                                {w.role}
+                                {s.note ?? "灵感池 · 自建步骤"}
                               </td>
                             </tr>
                           ))}
@@ -1789,7 +1999,7 @@ export default function StudioPage() {
                       <p className="text-sm font-medium">{selected.meta}</p>
                       <p className="mt-2 text-[10px] leading-relaxed text-[color:var(--studio-muted)]">
                         {selected.kind === "workflow" &&
-                          "8 步 AIGC 网文拉新 · Rio 派发 / 验收"}
+                          `${flowCount} 步工作流 · 按执行者分区（我 / AI / Agent）`}
                         {selected.kind === "skill" &&
                           "已装 Skill · 可从技能库打开"}
                         {selected.kind === "pending" &&
@@ -1802,7 +2012,7 @@ export default function StudioPage() {
                       {(
                         [
                           ["Skill", "Skills", skillTotal, Wrench],
-                          ["步骤", "Steps", WORKFLOW_STEPS.length, Workflow],
+                          ["步骤", "Steps", flowCount, Workflow],
                           ["待办", "Tickets", PENDING_TICKETS.length, Bookmark],
                           ["成片", "Slots", WORK_SLOTS.length, Layers],
                         ] as const
@@ -1917,7 +2127,7 @@ export default function StudioPage() {
               </div>
 
               {(() => {
-                const step = WORKFLOW_STEPS.find((w) => w.id === selectedBoardId);
+                const step = flowSteps.find((s) => s.id === selectedBoardId);
                 if (!step) return null;
                 return (
                   <button
@@ -1927,7 +2137,7 @@ export default function StudioPage() {
                     onClick={() => openStepDetail(step.id)}
                     title="打开步骤详情"
                   >
-                    步骤 {step.n} · {step.title}
+                    步骤 · {step.title}
                   </button>
                 );
               })()}
@@ -2016,35 +2226,62 @@ export default function StudioPage() {
             </div>
 
             {modal === "step" && (() => {
-              const step = WORKFLOW_STEPS.find((w) => w.id === selectedBoardId) ?? WORKFLOW_STEPS[0];
+              const step = flowSteps.find((s) => s.id === selectedBoardId);
+              if (!step) {
+                // Graceful fallback: the step is gone (workflow was rebuilt
+                // into 我 / AI / Agent zones) — never render stale data.
+                return (
+                  <div className="space-y-3" data-testid="step-detail">
+                    <p className="text-[13px] leading-relaxed text-[color:var(--studio-muted)]">
+                      这条步骤已不存在——工作流已按「我 / AI / Agent」分区重构，需要的步骤可以在灵感池里重新添加。
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        className="xuan-btn xuan-btn-primary"
+                        onClick={() => {
+                          setModal(null);
+                          setSection("ideas");
+                        }}
+                      >
+                        去灵感池
+                      </button>
+                      <button
+                        type="button"
+                        className="xuan-btn"
+                        onClick={() => setModal(null)}
+                      >
+                        关闭
+                      </button>
+                    </div>
+                  </div>
+                );
+              }
+              const zoneSteps = flowSteps.filter((s) => s.zone === step.zone);
+              const idx = zoneSteps.findIndex((s) => s.id === step.id);
               return (
                 <div className="space-y-3" data-testid="step-detail">
                   <div className="flex items-start gap-3">
                     <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[15px] font-bold studio-pill-active">
-                      {step.n}
+                      {idx + 1}
                     </span>
                     <div className="min-w-0">
                       <p className="text-[16px] font-semibold">{step.title}</p>
                       <p className="text-[12px] text-[color:var(--studio-muted)]">
-                        步骤 {step.n}/8 · 派给 {step.role}
+                        {flowZoneLabel(step.zone)}区 · 本区第 {idx + 1} 步（全站共 {flowCount} 步）
                       </p>
                     </div>
-                    <span
-                      className={cn(
-                        "ml-auto shrink-0 rounded-full px-2.5 py-1 text-[11px]",
-                        step.status === "ready" ? "studio-pill-active" : "text-[color:var(--studio-muted)]",
-                      )}
-                    >
-                      {step.status === "ready" ? "就绪 · 可派发" : "待改派"}
+                    <span className="ml-auto shrink-0 rounded-full px-2.5 py-1 text-[11px] studio-pill-active">
+                      {flowZoneLabel(step.zone)}
                     </span>
                   </div>
                   <div className="studio-glass space-y-2 p-3">
                     <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[color:var(--studio-accent)]">
-                      下一步动作 · Next
+                      备注 · Note
                     </p>
-                    <p className="text-[13px] leading-relaxed">{step.next}</p>
-                    <p className="text-[11px] leading-relaxed text-[color:var(--studio-muted)]">
-                      {step.notes}
+                    <p className="text-[13px] leading-relaxed">
+                      {step.note ??
+                        "自建步骤 · 在灵感池对应分区里管理：点分区头「＋ 加步骤」继续添加，点步骤行右侧「删除」移除。"}
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-2">
@@ -2053,31 +2290,15 @@ export default function StudioPage() {
                       className="xuan-btn xuan-btn-primary"
                       data-testid="step-action-primary"
                       onClick={() => {
-                        showToast(
-                          step.status === "ready"
-                            ? `已记 · ${step.title} → ${step.role}`
-                            : `已催改派 · ${step.title}`,
-                        );
+                        if (!window.confirm(`删除步骤「${step.title}」？`)) return;
+                        deleteFlowStep(step.id);
+                        if (selectedBoardId === step.id) setSelectedBoardId(null);
                         setModal(null);
+                        showToast(`已删除 · ${step.title}`);
                       }}
                     >
-                      {step.status === "ready" ? `派给 ${step.role.split(" ")[0].split("/")[0]}` : "催促改派"}
+                      删除这一步
                     </button>
-                    {step.id === "w1" && (
-                      <button
-                        type="button"
-                        className="xuan-btn"
-                        data-testid="step-action-notes"
-                        onClick={() => {
-                          setSection("drafts");
-                          setSelectedBoardId("s-01");
-                          setModal(null);
-                          showToast("打开课表 Skill · 学课 · 飞书通");
-                        }}
-                      >
-                        打开课表笔记
-                      </button>
-                    )}
                     <button
                       type="button"
                       className="xuan-btn"
@@ -2150,9 +2371,9 @@ export default function StudioPage() {
                     const hub = hubs.find((h) => SECTION_TO_HUB[nav.id] === h.key);
                     const count =
                       nav.id === "drafts" ? skillTotal
-                      : nav.id === "database" ? skillTotal + WORKFLOW_STEPS.length
+                      : nav.id === "database" ? skillTotal + flowCount
                       : hub ? hub.rows.length
-                      : nav.id === "ideas" ? WORKFLOW_STEPS.length
+                      : nav.id === "ideas" ? flowCount
                       : nav.id === "works" ? WORK_SLOTS.length
                       : nav.id === "calendar" ? tickets.length
                       : hubs.length;
@@ -2462,10 +2683,10 @@ export default function StudioPage() {
 
 /** Landing plate nodes → sections (real counts). */
 const LANDING_NODES: LandingNode[] = [
-  { key: "top", section: "ideas", n: WORKFLOW_STEPS.length, label: "灵感池", en: "Workflow", sub: `${WORKFLOW_STEPS.length} 步拉新流水线` },
+  { key: "top", section: "ideas", n: 0, label: "灵感池", en: "Workflow", sub: "步拉新流水线" },
   { key: "left", section: "works", n: WORK_SLOTS.length, label: "作品库", en: "Works", sub: "ep01 待发布" },
   { key: "ll", section: "drafts", n: SKILL_TOTAL_FALLBACK, label: "技能库", en: "Skills", sub: "已装 Skill" },
-  { key: "right", section: "database", n: SKILL_TOTAL_FALLBACK + WORKFLOW_STEPS.length, label: "数据库", en: "Database", sub: "Skill + 流程" },
+  { key: "right", section: "database", n: SKILL_TOTAL_FALLBACK, label: "数据库", en: "Database", sub: "Skill + 流程" },
   { key: "lr", section: "calendar", n: CAL_MARKS.size, label: "日历表", en: "Calendar", sub: `${PENDING_TICKETS.length} 条待办` },
 ];
 
@@ -2475,12 +2696,12 @@ const NEURAL_MODULES: {
   label: string;
   en: string;
 }[] = [
-  { id: "workspace", n: WORKFLOW_STEPS.length, label: "工作台", en: "WORKSPACE" },
-  { id: "database", n: SKILL_TOTAL_FALLBACK + WORKFLOW_STEPS.length, label: "数据库", en: "DATABASE" },
+  { id: "workspace", n: 0, label: "工作台", en: "WORKSPACE" },
+  { id: "database", n: SKILL_TOTAL_FALLBACK, label: "数据库", en: "DATABASE" },
   { id: "works", n: WORK_SLOTS.length, label: "作品库", en: "WORKS" },
   { id: "calendar", n: CAL_MARKS.size, label: "日历表", en: "CALENDAR" },
   { id: "drafts", n: SKILL_TOTAL_FALLBACK, label: "技能库", en: "SKILLS" },
-  { id: "ideas", n: WORKFLOW_STEPS.length, label: "灵感池", en: "WORKFLOW" },
+  { id: "ideas", n: 0, label: "灵感池", en: "WORKFLOW" },
 ];
 
 /**
