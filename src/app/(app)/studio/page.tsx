@@ -625,6 +625,7 @@ export default function StudioPage() {
     >
       {authed === false && (
         <div className="studio-login-page studio-login-overlay" data-testid="studio-login">
+          <NeuralOrb className="studio-orb-bg" theme={theme} />
           <div className="studio-login-glow" aria-hidden />
           <form className="studio-login-card" onSubmit={doLogin}>
             <p className="studio-login-brand">
