@@ -268,6 +268,27 @@ const FLOW_ZONES: { id: FlowZone; label: string; en: string }[] = [
   { id: "agent", label: "Agent", en: "AGENT" },
 ];
 const FLOW_STEPS_KEY = "studio_workflow_steps_v2";
+
+/**
+ * Calendar items （日历事项）: user-managed entries pinned to a date.
+ * React state + localStorage `studio_calendar_items_v1`, starts empty.
+ * The grid still shows one fixed month (CAL_YEAR/CAL_MONTH, no paging yet);
+ * the old static CAL_MARKS placeholders no longer feed anything — day
+ * markers, the item list and every calendar count derive from this state.
+ * Count口径: wherever a calendar "n" is shown (landing node, module map,
+ * WS_HUBS default) it is the number of ITEMS (calItems.length), not the
+ * number of marked days; the "N 条待办" sub stays tickets-only.
+ */
+type CalItem = { id: string; date: string; title: string; note?: string };
+const CAL_ITEMS_KEY = "studio_calendar_items_v1";
+const CAL_YEAR = 2026;
+const CAL_MONTH = 10;
+const calDateStr = (day: number): string =>
+  `${CAL_YEAR}-${String(CAL_MONTH).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+const todayStr = (): string => {
+  const n = new Date();
+  return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, "0")}-${String(n.getDate()).padStart(2, "0")}`;
+};
 /** Ids of the cleared built-in steps — stripped from persisted hub rows. */
 const LEGACY_STEP_IDS = new Set([
   "w1", "w2", "w3", "w4", "w5", "w6", "w7", "w8",
@@ -342,9 +363,8 @@ const THEMES: { id: ThemeId; label: string; en: string; short: string }[] = [
 ];
 
 const CAL_DAYS = Array.from({ length: 31 }, (_, i) => i + 1);
-const CAL_MARKS = new Set([19, 20, 22, 25, 28]); // ops rhythm placeholders
 
-type ModalKind = null | "edit" | "manage" | "create" | "step" | "newmodule";
+type ModalKind = null | "edit" | "manage" | "create" | "step" | "newmodule" | "caladd";
 
 const WS_HUBS: WsHub[] = [
   {
@@ -369,10 +389,9 @@ const WS_HUBS: WsHub[] = [
     ],
   },
   {
-    key: "lr", section: "calendar", n: CAL_MARKS.size, label: "日历表", en: "Calendar", sub: `${PENDING_TICKETS.length} 条待办`,
+    key: "lr", section: "calendar", n: 0, label: "日历表", en: "Calendar", sub: `${PENDING_TICKETS.length} 条待办`,
     rows: [
       ...PENDING_TICKETS.map((t) => ({ id: `cal-${t.id}`, title: t.title, a: t.owner, b: "本周", c: "待办" })),
-      ...Array.from(CAL_MARKS).map((d) => ({ id: `cal-d${d}`, title: `10 月 ${d} 日 · 运营节点`, a: "日历", b: "2026-10" })),
     ],
   },
 ];
@@ -545,6 +564,83 @@ export default function StudioPage() {
     [persistFlowSteps],
   );
   const flowCount = flowSteps.length;
+  // Calendar items （日历事项）: state + localStorage, starts empty.
+  const [calItems, setCalItems] = React.useState<CalItem[]>([]);
+  const [calDraft, setCalDraft] = React.useState<{
+    date: string;
+    title: string;
+    note: string;
+  } | null>(null);
+  const [calFocusDate, setCalFocusDate] = React.useState<string | null>(null);
+  React.useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(CAL_ITEMS_KEY);
+      if (raw) {
+        const arr = JSON.parse(raw) as CalItem[];
+        if (Array.isArray(arr)) {
+          setCalItems(
+            arr.filter(
+              (i) =>
+                i &&
+                typeof i.id === "string" &&
+                typeof i.date === "string" &&
+                /^\d{4}-\d{2}-\d{2}$/.test(i.date) &&
+                typeof i.title === "string",
+            ),
+          );
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+  }, []);
+  const persistCalItems = React.useCallback((next: CalItem[]) => {
+    try {
+      window.localStorage.setItem(CAL_ITEMS_KEY, JSON.stringify(next));
+    } catch {
+      /* ignore */
+    }
+  }, []);
+  const addCalItem = React.useCallback(
+    (date: string, title: string, note?: string) => {
+      const item: CalItem = {
+        id: `calitem-${Date.now()}`,
+        date,
+        title,
+        ...(note ? { note } : {}),
+      };
+      setCalItems((prev) => {
+        const next = [...prev, item];
+        persistCalItems(next);
+        return next;
+      });
+      return item;
+    },
+    [persistCalItems],
+  );
+  const deleteCalItem = React.useCallback(
+    (id: string) => {
+      setCalItems((prev) => {
+        const next = prev.filter((i) => i.id !== id);
+        persistCalItems(next);
+        return next;
+      });
+    },
+    [persistCalItems],
+  );
+  const openCalAdd = React.useCallback((date: string) => {
+    setCalDraft({ date, title: "", note: "" });
+    setCalFocusDate(date);
+    setModal("caladd");
+  }, []);
+  const sortedCalItems = React.useMemo(
+    () =>
+      [...calItems].sort((a, b) =>
+        a.date === b.date ? (a.id < b.id ? -1 : 1) : a.date < b.date ? -1 : 1,
+      ),
+    [calItems],
+  );
+  const calItemCount = calItems.length;
   const allSkills = React.useMemo(
     () => skillAgents.flatMap((a) => a.skills),
     [skillAgents],
@@ -652,10 +748,28 @@ export default function StudioPage() {
           ];
           return { ...h, rows, n: rows.length };
         }
+        if (h.key === "lr") {
+          // Calendar hub mirrors the calendar items; the old static
+          // `cal-d*` placeholder rows are stripped, ticket mirrors (`cal-*`)
+          // and hand-added rows are preserved as-is.
+          const extra = h.rows.filter(
+            (r) => !r.id.startsWith("cal-d") && !r.id.startsWith("calitem-row-"),
+          );
+          const rows = [
+            ...extra,
+            ...sortedCalItems.map((i) => ({
+              id: `calitem-row-${i.id}`,
+              title: i.title,
+              a: "日历事项",
+              b: i.date,
+            })),
+          ];
+          return { ...h, rows, n: rows.length };
+        }
         return h;
       }),
     );
-  }, [allSkills, flowSteps]);
+  }, [allSkills, flowSteps, sortedCalItems]);
   React.useEffect(() => {
     try {
       const t = window.localStorage.getItem(TITLE_KEY);
@@ -871,7 +985,8 @@ export default function StudioPage() {
     const hub = hk ? hubs.find((h) => h.key === hk) : undefined;
     const live = hub ? hub.rows.length : node.n;
     if (node.section === "calendar")
-      return { ...node, n: live, sub: `${tickets.length} 条待办` };
+      // 口径：n = 日历事项总数 (calItems.length); sub 的待办数仍只走 tickets。
+      return { ...node, n: calItemCount, sub: `${tickets.length} 条待办` };
     if (node.section === "ideas")
       return { ...node, n: live, sub: `${flowCount} 步拉新流水线` };
     return { ...node, n: live };
@@ -1439,9 +1554,11 @@ export default function StudioPage() {
                             ? { ...m, n: skillTotal }
                             : m.id === "database"
                               ? { ...m, n: skillTotal + flowCount }
-                              : m.id === "ideas" || m.id === "workspace"
-                                ? { ...m, n: flowCount }
-                                : m,
+                              : m.id === "calendar"
+                                ? { ...m, n: calItemCount }
+                                : m.id === "ideas" || m.id === "workspace"
+                                  ? { ...m, n: flowCount }
+                                  : m,
                         ),
                         ...customModules.map((m) => ({
                           id: m.id as SectionId,
@@ -1793,39 +1910,140 @@ export default function StudioPage() {
                     icon={<CalendarDays className="h-4 w-4" />}
                     title="日历表"
                     en="Calendar"
-                    desc="发布节奏 · 有标记的日子可点"
+                    desc="点任意一天加事项 · 事项保存在本机浏览器"
                   >
-                    <div className="studio-glass p-4">
-                      <p className="mb-3 text-xs text-[color:var(--studio-muted)]">
-                        2026 · October · Africa/Blantyre
-                      </p>
-                      <div className="grid grid-cols-7 gap-1.5">
+                    <div className="studio-glass p-4" data-testid="cal-pane">
+                      <div className="mb-3 flex items-center justify-between gap-2">
+                        <p className="text-xs text-[color:var(--studio-muted)]">
+                          {CAL_YEAR} · October
+                        </p>
+                        <button
+                          type="button"
+                          data-testid="cal-add-btn"
+                          className="xuan-btn shrink-0"
+                          onClick={() => openCalAdd(todayStr())}
+                        >
+                          ＋ 加事项
+                        </button>
+                      </div>
+                      <div className="grid grid-cols-7 gap-1.5" data-testid="cal-grid">
                         {CAL_DAYS.map((d) => {
-                          const marked = CAL_MARKS.has(d);
+                          const ds = calDateStr(d);
+                          const count = calItems.reduce(
+                            (n, i) => (i.date === ds ? n + 1 : n),
+                            0,
+                          );
+                          const isToday = ds === todayStr();
+                          const isFocus = ds === calFocusDate;
                           return (
                             <button
                               key={d}
                               type="button"
-                              onClick={() =>
-                                showToast(
-                                  marked
-                                    ? d === 19
-                                      ? "今天 · ep01 Fish Audio 跟进"
-                                      : `有计划 · ${d} 日`
-                                    : `${d} 日 · 空档`,
-                                )
-                              }
+                              data-testid={`cal-day-${d}`}
+                              data-count={count}
+                              data-today={isToday || undefined}
+                              data-focus={isFocus || undefined}
+                              onClick={() => openCalAdd(ds)}
                               className={cn(
-                                "flex h-9 items-center justify-center rounded-lg text-[12px] transition-colors",
-                                marked
+                                "relative flex h-9 items-center justify-center rounded-lg text-[12px] transition-colors",
+                                count > 0
                                   ? "studio-pill-active font-semibold"
                                   : "text-[color:var(--studio-muted)] hover:bg-white/5",
+                                isToday &&
+                                  "ring-1 ring-inset ring-[color:var(--studio-accent)]",
+                                isFocus &&
+                                  "ring-2 ring-inset ring-[color:var(--studio-accent)]",
                               )}
                             >
                               {d}
+                              {count > 0 && (
+                                <span className="absolute right-1 top-1 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-[color:var(--studio-accent)] px-0.5 text-[9px] font-bold leading-none text-black">
+                                  {count}
+                                </span>
+                              )}
                             </button>
                           );
                         })}
+                      </div>
+                      <div
+                        className="mt-4 border-t border-[color:var(--studio-border)] pt-3"
+                        data-testid="cal-items"
+                      >
+                        <p className="mb-2 text-[11px] text-[color:var(--studio-muted)]">
+                          事项 · 共 {calItemCount} 条 · 点一条跳回对应日期
+                        </p>
+                        {sortedCalItems.length === 0 ? (
+                          <p className="text-[12px] text-[color:var(--studio-muted)]">
+                            暂无事项 · 点任意日期，或点右上「＋ 加事项」添加
+                          </p>
+                        ) : (
+                          <ul className="space-y-1">
+                            {sortedCalItems.map((i) => (
+                              <li key={i.id} className="flex items-center gap-1">
+                                <button
+                                  type="button"
+                                  data-testid={`cal-item-${i.id}`}
+                                  data-date={i.date}
+                                  className={cn(
+                                    "min-w-0 flex-1 rounded-lg px-2 py-2 text-left text-[12px] leading-snug transition-colors hover:bg-white/5",
+                                    calFocusDate === i.date &&
+                                      "bg-white/5 text-[color:var(--studio-text)]",
+                                  )}
+                                  onClick={() => {
+                                    setCalFocusDate(i.date);
+                                    if (
+                                      i.date.startsWith(
+                                        `${CAL_YEAR}-${String(CAL_MONTH).padStart(2, "0")}-`,
+                                      )
+                                    ) {
+                                      const day = parseInt(i.date.slice(8, 10), 10);
+                                      document
+                                        .querySelector(
+                                          `[data-testid="cal-day-${day}"]`,
+                                        )
+                                        ?.scrollIntoView({
+                                          block: "nearest",
+                                          behavior: "smooth",
+                                        });
+                                    }
+                                    showToast(`事项 · ${i.date} · ${i.title}`);
+                                  }}
+                                >
+                                  <span className="mr-2 shrink-0 font-medium tabular-nums text-[color:var(--studio-accent)]">
+                                    {parseInt(i.date.slice(5, 7), 10)} 月{" "}
+                                    {parseInt(i.date.slice(8, 10), 10)} 日
+                                  </span>
+                                  <span className="font-medium text-[color:var(--studio-text)]">
+                                    {i.title}
+                                  </span>
+                                  {i.note && (
+                                    <span className="text-[color:var(--studio-muted)]">
+                                      {" · "}
+                                      {i.note}
+                                    </span>
+                                  )}
+                                </button>
+                                <button
+                                  type="button"
+                                  data-testid={`cal-del-${i.id}`}
+                                  className="shrink-0 rounded-lg px-2 py-1 text-[11px] text-[color:var(--studio-muted)] transition-colors hover:bg-white/5 hover:text-[color:var(--studio-text)]"
+                                  onClick={() => {
+                                    if (
+                                      !window.confirm(
+                                        `删除事项「${i.title}」（${i.date}）？`,
+                                      )
+                                    )
+                                      return;
+                                    deleteCalItem(i.id);
+                                    showToast(`已删除 · ${i.title}`);
+                                  }}
+                                >
+                                  删除
+                                </button>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
                       </div>
                       <ul className="mt-4 space-y-2 border-t border-[color:var(--studio-border)] pt-3">
                         {tickets.map((t) => (
@@ -2240,6 +2458,7 @@ export default function StudioPage() {
                 {modal === "create" && "新建任务"}
                 {modal === "newmodule" && "新建模块"}
                 {modal === "step" && "步骤详情"}
+                {modal === "caladd" && "添加日历事项"}
               </h2>
               <button
                 type="button"
@@ -2336,6 +2555,89 @@ export default function StudioPage() {
                 </div>
               );
             })()}
+
+            {modal === "caladd" && calDraft && (
+              <div className="space-y-3 text-[13px]" data-testid="modal-caladd">
+                <label className="block">
+                  <span className="text-[10px] text-[color:var(--studio-muted)]">
+                    日期（可改，想加到哪天改哪天）
+                  </span>
+                  <input
+                    type="date"
+                    data-testid="cal-add-date"
+                    value={calDraft.date}
+                    onChange={(e) =>
+                      setCalDraft({ ...calDraft, date: e.target.value })
+                    }
+                    className="mt-1 w-full rounded-[10px] border border-[color:var(--studio-border)] bg-black/20 px-3 py-2 outline-none [color-scheme:dark]"
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-[10px] text-[color:var(--studio-muted)]">
+                    任务事项（必填）
+                  </span>
+                  <input
+                    data-testid="cal-add-title"
+                    value={calDraft.title}
+                    onChange={(e) =>
+                      setCalDraft({ ...calDraft, title: e.target.value })
+                    }
+                    placeholder="比如：发布视频号 ep02"
+                    className="mt-1 w-full rounded-[10px] border border-[color:var(--studio-border)] bg-black/20 px-3 py-2 outline-none"
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-[10px] text-[color:var(--studio-muted)]">
+                    备注（可不填）
+                  </span>
+                  <input
+                    data-testid="cal-add-note"
+                    value={calDraft.note}
+                    onChange={(e) =>
+                      setCalDraft({ ...calDraft, note: e.target.value })
+                    }
+                    placeholder="补充说明…"
+                    className="mt-1 w-full rounded-[10px] border border-[color:var(--studio-border)] bg-black/20 px-3 py-2 outline-none"
+                  />
+                </label>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    className="xuan-btn justify-center"
+                    onClick={() => setModal(null)}
+                  >
+                    取消
+                  </button>
+                  <button
+                    type="button"
+                    className="xuan-btn xuan-btn-primary flex-1 justify-center"
+                    data-testid="cal-add-confirm"
+                    onClick={() => {
+                      const title = calDraft.title.trim();
+                      if (!/^\d{4}-\d{2}-\d{2}$/.test(calDraft.date)) {
+                        showToast("先选日期");
+                        return;
+                      }
+                      if (!title) {
+                        showToast("先填任务事项");
+                        return;
+                      }
+                      const item = addCalItem(
+                        calDraft.date,
+                        title,
+                        calDraft.note.trim() || undefined,
+                      );
+                      setCalFocusDate(item.date);
+                      setCalDraft(null);
+                      setModal(null);
+                      showToast(`已加事项 · ${item.date} · ${title}`);
+                    }}
+                  >
+                    保存事项
+                  </button>
+                </div>
+              </div>
+            )}
 
             {modal === "edit" && (
               <div className="space-y-3 text-[13px]" data-testid="modal-edit">
@@ -2713,7 +3015,7 @@ const LANDING_NODES: LandingNode[] = [
   { key: "left", section: "works", n: WORK_SLOTS.length, label: "作品库", en: "Works", sub: "ep01 待发布" },
   { key: "ll", section: "drafts", n: SKILL_TOTAL_FALLBACK, label: "技能库", en: "Skills", sub: "已装 Skill" },
   { key: "right", section: "database", n: SKILL_TOTAL_FALLBACK, label: "数据库", en: "Database", sub: "Skill + 流程" },
-  { key: "lr", section: "calendar", n: CAL_MARKS.size, label: "日历表", en: "Calendar", sub: `${PENDING_TICKETS.length} 条待办` },
+  { key: "lr", section: "calendar", n: 0, label: "日历表", en: "Calendar", sub: `${PENDING_TICKETS.length} 条待办` },
 ];
 
 const NEURAL_MODULES: {
@@ -2725,7 +3027,7 @@ const NEURAL_MODULES: {
   { id: "workspace", n: 0, label: "工作台", en: "WORKSPACE" },
   { id: "database", n: SKILL_TOTAL_FALLBACK, label: "数据库", en: "DATABASE" },
   { id: "works", n: WORK_SLOTS.length, label: "作品库", en: "WORKS" },
-  { id: "calendar", n: CAL_MARKS.size, label: "日历表", en: "CALENDAR" },
+  { id: "calendar", n: 0, label: "日历表", en: "CALENDAR" },
   { id: "drafts", n: SKILL_TOTAL_FALLBACK, label: "技能库", en: "SKILLS" },
   { id: "ideas", n: 0, label: "灵感池", en: "WORKFLOW" },
 ];
