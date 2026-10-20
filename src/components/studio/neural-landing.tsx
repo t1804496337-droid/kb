@@ -4,6 +4,7 @@ import * as React from "react";
 import { Pencil, RotateCcw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { jellyMotion } from "./module-jelly";
+import { JellyMedia } from "./jelly-media";
 
 export type LandingNode = {
   key: string;
@@ -249,7 +250,14 @@ export function NeuralLanding({
   quick?: boolean;
   stats?: { key?: string; value: number; label: string; en: string }[];
   /** User-created modules, shown as node-style glass cards under the orb. */
-  customCards?: { id: string; label: string; en: string; count: number }[];
+  customCards?: {
+    id: string;
+    label: string;
+    en: string;
+    count: number;
+    /** Beam colour — tints the card's Chinese title, like the node cards. */
+    beam?: string;
+  }[];
   onOpenCustom?: (id: string) => void;
 }) {
   const rootRef = React.useRef<HTMLDivElement>(null);
@@ -462,15 +470,10 @@ export function NeuralLanding({
               onClick={openNode}
               aria-label={`进入${node.label}`}
             >
-              <span className="jelly-alive" aria-hidden>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  className={node.feather ? "lp-feather" : undefined}
-                  src={node.img ?? `/studio/landing/jelly-${node.key}.webp`}
-                  alt=""
-                  draggable={false}
-                />
-              </span>
+              <JellyMedia
+                still={node.img ?? `/studio/landing/jelly-${node.key}.webp`}
+                stillClassName={node.feather ? "lp-feather" : undefined}
+              />
             </button>
             <button
               type="button"
@@ -490,7 +493,13 @@ export function NeuralLanding({
                 <span className="lp-card-ico" aria-hidden />
                 <span className="lp-card-n">{node.n}</span>
               </span>
-              <span className="lp-card-zh">
+              {/* Module distinction lives in the type now: the Chinese
+                  title wears the node's beam colour (the <em> English and
+                  the number/sub keep their neutral tones via CSS). */}
+              <span
+                className="lp-card-zh"
+                style={{ color: node.beam ?? BEAM[node.key] ?? "#DCE2F0" }}
+              >
                 {node.label}
                 <em>{node.en}</em>
               </span>
@@ -524,7 +533,10 @@ export function NeuralLanding({
                 <span className="lp-card-ico" aria-hidden />
                 <span className="lp-card-n">{p.count}</span>
               </span>
-              <span className="lp-card-zh">
+              <span
+                className="lp-card-zh"
+                style={p.beam ? { color: p.beam } : undefined}
+              >
                 {p.label}
                 <em>{p.en}</em>
               </span>

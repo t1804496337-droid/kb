@@ -25,6 +25,16 @@ export function hashModuleId(id: string): number {
   return h;
 }
 
+/** The one animated jelly every node plays (PR #26): a ~5.2s seamless
+ *  image-to-video loop generated from the upscaled jelly-left still,
+ *  transcoded to display size (450×414, H.264, pure-black backing that the
+ *  `.jelly-video` feather mask melts into the stage). All nodes share
+ *  this single file, same direction, same colour — modules are told apart
+ *  by their beam colour and card title colour only. The per-node stills
+ *  (moduleJellyImg / jelly-<key>.webp) remain as the video's poster, its
+ *  error fallback, and the reduced-motion rendering. */
+export const JELLY_ANIM_SRC = "/studio/landing/jelly-anim.mp4";
+
 /** Jelly image for a custom module id (health/finance pinned, rest hashed). */
 export function moduleJellyImg(id: string): string {
   if (id === "health") return "/studio/landing/jelly-health.webp";

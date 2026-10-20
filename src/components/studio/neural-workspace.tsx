@@ -3,6 +3,7 @@
 import * as React from "react";
 import { cn } from "@/lib/utils";
 import { jellyMotion } from "./module-jelly";
+import { JellyMedia } from "./jelly-media";
 
 export type WsHub = {
   /** Built-in hub key ("top"|"left"|"ll"|"right"|"lr") or `custom:<id>`. */
@@ -47,10 +48,11 @@ const BEAM: Record<string, string> = {
 const CUSTOM_BEAM = "#C9D4E8";
 const beamOf = (h: WsHub) => h.beam ?? BEAM[h.key] ?? CUSTOM_BEAM;
 
-/** Hub jellyfish visual: built-ins use their plate jelly; custom modules use
- *  the shared-assignment image (the same jelly as their landing node). The
- *  glass orb with the module's initial is kept only as a fallback for when
- *  the image itself fails to load. */
+/** Hub jellyfish visual: every hub plays the one shared animation loop
+ *  (JellyMedia); the hub's assigned still (built-ins: their plate jelly,
+ *  custom modules: the shared-assignment image, same as their landing node)
+ *  is the poster / fallback. The glass orb with the module's initial is
+ *  kept only for when there is no still at all or the still itself fails. */
 function WsJellyVisual({ hub }: { hub: WsHub }) {
   const [failed, setFailed] = React.useState(false);
   const src = hub.customId ? hub.img : `/studio/landing/jelly-${hub.key}.webp`;
@@ -62,16 +64,11 @@ function WsJellyVisual({ hub }: { hub: WsHub }) {
     );
   }
   return (
-    <span className="jelly-alive" aria-hidden>
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={src}
-        alt=""
-        draggable={false}
-        className={hub.customId ? "ws-feather" : undefined}
-        onError={() => setFailed(true)}
-      />
-    </span>
+    <JellyMedia
+      still={src}
+      stillClassName={hub.customId ? "ws-feather" : undefined}
+      onStillError={() => setFailed(true)}
+    />
   );
 }
 
@@ -343,7 +340,7 @@ export function NeuralWorkspace({
                   <span className="ws-card-ico" aria-hidden />
                   <b>{h.n}</b>
                 </span>
-                <span className="ws-card-zh">
+                <span className="ws-card-zh" style={{ color: beamOf(h) }}>
                   {h.label}
                   <em>{h.en}</em>
                 </span>
@@ -611,7 +608,7 @@ export function NeuralWorkspaceMobile({
                   aria-label={`选中${h.label}`}
                 >
                   <b>{h.n}</b>
-                  <span>{h.label}</span>
+                  <span style={{ color: beamOf(h) }}>{h.label}</span>
                 </button>
               )}
             </React.Fragment>
@@ -630,7 +627,7 @@ export function NeuralWorkspaceMobile({
           <span className="ws-card-top">
             <span className="ws-card-ico" aria-hidden />
             <b>{selHub.n}</b>
-            <span className="ws-card-zh">
+            <span className="ws-card-zh" style={{ color: beamOf(selHub) }}>
               {selHub.label}
               <em>{selHub.en}</em>
             </span>
