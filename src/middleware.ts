@@ -25,8 +25,11 @@ export function middleware(request: NextRequest) {
     (p) => pathname === p || pathname.startsWith(`${p}/`),
   );
   const isAuthApi = pathname.startsWith("/api/auth/");
+  // Skills push has its own bearer-token auth (fails closed with 503
+  // when unconfigured), so it must not be bounced to the login page.
+  const isSkillsApi = pathname.startsWith("/api/skills/");
 
-  if (isAuthApi) {
+  if (isAuthApi || isSkillsApi) {
     return NextResponse.next();
   }
 
