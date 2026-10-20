@@ -22,8 +22,8 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "KB · Personal Knowledge Base",
-  description: "Private knowledge base for tang — local S2 skeleton",
+  title: "KB Radar · Wealth Glass",
+  description: "Private KB — Wealth glass dashboard, abstract CSS atmosphere (local)",
   robots: { index: false, follow: false },
 };
 

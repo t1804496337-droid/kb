@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
 const PUBLIC = ["/login"];
+const AUTH_OFF = process.env.SITE_AUTH_OFF === "1";
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -14,17 +15,21 @@ export function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  const session = request.cookies.get("site_session")?.value;
-  const isPublic = PUBLIC.some(
-    (p) => pathname === p || pathname.startsWith(`${p}/`)
-  );
-  const isLoginApi = pathname === "/api/auth/login";
-
-  if (isLoginApi) {
+  // Local preview: skip middleware wall (studio page keeps its own gate)
+  if (AUTH_OFF) {
     return NextResponse.next();
   }
 
-  // Local demo: any non-empty site_session is treated as authenticated
+  const session = request.cookies.get("site_session")?.value;
+  const isPublic = PUBLIC.some(
+    (p) => pathname === p || pathname.startsWith(`${p}/`),
+  );
+  const isAuthApi = pathname.startsWith("/api/auth/");
+
+  if (isAuthApi) {
+    return NextResponse.next();
+  }
+
   const authed = Boolean(session && session.length > 0);
 
   if (!authed && !isPublic) {
@@ -36,7 +41,8 @@ export function middleware(request: NextRequest) {
 
   if (authed && pathname === "/login") {
     const url = request.nextUrl.clone();
-    url.pathname = "/";
+    const from = request.nextUrl.searchParams.get("from") || "/studio";
+    url.pathname = from.startsWith("/") ? from : "/studio";
     url.search = "";
     return NextResponse.redirect(url);
   }

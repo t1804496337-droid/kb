@@ -1,30 +1,62 @@
 import { NextResponse } from "next/server";
 
 /**
- * S2 stub: any non-empty password sets `site_session` cookie.
- * Later: compare against bcrypt hash from env SITE_PASSWORD_HASH.
- * Lockout (5 fails / 15 min) also deferred.
+ * Studio / site gate.
+ * Credentials come only from the environment:
+ *   SITE_AUTH_USER / SITE_AUTH_PASS
+ *   or, when those are unset, NEXT_PUBLIC_STUDIO_USER / NEXT_PUBLIC_STUDIO_PASS
+ * If neither pair is set, login fails closed. There is no default password.
+ * The password lives in the Vercel project env, not in this repo.
  */
+function readCredentials(): { user: string; pass: string } | null {
+  // Dynamic lookup so Next does not inline these at build time.
+  // Vercel injects SITE_AUTH_* at runtime; a missing pair must fail closed.
+  const env = process.env;
+  const user = (env.SITE_AUTH_USER || env.NEXT_PUBLIC_STUDIO_USER || "").trim();
+  const pass = env.SITE_AUTH_PASS || env.NEXT_PUBLIC_STUDIO_PASS || "";
+  if (!user || pass.length === 0) return null;
+  return { user, pass };
+}
+
 export async function POST(request: Request) {
+  const creds = readCredentials();
+  if (!creds) {
+    return NextResponse.json({ error: "登录未配置" }, { status: 503 });
+  }
+
+  let username = "";
   let password = "";
   try {
-    const body = (await request.json()) as { password?: string };
+    const body = (await request.json()) as {
+      username?: string;
+      password?: string;
+    };
+    username = typeof body.username === "string" ? body.username.trim() : "";
     password = typeof body.password === "string" ? body.password : "";
   } catch {
     return NextResponse.json({ error: "Invalid body" }, { status: 400 });
   }
 
-  if (!password.trim()) {
-    return NextResponse.json({ error: "Password required" }, { status: 400 });
+  if (!username || !password.trim()) {
+    return NextResponse.json(
+      { error: "请输入用户名和密码" },
+      { status: 400 },
+    );
   }
 
-  // TODO(S2→prod): bcrypt.compare(password, process.env.SITE_PASSWORD_HASH)
-  const res = NextResponse.json({ ok: true });
-  res.cookies.set("site_session", "local-demo", {
+  if (username !== creds.user || password !== creds.pass) {
+    return NextResponse.json(
+      { error: "用户名或密码不正确" },
+      { status: 401 },
+    );
+  }
+
+  const res = NextResponse.json({ ok: true, user: creds.user });
+  res.cookies.set("site_session", `ok:${creds.user}`, {
     httpOnly: true,
     sameSite: "lax",
     path: "/",
-    // secure: true in production
+    secure: process.env.NODE_ENV === "production",
     maxAge: 60 * 60 * 24 * 30,
   });
   return res;
