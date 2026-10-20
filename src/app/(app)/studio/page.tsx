@@ -20,6 +20,7 @@ import {
   CircleDot,
   Wallet,
   HeartPulse,
+  Network,
 } from "lucide-react";
 import { NeuralOrb } from "@/components/studio/neural-orb";
 import { NeuralLanding, type LandingNode } from "@/components/studio/neural-landing";
@@ -32,6 +33,7 @@ import {
   type FinanceAsset,
 } from "@/components/studio/finance-module";
 import { HealthModuleView } from "@/components/studio/health-module";
+import { OntologyModuleView } from "@/components/studio/ontology-module";
 import { moduleJellyBeam, moduleJellyImg } from "@/components/studio/module-jelly";
 import { XUANZI_PROMPTS } from "@/lib/xuanzi-prompts";
 import { cn } from "@/lib/utils";
@@ -50,6 +52,17 @@ const SEEDED_MODULES_KEY = "studio_seeded_modules_v1";
 const SEED_MODULES: CustomModule[] = [
   { id: "health", label: "身体健康", en: "HEALTH" },
   { id: "finance", label: "财务系统管理", en: "FINANCE" },
+];
+const SEEDED_MODULES_V2_KEY = "studio_seeded_modules_v2";
+/** Later seed batches get their own marker key: profiles that already ran
+ *  an earlier batch still receive the new defaults exactly once, and a
+ *  module from any batch that the user deleted never comes back. */
+const SEED_MODULES_V2: CustomModule[] = [
+  { id: "ontology", label: "本体知识库", en: "ONTOLOGY" },
+];
+const SEED_BATCHES: { modules: CustomModule[]; marker: string }[] = [
+  { modules: SEED_MODULES, marker: SEEDED_MODULES_KEY },
+  { modules: SEED_MODULES_V2, marker: SEEDED_MODULES_V2_KEY },
 ];
 /** Finance module （财务系统管理） storage: entries / liabilities / assets /
  *  monthly budget, all local — every number in the module is derived from
@@ -644,11 +657,14 @@ export default function StudioPage() {
       let modules: CustomModule[] = [];
       const rawM = window.localStorage.getItem(CUSTOM_MODULES_KEY);
       if (rawM) modules = JSON.parse(rawM) as CustomModule[];
-      // One-time seed of the default modules. Guarded by SEEDED_MODULES_KEY so
-      // a seed the user deleted never comes back; modules already present
-      // (matched by id) are left untouched.
-      if (!window.localStorage.getItem(SEEDED_MODULES_KEY)) {
-        const missing = SEED_MODULES.filter(
+      // One-time seed of the default modules, batch by batch. Each batch is
+      // guarded by its own marker key so a seed the user deleted never
+      // comes back, while profiles that predate a batch still receive its
+      // modules once; modules already present (matched by id) are left
+      // untouched.
+      for (const batch of SEED_BATCHES) {
+        if (window.localStorage.getItem(batch.marker)) continue;
+        const missing = batch.modules.filter(
           (s) => !modules.some((m) => m.id === s.id),
         );
         if (missing.length > 0) {
@@ -658,7 +674,7 @@ export default function StudioPage() {
             JSON.stringify(modules),
           );
         }
-        window.localStorage.setItem(SEEDED_MODULES_KEY, "1");
+        window.localStorage.setItem(batch.marker, "1");
       }
       setCustomModules(modules);
       const rawR = window.localStorage.getItem(CUSTOM_ROWS_KEY);
@@ -2899,7 +2915,16 @@ export default function StudioPage() {
                   </SectionPane>
                 )}
 
-                {activeCustomModule && activeCustomModule.id === "finance" ? (
+                {activeCustomModule && activeCustomModule.id === "ontology" ? (
+                  <SectionPane
+                    icon={<Network className="h-4 w-4" />}
+                    title={activeCustomModule.label}
+                    en={activeCustomModule.en}
+                    desc="建设中 · 模块骨架已就位，内容细节待定"
+                  >
+                    <OntologyModuleView />
+                  </SectionPane>
+                ) : activeCustomModule && activeCustomModule.id === "finance" ? (
                   <SectionPane
                     icon={<Wallet className="h-4 w-4" />}
                     title={activeCustomModule.label}

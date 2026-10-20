@@ -46,6 +46,9 @@ export function moduleJellyImg(id: string): string {
 export function moduleJellyBeam(id: string): string {
   if (id === "health") return "#8FE3B8";
   if (id === "finance") return "#E6CF98";
+  // Soft powder blue, unused by the built-ins / health / finance / the
+  // hashed pool above.
+  if (id === "ontology") return "#A8C6F0";
   return CUSTOM_NODE_BEAMS[hashModuleId(id) % CUSTOM_NODE_BEAMS.length];
 }
 
