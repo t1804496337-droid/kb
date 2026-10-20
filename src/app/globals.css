@@ -2072,3 +2072,10 @@ div.studio-orb.studio-orb-bg,
 .xuan-stage.theme-neu .studio-profile-menu { background: var(--studio-glass); color: var(--studio-text); }
 .xuan-stage.theme-warm .studio-profile-menu button,
 .xuan-stage.theme-neu .studio-profile-menu button { color: var(--studio-text); }
+
+/* Native <select> dropdown options ignore the dark glass theme and render
+   near-white text on a light popup — force readable dark-on-light options. */
+.studio-root select option {
+  color: #17191d;
+  background-color: #ffffff;
+}
