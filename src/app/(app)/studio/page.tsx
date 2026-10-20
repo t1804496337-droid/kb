@@ -58,20 +58,26 @@ type BoardItem = {
 const PILL_NAV: { id: SectionId; label: string; en: string }[] = [
   { id: "workspace", label: "工作台", en: "WORKSPACE" },
   { id: "works", label: "作品库", en: "WORKS" },
-  { id: "drafts", label: "创作池", en: "SKILLS" },
+  { id: "drafts", label: "技能库", en: "SKILLS" },
   { id: "ideas", label: "灵感池", en: "WORKFLOW" },
   { id: "calendar", label: "日历表", en: "CALENDAR" },
   { id: "database", label: "数据库", en: "DATABASE" },
 ];
 
-/** Real installed skills (agent-data/workflows + aigc-course/skills). */
-const SKILLS: {
+/** One installed skill row (synced per-agent via /skills-sync.json). */
+type SkillEntry = {
   id: string;
   name: string;
   zh: string;
   tag: string;
   source: string;
-}[] = [
+};
+
+/** Skills grouped by owning agent; each agent maintains only its own block. */
+type SkillAgentGroup = { id: string; name: string; skills: SkillEntry[] };
+
+/** grokbot's installed skills (agent-data/workflows + aigc-course/skills). */
+const SKILLS: SkillEntry[] = [
   {
     id: "s-re",
     name: "Skill Reverse Engineer",
@@ -186,6 +192,58 @@ const SKILLS: {
   },
 ];
 
+/** Luna's installed skills (~/workspace/custom-skills). */
+const LUNA_SKILLS: SkillEntry[] = [
+  {
+    id: "l-find",
+    name: "Find Skills",
+    zh: "技能发现与安装",
+    tag: "发现",
+    source: "custom-skills/find_skills",
+  },
+  {
+    id: "l-grill",
+    name: "Grill Me",
+    zh: "拷问对齐",
+    tag: "规划",
+    source: "custom-skills/grill_me",
+  },
+  {
+    id: "l-grill-docs",
+    name: "Grill With Docs",
+    zh: "拷问对齐 · 带记录",
+    tag: "规划",
+    source: "custom-skills/grill_with_docs",
+  },
+  {
+    id: "l-xhs-img",
+    name: "XHS Infographic",
+    zh: "小红书信息图",
+    tag: "图文",
+    source: "custom-skills/xhs-infographic",
+  },
+  {
+    id: "l-xhs-note",
+    name: "xhs-note-writer",
+    zh: "小红书笔记文案",
+    tag: "文案",
+    source: "custom-skills/xhs_note_writer",
+  },
+];
+
+/**
+ * Built-in fallback for the skills library — mirrors public/skills-sync.json.
+ * Used until the fetch lands (and whenever the file is missing/unreachable).
+ */
+const SKILL_AGENTS_FALLBACK: SkillAgentGroup[] = [
+  { id: "grokbot", name: "grokbot", skills: SKILLS },
+  { id: "luna", name: "Luna", skills: LUNA_SKILLS },
+];
+const ALL_SKILLS_FALLBACK: SkillEntry[] = SKILL_AGENTS_FALLBACK.flatMap(
+  (a) => a.skills,
+);
+const SKILL_TOTAL_FALLBACK = ALL_SKILLS_FALLBACK.length;
+
 /** 8-step AIGC 网文拉新 — current roles (not DeepSeek for active). */
 const WORKFLOW_STEPS: {
   id: string;
@@ -275,13 +333,6 @@ const BOARD_ITEMS: BoardItem[] = [
   })),
 ];
 
-const METRICS = [
-  { value: SKILLS.length, label: "已装 Skill", en: "Skills" },
-  { value: WORKFLOW_STEPS.length, label: "流水线步", en: "Steps" },
-  { value: PENDING_TICKETS.length, label: "待办票", en: "Tickets" },
-  { value: WORK_SLOTS.length, label: "成片槽", en: "Slots" },
-];
-
 const THEMES: { id: ThemeId; label: string; en: string; short: string }[] = [
   { id: "silver", label: "银黑", en: "SILVER BLACK", short: "Dark" },
   { id: "warm", label: "暖灰", en: "WARM GRAY", short: "Warm" },
@@ -302,8 +353,8 @@ const WS_HUBS: WsHub[] = [
     })),
   },
   {
-    key: "ll", section: "drafts", n: SKILLS.length, label: "创作池", en: "Skills", sub: "已装 Skill",
-    rows: SKILLS.map((k) => ({ id: k.id, title: `${k.zh} · ${k.name}`, a: k.tag, b: "已装" })),
+    key: "ll", section: "drafts", n: SKILL_TOTAL_FALLBACK, label: "技能库", en: "Skills", sub: "已装 Skill",
+    rows: ALL_SKILLS_FALLBACK.map((k) => ({ id: k.id, title: `${k.zh} · ${k.name}`, a: k.tag, b: "已装" })),
   },
   {
     key: "left", section: "works", n: WORK_SLOTS.length, label: "作品库", en: "Works", sub: "ep01 待发布",
@@ -313,10 +364,10 @@ const WS_HUBS: WsHub[] = [
     ],
   },
   {
-    key: "right", section: "database", n: SKILLS.length + WORKFLOW_STEPS.length, label: "数据库", en: "Database", sub: "Skill + 流程",
+    key: "right", section: "database", n: SKILL_TOTAL_FALLBACK + WORKFLOW_STEPS.length, label: "数据库", en: "Database", sub: "Skill + 流程",
     rows: [
       ...WORKFLOW_STEPS.map((w) => ({ id: `db-${w.id}`, title: `${w.n} ${w.title}`, a: "流水线", b: w.role })),
-      ...SKILLS.map((k) => ({ id: `db-${k.id}`, title: `${k.zh} · ${k.name}`, a: "Skill", b: k.source })),
+      ...ALL_SKILLS_FALLBACK.map((k) => ({ id: `db-${k.id}`, title: `${k.zh} · ${k.name}`, a: "Skill", b: k.source })),
     ],
   },
   {
@@ -348,6 +399,10 @@ export default function StudioPage() {
   const [activeHubKey, setActiveHubKey] = React.useState<string>("ll");
   const [customModules, setCustomModules] = React.useState<CustomModule[]>([]);
   const [customRows, setCustomRows] = React.useState<Record<string, CustomRow[]>>({});
+  // Skills library: grouped by agent, synced from /skills-sync.json
+  // (each agent maintains its own block; fallback = built-in mirror).
+  const [skillAgents, setSkillAgents] =
+    React.useState<SkillAgentGroup[]>(SKILL_AGENTS_FALLBACK);
   const [activeCustom, setActiveCustom] = React.useState<string | null>(null);
   const [newModuleLabel, setNewModuleLabel] = React.useState("");
   const [newModuleEn, setNewModuleEn] = React.useState("");
@@ -416,6 +471,92 @@ export default function StudioPage() {
       /* ignore */
     }
   }, []);
+  const allSkills = React.useMemo(
+    () => skillAgents.flatMap((a) => a.skills),
+    [skillAgents],
+  );
+  const skillTotal = allSkills.length;
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/skills-sync.json", { cache: "no-store" });
+        if (!res.ok) return;
+        const data = (await res.json()) as { agents?: unknown };
+        if (!Array.isArray(data?.agents)) return;
+        const groups: SkillAgentGroup[] = [];
+        for (const raw of data.agents) {
+          const a = raw as { id?: unknown; name?: unknown; skills?: unknown };
+          if (typeof a?.id !== "string" || !Array.isArray(a.skills)) continue;
+          const skills: SkillEntry[] = [];
+          a.skills.forEach((rs, i) => {
+            const s = rs as Partial<SkillEntry>;
+            if (typeof s?.name !== "string" || !s.name) return;
+            skills.push({
+              id: typeof s.id === "string" && s.id ? s.id : `${a.id}-${i}`,
+              name: s.name,
+              zh: typeof s.zh === "string" && s.zh ? s.zh : s.name,
+              tag: typeof s.tag === "string" ? s.tag : "",
+              source: typeof s.source === "string" ? s.source : "",
+            });
+          });
+          groups.push({
+            id: a.id,
+            name: typeof a.name === "string" && a.name ? a.name : a.id,
+            skills,
+          });
+        }
+        if (!cancelled && groups.length) setSkillAgents(groups);
+      } catch {
+        /* keep built-in fallback */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  // Keep the workspace skill/database hub rows in step with the library
+  // data (rows a user added by hand to those hubs are preserved).
+  React.useEffect(() => {
+    const skillIds = new Set(allSkills.map((s) => s.id));
+    setHubs((prev) =>
+      prev.map((h) => {
+        if (h.key === "ll") {
+          const extra = h.rows.filter((r) => !skillIds.has(r.id));
+          const rows = [
+            ...allSkills.map((k) => ({
+              id: k.id,
+              title: `${k.zh} · ${k.name}`,
+              a: k.tag,
+              b: "已装",
+            })),
+            ...extra,
+          ];
+          return { ...h, rows, n: rows.length };
+        }
+        if (h.key === "right") {
+          const extra = h.rows.filter((r) => !r.id.startsWith("db-"));
+          const rows = [
+            ...WORKFLOW_STEPS.map((w) => ({
+              id: `db-${w.id}`,
+              title: `${w.n} ${w.title}`,
+              a: "流水线",
+              b: w.role,
+            })),
+            ...allSkills.map((k) => ({
+              id: `db-${k.id}`,
+              title: `${k.zh} · ${k.name}`,
+              a: "Skill",
+              b: k.source,
+            })),
+            ...extra,
+          ];
+          return { ...h, rows, n: rows.length };
+        }
+        return h;
+      }),
+    );
+  }, [allSkills]);
   React.useEffect(() => {
     try {
       const t = window.localStorage.getItem(TITLE_KEY);
@@ -614,10 +755,17 @@ export default function StudioPage() {
   // stats — Skills/Steps/Slots from their data sources, Tickets from state;
   // node counts — each node's hub rows in state; calendar sub shows live tickets.
   const landingStats = [
-    { key: "skills", value: SKILLS.length, label: "已装 Skill", en: "Skills" },
+    { key: "skills", value: skillTotal, label: "已装 Skill", en: "Skills" },
     { key: "steps", value: WORKFLOW_STEPS.length, label: "流水线步", en: "Steps" },
     { key: "tickets", value: tickets.length, label: "待办票", en: "Tickets" },
     { key: "slots", value: WORK_SLOTS.length, label: "成片槽", en: "Slots" },
+  ];
+  // Works-section metric cards — same sources as the landing stats.
+  const metrics = [
+    { value: skillTotal, label: "已装 Skill", en: "Skills" },
+    { value: WORKFLOW_STEPS.length, label: "流水线步", en: "Steps" },
+    { value: PENDING_TICKETS.length, label: "待办票", en: "Tickets" },
+    { value: WORK_SLOTS.length, label: "成片槽", en: "Slots" },
   ];
   const landingNodes: LandingNode[] = LANDING_NODES.map((node) => {
     const hk = SECTION_TO_HUB[node.section];
@@ -684,16 +832,22 @@ export default function StudioPage() {
     }
   };
 
-  const filteredSkills = React.useMemo(() => {
-    if (!query.trim()) return SKILLS;
+  const filteredSkillAgents = React.useMemo(() => {
     const q = query.trim().toLowerCase();
-    return SKILLS.filter(
-      (s) =>
-        s.name.toLowerCase().includes(q) ||
-        s.zh.toLowerCase().includes(q) ||
-        s.tag.toLowerCase().includes(q),
-    );
-  }, [query]);
+    return skillAgents
+      .map((agent) => ({
+        ...agent,
+        skills: q
+          ? agent.skills.filter(
+              (s) =>
+                s.name.toLowerCase().includes(q) ||
+                s.zh.toLowerCase().includes(q) ||
+                s.tag.toLowerCase().includes(q),
+            )
+          : agent.skills,
+      }))
+      .filter((agent) => !q || agent.skills.length > 0);
+  }, [skillAgents, query]);
 
   return (
     <div
@@ -1163,7 +1317,13 @@ export default function StudioPage() {
                       items={BOARD_ITEMS}
                       selectedId={selectedBoardId}
                       modules={[
-                        ...NEURAL_MODULES,
+                        ...NEURAL_MODULES.map((m) =>
+                          m.id === "drafts"
+                            ? { ...m, n: skillTotal }
+                            : m.id === "database"
+                              ? { ...m, n: skillTotal + WORKFLOW_STEPS.length }
+                              : m,
+                        ),
                         ...customModules.map((m) => ({
                           id: m.id as SectionId,
                           n: (customRows[m.id] ?? []).length,
@@ -1205,7 +1365,7 @@ export default function StudioPage() {
                     </header>
 
                     <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                      {METRICS.map((m, i) => (
+                      {metrics.map((m, i) => (
                         <button
                           key={m.label}
                           type="button"
@@ -1284,9 +1444,9 @@ export default function StudioPage() {
                 {section === "drafts" && !activeCustomModule && (
                   <SectionPane
                     icon={<Wrench className="h-4 w-4" />}
-                    title="创作池 · Skill 库"
+                    title="技能库"
                     en="Skills"
-                    desc="已装 Skill · 来自 workflows + aigc-course"
+                    desc="已装 Skill · 按 Agent 分区 · 各 Agent 在 skills-sync.json 维护自己区块"
                   >
                     <div className="studio-glass mb-3 flex min-w-[160px] items-center gap-2 rounded-full px-3 py-1.5">
                       <Search className="h-3.5 w-3.5 text-[color:var(--studio-muted)]" />
@@ -1297,34 +1457,53 @@ export default function StudioPage() {
                         className="w-full bg-transparent text-[12px] outline-none placeholder:text-[color:var(--studio-muted)]"
                       />
                     </div>
-                    <ul className="space-y-2">
-                      {filteredSkills.map((s) => (
-                        <li key={s.id}>
-                          <button
-                            type="button"
-                            data-skill={s.id}
-                            className={cn(
-                              "studio-glass flex w-full items-center justify-between gap-3 px-4 py-3 text-left hover:opacity-95",
-                              selectedBoardId === s.id && "studio-row-on",
-                            )}
-                            onClick={() => {
-                              setSelectedBoardId(s.id);
-                              showToast(`Skill · ${s.zh}`);
-                            }}
-                          >
-                            <div className="min-w-0">
-                              <p className="text-sm font-medium">{s.zh}</p>
-                              <p className="truncate text-[10px] text-[color:var(--studio-muted)]">
-                                {s.name} · {s.source}
-                              </p>
-                            </div>
-                            <span className="shrink-0 rounded-full px-2 py-0.5 text-[10px] studio-pill-active">
-                              {s.tag}
+                    <div className="space-y-5" data-testid="skills-library">
+                      {filteredSkillAgents.map((agent) => (
+                        <div key={agent.id} data-agent-group={agent.id}>
+                          <div className="mb-2 flex items-baseline gap-2 px-1">
+                            <p className="text-[13px] font-semibold">
+                              {agent.name}
+                            </p>
+                            <span className="text-[10px] uppercase tracking-wider text-[color:var(--studio-muted)]">
+                              {agent.id} · {agent.skills.length} 个 Skill
                             </span>
-                          </button>
-                        </li>
+                          </div>
+                          <ul className="space-y-2">
+                            {agent.skills.map((s) => (
+                              <li key={s.id}>
+                                <button
+                                  type="button"
+                                  data-skill={s.id}
+                                  className={cn(
+                                    "studio-glass flex w-full items-center justify-between gap-3 px-4 py-3 text-left hover:opacity-95",
+                                    selectedBoardId === s.id && "studio-row-on",
+                                  )}
+                                  onClick={() => {
+                                    setSelectedBoardId(s.id);
+                                    showToast(`Skill · ${s.zh}`);
+                                  }}
+                                >
+                                  <div className="min-w-0">
+                                    <p className="text-sm font-medium">{s.zh}</p>
+                                    <p className="truncate text-[10px] text-[color:var(--studio-muted)]">
+                                      {s.name} · {s.source}
+                                    </p>
+                                  </div>
+                                  <span className="shrink-0 rounded-full px-2 py-0.5 text-[10px] studio-pill-active">
+                                    {s.tag}
+                                  </span>
+                                </button>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
                       ))}
-                    </ul>
+                      {filteredSkillAgents.length === 0 && (
+                        <p className="px-1 text-[12px] text-[color:var(--studio-muted)]">
+                          没有匹配的 Skill
+                        </p>
+                      )}
+                    </div>
                   </SectionPane>
                 )}
 
@@ -1458,7 +1637,7 @@ export default function StudioPage() {
                           </tr>
                         </thead>
                         <tbody>
-                          {SKILLS.map((s) => (
+                          {allSkills.map((s) => (
                             <tr
                               key={s.id}
                               className="cursor-pointer border-b border-[color:var(--studio-border)] last:border-0 hover:bg-white/5"
@@ -1612,7 +1791,7 @@ export default function StudioPage() {
                         {selected.kind === "workflow" &&
                           "8 步 AIGC 网文拉新 · Rio 派发 / 验收"}
                         {selected.kind === "skill" &&
-                          "已装 Skill · 可从创作池打开"}
+                          "已装 Skill · 可从技能库打开"}
                         {selected.kind === "pending" &&
                           "待办票 · 阻塞发布或改派"}
                         {selected.kind === "slot" && "成片槽 · 无演示封面"}
@@ -1622,7 +1801,7 @@ export default function StudioPage() {
                     <div className="grid grid-cols-2 gap-2">
                       {(
                         [
-                          ["Skill", "Skills", SKILLS.length, Wrench],
+                          ["Skill", "Skills", skillTotal, Wrench],
                           ["步骤", "Steps", WORKFLOW_STEPS.length, Workflow],
                           ["待办", "Tickets", PENDING_TICKETS.length, Bookmark],
                           ["成片", "Slots", WORK_SLOTS.length, Layers],
@@ -1663,7 +1842,7 @@ export default function StudioPage() {
                         if (selected.kind === "skill") {
                           setSection("drafts");
                           setSelectedBoardId(selected.id);
-                          showToast(`打开创作池 · ${selected.title}`);
+                          showToast(`打开技能库 · ${selected.title}`);
                           return;
                         }
                         if (selected.kind === "pending") {
@@ -1970,12 +2149,12 @@ export default function StudioPage() {
                   {PILL_NAV.map((nav) => {
                     const hub = hubs.find((h) => SECTION_TO_HUB[nav.id] === h.key);
                     const count =
-                      hub ? hub.rows.length
-                      : nav.id === "drafts" ? SKILLS.length
+                      nav.id === "drafts" ? skillTotal
+                      : nav.id === "database" ? skillTotal + WORKFLOW_STEPS.length
+                      : hub ? hub.rows.length
                       : nav.id === "ideas" ? WORKFLOW_STEPS.length
                       : nav.id === "works" ? WORK_SLOTS.length
                       : nav.id === "calendar" ? tickets.length
-                      : nav.id === "database" ? SKILLS.length + WORKFLOW_STEPS.length
                       : hubs.length;
                     return (
                       <button
@@ -2285,8 +2464,8 @@ export default function StudioPage() {
 const LANDING_NODES: LandingNode[] = [
   { key: "top", section: "ideas", n: WORKFLOW_STEPS.length, label: "灵感池", en: "Workflow", sub: `${WORKFLOW_STEPS.length} 步拉新流水线` },
   { key: "left", section: "works", n: WORK_SLOTS.length, label: "作品库", en: "Works", sub: "ep01 待发布" },
-  { key: "ll", section: "drafts", n: SKILLS.length, label: "创作池", en: "Skills", sub: "已装 Skill" },
-  { key: "right", section: "database", n: SKILLS.length + WORKFLOW_STEPS.length, label: "数据库", en: "Database", sub: "Skill + 流程" },
+  { key: "ll", section: "drafts", n: SKILL_TOTAL_FALLBACK, label: "技能库", en: "Skills", sub: "已装 Skill" },
+  { key: "right", section: "database", n: SKILL_TOTAL_FALLBACK + WORKFLOW_STEPS.length, label: "数据库", en: "Database", sub: "Skill + 流程" },
   { key: "lr", section: "calendar", n: CAL_MARKS.size, label: "日历表", en: "Calendar", sub: `${PENDING_TICKETS.length} 条待办` },
 ];
 
@@ -2297,10 +2476,10 @@ const NEURAL_MODULES: {
   en: string;
 }[] = [
   { id: "workspace", n: WORKFLOW_STEPS.length, label: "工作台", en: "WORKSPACE" },
-  { id: "database", n: SKILLS.length + WORKFLOW_STEPS.length, label: "数据库", en: "DATABASE" },
+  { id: "database", n: SKILL_TOTAL_FALLBACK + WORKFLOW_STEPS.length, label: "数据库", en: "DATABASE" },
   { id: "works", n: WORK_SLOTS.length, label: "作品库", en: "WORKS" },
   { id: "calendar", n: CAL_MARKS.size, label: "日历表", en: "CALENDAR" },
-  { id: "drafts", n: SKILLS.length, label: "创作池", en: "SKILLS" },
+  { id: "drafts", n: SKILL_TOTAL_FALLBACK, label: "技能库", en: "SKILLS" },
   { id: "ideas", n: WORKFLOW_STEPS.length, label: "灵感池", en: "WORKFLOW" },
 ];
 
