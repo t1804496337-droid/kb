@@ -1,57 +1,48 @@
-# 个人知识库网站 · S2 骨架
+# kb
 
-本地-only Next.js App Router 骨架（按 `/workspace/personal-site/方案.md` §2 / §3 / §5 / §9）。
+Tang’s personal studio site (Next.js App Router).
 
-**未部署** · **未创建 GitHub/Vercel** · 本目录即应用根。
+- Clone: https://github.com/tang995719-blip/kb
+- Live studio: https://kb-zeta-one.vercel.app/studio
+- Vercel project name: `kb`
 
-## 启动
+## Run locally
 
 ```bash
-cd /workspace/personal-site/web
+git clone https://github.com/tang995719-blip/kb
+cd kb
 npm install
+```
+
+Login reads credentials from the environment only:
+
+- `SITE_AUTH_USER`
+- `SITE_AUTH_PASS`
+
+Optional aliases already supported by `src/app/api/auth/login/route.ts`: `NEXT_PUBLIC_STUDIO_USER` and `NEXT_PUBLIC_STUDIO_PASS`. Prefer `SITE_AUTH_*`, because `NEXT_PUBLIC_*` values can be exposed to the browser.
+
+If either required value is missing, `/api/auth/login` rejects the request (fail closed). This repo has no default password. The password lives only in the Vercel env for project `kb` and in Tang’s memory. Do not write it into source, comments, `.env.example`, or docs.
+
+Copy `.env.example` for the variable names, then export the two values in your shell or in Vercel. `SITE_AUTH_OFF=1` skips only the middleware redirect for local preview; the studio login API still requires the env credentials.
+
+```bash
 npm run dev
 ```
 
-浏览器打开 http://localhost:3000 → 会跳到 `/login`。
+Open http://localhost:3000. A visit without a session redirects to `/login`. `/studio` is the neural studio: login gate, then neural landing, then workspace.
 
-### 本地演示登录
+## Routes
 
-- 输入**任意非空密码**即可登录（bcrypt / `SITE_PASSWORD_HASH` 尚未接）。
-- 登录后写入 HttpOnly Cookie：`site_session`（任意非空值即视为已登录）。
-- 手动设 Cookie（可选）：开发者工具 → Application → Cookies → 新增 `site_session=local-demo`，Path=`/`。
-- 清 Cookie 后访问任意页会再跳 `/login`。
-
-## 路由
-
-| 路径 | 说明 |
+| Path | What |
 |------|------|
-| `/login` | 密码表单 UI |
-| `/` | Dashboard：Notes Indexed / Last Sync / Open Tickets / Recent Commits |
-| `/kb` | 知识库占位 |
-| `/workflows` | 工作流占位 |
-| `/tickets` | 工单占位 |
-| `/tools` | 工具入口占位 |
+| `/login` | Site login |
+| `/studio` | Studio: login gate, neural landing, workspace |
+| `/` | Dashboard shell |
+| `/kb` | Knowledge base |
+| `/workflows` | Workflows |
+| `/tickets` | Tickets |
+| `/tools` | Tools |
 
-布局：左侧 **56px 图标轨道** + **260px 分区面板**（桌面）；`⌘/Ctrl+K` 打开空命令面板（cmdk）。
+## For other agents
 
-## Stub vs 真实（S2）
-
-| 已落地 | 仍为 stub / 注释 |
-|--------|------------------|
-| 深色主题 §9 hex | FlexSearch 全文检索 |
-| 图标轨道 + 面板侧栏 | GitHub 读写 / 同步 |
-| 登录页 + middleware 拦未登录 | 真 bcrypt 校验与失败锁定 |
-| shadcn 风格 Button/Input/Card | 完整 shadcn 组件库按需再加 |
-| lucide-react 图标 | CodeMirror 编辑器 |
-| cmdk 命令面板壳 | 笔记渲染 / 双链 |
-| 指标卡术语化标签 | 指标真实数据 |
-
-## 配色（§9）
-
-- 背景 `#0B0D12` · 卡片 `#12151C` · 描边 `rgba(255,255,255,0.08)`
-- 主文字 `#E6E8EE` · 次要 `#8A93A6` · 强调 `#7C9CFF`
-- 字体：Inter + Noto Sans SC · 代码 JetBrains Mono · 圆角 12px
-
-## 相关文档
-
-上级方案：`../方案.md`
+Clone https://github.com/tang995719-blip/kb, then read `docs/studio-handoff-prompt.md` before editing the studio. Chinese handoff: `docs/studio-给其他AI交接.md`. Also read `AGENTS.md`. Keep the login gate, neural landing, and workspace behavior. Never commit the studio password.

@@ -1,9 +1,11 @@
 "use client";
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
 import { Command } from "cmdk";
 import { Search } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { NAV_ITEMS } from "@/lib/nav";
 
 const OPEN_EVENT = "kb:open-cmdk";
 
@@ -13,6 +15,7 @@ export function openCommandPalette() {
 
 export function CommandPalette() {
   const [open, setOpen] = React.useState(false);
+  const router = useRouter();
 
   React.useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -35,46 +38,46 @@ export function CommandPalette() {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 pt-[15vh] px-4"
+      className="fixed inset-0 z-50 flex items-start justify-center bg-black/80 pt-[14vh] px-4"
       role="dialog"
       aria-modal="true"
-      aria-label="Command palette"
+      aria-label="命令面板"
       onClick={() => setOpen(false)}
     >
       <Command
         className={cn(
-          "w-full max-w-lg overflow-hidden rounded-[12px] border border-border bg-card shadow-none"
+          "glass-strong panel-glow w-full max-w-lg overflow-hidden rounded-[16px]"
         )}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center gap-2 border-b border-border px-3">
-          <Search className="h-4 w-4 text-muted" aria-hidden />
+        <div className="flex items-center gap-2 border-b border-white/[0.08] px-3">
+          <Search className="h-4 w-4 text-accent" aria-hidden />
           <Command.Input
-            placeholder="Search notes, jump, or run a command…"
+            placeholder="搜索笔记、跳转页面…"
             className="h-12 w-full bg-transparent text-base text-foreground outline-none placeholder:text-muted"
             autoFocus
           />
         </div>
         <Command.List className="max-h-72 overflow-y-auto p-2 text-sm">
           <Command.Empty className="px-3 py-6 text-center text-muted">
-            Search index not built yet (FlexSearch stub).
+            搜索索引尚未构建（FlexSearch stub）
           </Command.Empty>
           <Command.Group
-            heading="Navigate"
+            heading="跳转"
             className="[&_[cmdk-group-heading]]:px-3 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:text-muted"
           >
-            <Command.Item
-              className="cursor-pointer rounded-[8px] px-3 py-2 text-foreground aria-selected:bg-white/5"
-              onSelect={() => setOpen(false)}
-            >
-              Dashboard
-            </Command.Item>
-            <Command.Item
-              className="cursor-pointer rounded-[8px] px-3 py-2 text-foreground aria-selected:bg-white/5"
-              onSelect={() => setOpen(false)}
-            >
-              Knowledge Base
-            </Command.Item>
+            {NAV_ITEMS.map((item) => (
+              <Command.Item
+                key={item.href}
+                className="cursor-pointer rounded-[10px] px-3 py-2.5 text-foreground aria-selected:bg-accent/10 aria-selected:text-accent"
+                onSelect={() => {
+                  setOpen(false);
+                  router.push(item.href);
+                }}
+              >
+                {item.label}
+              </Command.Item>
+            ))}
           </Command.Group>
         </Command.List>
       </Command>
@@ -86,12 +89,13 @@ export function CommandKHint() {
   return (
     <button
       type="button"
-      className="hidden items-center gap-2 rounded-[12px] border border-border bg-card px-3 py-1.5 text-sm text-muted transition-colors duration-150 hover:text-foreground md:inline-flex"
+      className="glass hidden items-center gap-2 rounded-[12px] px-3 py-1.5 text-sm text-muted transition-all duration-200 hover:border-accent/30 hover:text-foreground md:inline-flex"
       onClick={() => openCommandPalette()}
-      aria-label="Open command palette"
+      aria-label="打开命令面板"
     >
-      <span>Search</span>
-      <kbd className="rounded border border-border bg-background px-1.5 font-mono text-[11px]">
+      <Search className="h-3.5 w-3.5 text-accent/80" />
+      <span>搜索</span>
+      <kbd className="rounded border border-white/10 bg-black/30 px-1.5 font-mono text-[11px] text-muted">
         ⌘K
       </kbd>
     </button>
