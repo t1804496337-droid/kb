@@ -2,11 +2,12 @@
 
 You are continuing Tang’s personal site **studio** page. Goal: 1:1 Douyin Xuan子 plate look-and-feel for `/studio`, live at **https://kb-zeta-one.vercel.app/studio** (do **not** change this alias / domain without Tang’s OK).
 
-Chinese handoff for the same instructions: `docs/studio-给其他AI交接.md`. Clone https://github.com/tang995719-blip/kb.
+Chinese handoff for the same instructions: `docs/studio-给其他AI交接.md`. Clone https://github.com/t1804496337-droid/kb.
 
 ## Repo & live site
 
-- Clone: https://github.com/tang995719-blip/kb
+- Clone: https://github.com/t1804496337-droid/kb
+- This repository is public.
 - Live studio: https://kb-zeta-one.vercel.app/studio
 - Vercel project name: `kb`
 - App root is this repository (Next.js App Router + Tailwind). After clone: `npm install`, then `npm run dev`.
@@ -92,7 +93,7 @@ Cover: login (missing env, bad credentials, good credentials), landing, orb→la
 ## Local preview
 
 ```bash
-git clone https://github.com/tang995719-blip/kb
+git clone https://github.com/t1804496337-droid/kb
 cd kb
 npm install
 # Export SITE_AUTH_USER and SITE_AUTH_PASS in the shell. Do not commit them.
