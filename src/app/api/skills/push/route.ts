@@ -24,6 +24,8 @@ const BRANCH = "main";
 const MAX_SKILLS = 200;
 const MAX_BODY_BYTES = 256 * 1024;
 const MAX_FIELD_CHARS = 500;
+const MAX_DESC_CHARS = 500;
+const MAX_DETAIL_CHARS = 20000;
 
 type SkillInput = {
   id?: string;
@@ -31,6 +33,8 @@ type SkillInput = {
   zh: string;
   tag: string;
   source: string;
+  desc?: string;
+  detail?: string;
 };
 
 type Config = {
@@ -103,7 +107,7 @@ function validateSkills(body: unknown): SkillInput[] | null {
   for (const raw of skills) {
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
     const s = raw as Record<string, unknown>;
-    const { name, zh, tag, source, id } = s;
+    const { name, zh, tag, source, id, desc, detail } = s;
     if (typeof name !== "string" || name.trim().length === 0) return null;
     if (typeof zh !== "string" || typeof tag !== "string") return null;
     if (typeof source !== "string") return null;
@@ -119,6 +123,18 @@ function validateSkills(body: unknown): SkillInput[] | null {
     if (id !== undefined) {
       if (typeof id !== "string" || id.length > MAX_FIELD_CHARS) return null;
       if (id) entry.id = id;
+    }
+    if (desc !== undefined) {
+      if (typeof desc !== "string" || desc.length > MAX_DESC_CHARS) {
+        return null;
+      }
+      if (desc) entry.desc = desc;
+    }
+    if (detail !== undefined) {
+      if (typeof detail !== "string" || detail.length > MAX_DETAIL_CHARS) {
+        return null;
+      }
+      if (detail) entry.detail = detail;
     }
     out.push(entry);
   }

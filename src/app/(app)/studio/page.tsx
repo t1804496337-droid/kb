@@ -96,6 +96,10 @@ type SkillEntry = {
   zh: string;
   tag: string;
   source: string;
+  /** Short intro, pushed by the owning agent (optional). */
+  desc?: string;
+  /** Full detail text, pushed by the owning agent (optional). */
+  detail?: string;
 };
 
 /** Skills grouped by owning agent; each agent maintains only its own block. */
@@ -174,6 +178,8 @@ const LUNA_SKILLS: SkillEntry[] = [
     zh: "技能发现与安装",
     tag: "发现",
     source: "custom-skills/find_skills",
+    desc: "当内置能力覆盖不了需求时，从开放技能生态里找现成技能：先评估是否适配本环境，再按规范安装并验证，帮 Luna 持续扩展能力边界。",
+    detail: "# Find Skills\n\nHelp the user discover and install new agent skills when the built-in capabilities don't cover what they need.\n\n## When to use\n\nUse this skill when the user:\n- Asks \"how do I do X\" where X might be a common task with an existing skill\n- Says \"find a skill for X\" or \"is there a skill for X\"\n- Asks \"can you do X\" where X is a specialized capability\n- Expresses interest in extending your capabilities\n\n## How to find skills\n\n1. Understand what they need: the domain and the specific task.\n2. Search the open agent-skills ecosystem:\n   - Browse https://skills.sh/ or run `npx skills find <query>` in the terminal\n   - Search GitHub for `SKILL.md` files on the topic\n   - Check curated lists (e.g. awesome-claude-skills style repos)\n3. Evaluate candidates before installing: read the SKILL.md, check what tools it assumes, and judge whether it fits this environment (terminal shell, live browser, files, subagents). Prefer plain instruction files over ones requiring unavailable CLIs or services. Installation counts are a weak signal — fit matters more.\n\n## How to install a skill here\n\nCustom skills live in `~/workspace/custom-skills/<skill_name>/` with two files:\n\n- `SKILL.md`: the instructions alone, with no YAML frontmatter. Strip the frontmatter from the downloaded file and adapt tool references to this environment (e.g. replace harness-specific paths and commands with the equivalents here).\n- `skill.yaml`: metadata. Copy the template from `/opt/muse/skills/custom-connector-setup/templates/skill/skill.yaml` and fill in:\n  - `name`: snake_case, matching the folder name (system skill names are reserved)\n  - `title`: plain task name\n  - `description`: one sentence naming the outcome and when to use it\n  - `category`: an existing category such as \"Work and knowledge\"\n  - `include_in_prompt`: true to list it in every conversation, false to leave it to skill search\n\nAdapt before saving: convert tool-specific references to this environment's equivalents and drop anything that can't work here. Never write secrets, keys, or tokens into a skill. After saving, verify with `muse.skill_search`.\n\nTell the user what you installed, what you adapted or dropped and why, and what the skill now covers.\n",
   },
   {
     id: "l-grill",
@@ -181,6 +187,8 @@ const LUNA_SKILLS: SkillEntry[] = [
     zh: "拷问对齐",
     tag: "规划",
     source: "custom-skills/grill_me",
+    desc: "把模糊的想法当成一棵设计树来拷问：一轮轮只问前提已经落定的问题，每题都附上推荐答案，直到所有分支都达成共识、没有默默假设，才开始动手。",
+    detail: "# Grill Me\n\nInterview the user relentlessly until you reach a shared understanding of their idea, plan, or decision. Use when the user's request is vague or high-level and needs sharpening before you act — or when the user explicitly asks to be grilled.\n\nMap the idea as a **design tree**: every decision branches into the decisions that hang off it.\n\nWork the tree in **rounds**. The **frontier** is every decision whose prerequisites are already settled: the questions you can ask _now_ without guessing at answers you haven't heard yet. Ask the whole frontier in one round: number each question and give your recommended answer. Then wait for the user's answers before the next round.\n\nConduct the interview in the user's language.\n\nFormat a round like so:\n\n```\n❓ **Q1** - **<question title>**: <question body, might be multiple paragraphs, including multiple choices>\n\n➡️ <your recommended answer>\n\n---\n\n❓ **Q2** - **<question title>**: <question body, might be multiple paragraphs, including multiple choices>\n\n➡️ <your recommended answer>\n```\n\nWord each question so \"yes\" accepts your recommended answer.\n\nEach round the user answers reshapes the tree: settled decisions push the frontier outward and unblock questions that depended on them. Recompute the frontier and ask the next round. A question whose answer depends on another question still open in this round belongs to a _later_ round, not this one.\n\nFinding _facts_ is your job, never the user's. When a frontier question needs a fact from the environment (files, tools, web), look it up yourself or dispatch a subagent; don't ask the user for anything you could find yourself. Don't block on it: a running exploration is an unsettled prerequisite, so only the questions downstream of it wait; ask the rest of the frontier now. The _decisions_ are the user's: put each to them and wait.\n\nThe session is done when the frontier is empty: every branch of the design tree visited, nothing left silently assumed. Do not act on the plan until the user confirms you have reached a shared understanding.\n\nThis skill is stateless: it writes no files and leaves no workspace behind. The only result is a clearer version of the idea, in the user's head.\n\n<!-- Adapted from mattpocock/skills (MIT): skills/productivity/grilling -->\n",
   },
   {
     id: "l-grill-docs",
@@ -188,6 +196,8 @@ const LUNA_SKILLS: SkillEntry[] = [
     zh: "拷问对齐 · 带记录",
     tag: "规划",
     source: "custom-skills/grill_with_docs",
+    desc: "Grill Me 的带记录版：拷问计划的同时，把术语定义和关键决策实时写进一份会话文档，还会拿你的说法和已有文档交叉核对、指出矛盾；也能用来审查现成计划的漏洞。",
+    detail: "# Grill With Docs\n\nA relentless interview to sharpen a plan or design (following the Grill Me method), which also creates written records — key terms and decisions — as the session goes. Use when the user wants to stress-test their thinking _and_ keep a record of what was decided, or when asked to review an existing plan.\n\n## Interview\n\nFollow the Grill Me method: map the idea as a design tree, work the frontier in rounds, number each question with a recommended answer, and wait for the user's answers. Conduct the interview in the user's language. Do not act until the user confirms a shared understanding.\n\n## Create docs as you go\n\nAs terms and decisions crystallize during the interview, write them down immediately instead of batching them up:\n\n- **Terms**: when the user uses a vague or overloaded term, propose a precise canonical term and record the agreed definition. If the user later contradicts a recorded term, call it out: \"Earlier we defined X as ..., but you seem to mean Y now. Which is it?\"\n- **Decisions**: when a hard-to-reverse decision is made — one a future reader would wonder about, resulting from a real trade-off between alternatives — record it with the alternatives considered and the reason for the choice.\n- **Cross-check**: when the user states how something works, check it against any existing docs, files, or prior conversation. If you find a contradiction, surface it: \"Your notes say X, but you just said Y. Which is right?\"\n\nKeep a single session note (a markdown file under `~/workspace/` or the relevant goal folder) with two sections: Terms and Decisions. Create it lazily — only when there is something worth writing.\n\n## Review an existing plan\n\nWhen asked to review a plan or proposal rather than build one from scratch: read the plan and any supporting docs first, then grill the weak points — unstated assumptions, logical gaps, contradictions with the docs, and decisions missing their rationale. Report findings as questions where possible, so the user resolves them instead of just receiving criticism.\n\n<!-- Adapted from mattpocock/skills (MIT): skills/engineering/grill-with-docs (= grilling + domain-modeling) -->\n",
   },
   {
     id: "l-xhs-img",
@@ -195,6 +205,8 @@ const LUNA_SKILLS: SkillEntry[] = [
     zh: "小红书信息图",
     tag: "图文",
     source: "custom-skills/xhs-infographic",
+    desc: "小红书浅色信息图的制作规范：AI 写实底图 + 固定版式模板叠字 + 单一亮蓝强调，中文全部在排版层叠加，不让生图模型写中文；含双模板、制作流程和踩坑清单。",
+    detail: "# 小红书浅色信息图 Skill\n\n> 沉淀自 2026-10-18 实战：从深色科技风 → v5 浅色信息图 → v6 图层架构\n> 参考：柒柒的AI体验局《AI收入暴涨12倍》、用户自写拆解文档\n\n---\n\n## 一句话\n\n**AI 写实底图 + 固定版式模板叠字 + 单蓝强调**，中文全部排版层叠加，不让生图模型写中文。\n\n---\n\n## 视觉规范（铁律）\n\n| 项目 | 规范 |\n|------|------|\n| 强调色 | 只用 `#1F5BFF` 亮蓝，全图唯一强调色，不加红/橙/粉 |\n| 背景 | `#FFFFFF` 纯白 |\n| 正文 | `#111111` 近黑 |\n| 次要文字 | `#6B7280` 灰 |\n| 浅蓝底 | `#E8F0FF`（事实条、浅底标注） |\n| 顶栏 | 左：黑色胶囊 `AI LIFESTYLE`；右：`AI × TECH × LIFE` + 三色点（蓝/浅蓝/灰） |\n| 标题 | 超粗黑体，2行；关键词换亮蓝 + 手绘下划线（下划线不划问号） |\n| 旁注 | 右上蓝色短句，如\"越赚钱，越缺钱？\" |\n| 底栏 | 蓝底白字结论条，圆角 |\n| 画幅 | 1080×1440（3:4竖版） |\n\n---\n\n## 双模板\n\n### 模板A：人物场景卡\n- 全幅写实人物/办公场景底图（AI 生成，无字）\n- 右侧竖排 2-3 个白色圆角信息气泡（不挡人物面部）\n- 适用：观点类、数据解读类\n\n### 模板B：三栏卡\n- 横向三等分，每栏：编号圆（蓝底白字01/02/03）+ 配图 + 标题 + ✓要点 + 底部浅蓝事实条\n- 适用：对比类、清单类、多方观点类\n\n---\n\n## 制作流程\n\n1. **定模板**：A（人物卡）或 B（三栏卡）\n2. **出底图**：AI 生成写实摄影底图，prompt 必须含 `no text, no words, no letters, no watermark`；人物图上下各留 1/4 弱内容区\n3. **叠字**：用 `make_cards_v6.py` 的 Canvas 图层架构\n   ```python\n   from make_cards_v6 import Canvas, LayerTopBar, LayerNote, LayerHeadline, LayerPhoto, LayerBubbles, LayerBottomBar\n   c = Canvas()\n   c.add(LayerTopBar())\n   c.add(LayerNote(\"旁注文案\"))\n   c.add(LayerHeadline([\"标题行1\", \"标题行2\"], blue_words=[\"蓝词\"]))\n   c.add(LayerPhoto(\"底图路径\"))\n   c.add(LayerBubbles([\"气泡1\", \"气泡2\", \"气泡3\"], side=\"right\"))\n   c.add(LayerBottomBar(\"底栏结论\"))\n   c.render(\"output.png\")\n   ```\n4. **微调**：只改对应层，如 `c.get('headline').lines = [\"新标题\"]`，不用重跑整张\n5. **检查**：顶栏五张一致、蓝号一致、中文清晰、无 emoji 方框、气泡不挡脸\n\n---\n\n## 踩过的坑\n\n| 坑 | 解决办法 |\n|----|----------|\n| 深色科技风用户不喜欢 | 切浅色白底，学爆款原图 |\n| 每张套同一版式被批\"死板\" | 按内容选模板A/B，不硬套 |\n| 加红橙粉被批\"抢戏\" | 全图只认一个亮蓝 |\n| emoji 显示成方框 □ | 不用 emoji，用纯文字 |\n| 气泡挡住人物面部 | 气泡放右侧竖排，避开脸部区域 |\n| 标题下划线划到问号 | 下划线只到蓝词结束，不含标点 |\n| 配图与内容脱节（如美女配财经） | 底图必须贴合主题：讲烧钱就配机房/办公室 |\n| 信息密度低 | 每张至少 3-5 个数据点，字号保证手机可读 |\n\n---\n\n## 下次替换的内容\n\n- `LayerHeadline.lines`：标题文案\n- `LayerHeadline.blue_words`：蓝关键词\n- `LayerNote.text`：旁注\n- `LayerPhoto.photo_path`：底图路径\n- `LayerBubbles.items`：气泡文案列表\n- `LayerBottomBar.text`：底栏结论\n- 模板A/B 选择\n\n## 不变的内容\n\n- 顶栏样式、配色规范、字体、画幅尺寸\n- 图层架构代码\n- \"中文排版叠加，不让 AI 写中文\"原则\n",
   },
   {
     id: "l-xhs-note",
@@ -202,6 +214,8 @@ const LUNA_SKILLS: SkillEntry[] = [
     zh: "小红书笔记文案",
     tag: "文案",
     source: "custom-skills/xhs_note_writer",
+    desc: "为「野生搞钱薯」账号写小红书笔记草稿：标题用代码点计数硬卡 20 字、普通人实测口吻、禁营销腔与收益承诺，只学爆款结构不抄文案，默认只交草稿不发布。",
+    detail: "# xhs-note-writer\n\nWrite a Xiaohongshu note as a draft. Enforce the 20-character title with the formatter. Adapted from guobinmengxiang-rgb/skills (MIT) for the \"野生搞钱薯\" AI 副业搞钱 account: plain writer discipline, no marketing-speak, no AI voice.\n\nThis is a tight **writer** skill. It does not publish. In this environment, publishing happens only through the approved 小红书 posting flow (user-approved copy → scheduled post task → live browser). Never drive a browser to xiaohongshu.com from this skill.\n\n## Language / 语言\n\nDefault 中文. Keep the note in the account's voice: 普通人实测分享口吻, dry, specific, 真诚. Not marketing-speak, not 专家腔.\n\n## Title\n\n- Count with Unicode code points: `Array.from(title).length`.\n- **Max 20.** Over 20 is a hard fail, not a warning.\n- Offer **at least two** title options. Every option must be ≤20. Show the count next to each.\n- Prefer the 爆款公式: 数字 + 人群 + 结果/悬念. Concrete hook over slogan.\n\n## Body\n\nOne arc, in this order:\n\n1. **Pain** — the mistake or confusion in one or two lines.\n2. **One method or one step** — the thing to do. Not a lecture series.\n3. **Gotcha / payoff** — the check that tells you it worked, or the trap if you skip it.\n\nFor 数字清单体 (the account's preferred format): N 条金句/方法, one line each plus a one-line comment; each image card carries 1–2 items; the cover card holds the 3 most striking ones as the hook.\n\nForbidden voice:\n\n- 家人们\n- 宝子\n- 赋能 / 闭环\n- stacked 感叹号 (`!!`, `！！`, or a trail of `!`)\n- generic AI cadence (\"in this post we'll explore\")\n- 收益承诺 (\"保证赚钱\", \"月入十万\", specific income numbers)\n\nCompliance: no fabricated case data, no exaggerated claims; AI-generated images must be labeled as such in the note.\n\nDo not copy sentences from a 爆款. If given a viral URL, **learn structure only** (hook type, approximate length, tag pattern) and rewrite in the account's voice.\n\n## Tags\n\n- 5–10 tags for this account (broader than the original 3–5: discoverability matters for a new account).\n- Add `#` if missing.\n- Specific over empty trends. Mix: 赛道词 (#AI副业 #搞钱) + 内容词 (#AI工具 #提示词) + 1–2 trending.\n\n## Formatter (required)\n\nFrom this skill directory:\n\n```bash\nnode scripts/format.mjs --title \"你的标题\" --body \"正文段落一。正文段落二。\" --tags \"AI副业,搞钱,AI工具\"\n```\n\n- Import path: `formatNote` from `scripts/format.mjs` (also used by `scripts/demo.mjs`).\n- Title over 20 → the script throws `title too long`.\n- No default course link in this adaptation; pass `--link` only when the note genuinely needs one (e.g. 返佣商品卡片备注, never a raw URL in body).\n\nAlways run the script on the chosen title + body + tags before handing the draft over. If it fails, shorten the title and run again.\n\nSanity check:\n\n```bash\nnode scripts/demo.mjs\n```\n\n## Publish policy\n\n**Default: stop at draft.** Return the formatted text. Publishing goes through the account's own approved flow (user reviews exact copy → scheduled task posts via live browser). This skill never posts.\n\n## Output\n\n1. Two or more titles with code-point counts.\n2. The formatted draft (script output).\n3. Tags used.\n4. A one-line reminder: 默认不发布，停在草稿 / draft only.\n\n## Anti-patterns\n\n- Titles counted as UTF-16 units or \"Chinese characters only\"\n- Shipping one title\n- Pasting viral copy with the nouns swapped\n- Publishing because the draft looks good\n",
   },
 ];
 
@@ -444,6 +458,47 @@ export default function StudioPage() {
   // (each agent maintains its own block; fallback = built-in mirror).
   const [skillAgents, setSkillAgents] =
     React.useState<SkillAgentGroup[]>(SKILL_AGENTS_FALLBACK);
+  // Skills library drawers: per-agent open state (all closed by default),
+  // persisted to localStorage `studio_skills_open_v1`. While a search is
+  // active, groups with matches render open without touching this memory.
+  const [skillsOpen, setSkillsOpen] = React.useState<Record<string, boolean>>(
+    {},
+  );
+  const skillsOpenLoaded = React.useRef(false);
+  // Skill whose detail panel is expanded inline (one at a time).
+  const [openSkillId, setOpenSkillId] = React.useState<string | null>(null);
+  // Save effect is declared before the load effect on purpose: on mount it
+  // runs first, sees the not-loaded flag and skips, so it can never clobber
+  // the stored value with the initial empty state.
+  React.useEffect(() => {
+    if (!skillsOpenLoaded.current) return;
+    try {
+      window.localStorage.setItem(
+        "studio_skills_open_v1",
+        JSON.stringify(skillsOpen),
+      );
+    } catch {
+      /* storage unavailable */
+    }
+  }, [skillsOpen]);
+  React.useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem("studio_skills_open_v1");
+      if (raw) {
+        const parsed = JSON.parse(raw) as Record<string, unknown>;
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+          const next: Record<string, boolean> = {};
+          for (const [k, v] of Object.entries(parsed)) {
+            if (typeof v === "boolean") next[k] = v;
+          }
+          setSkillsOpen(next);
+        }
+      }
+    } catch {
+      /* storage unavailable */
+    }
+    skillsOpenLoaded.current = true;
+  }, []);
   // Workflow steps (灵感池): user-managed, zoned by executor, persisted
   // locally. Starts empty — the built-in 8 steps were cleared by request.
   const [flowSteps, setFlowSteps] = React.useState<FlowStep[]>([]);
@@ -708,6 +763,12 @@ export default function StudioPage() {
               zh: typeof s.zh === "string" && s.zh ? s.zh : s.name,
               tag: typeof s.tag === "string" ? s.tag : "",
               source: typeof s.source === "string" ? s.source : "",
+              desc:
+                typeof s.desc === "string" && s.desc ? s.desc : undefined,
+              detail:
+                typeof s.detail === "string" && s.detail
+                  ? s.detail
+                  : undefined,
             });
           });
           groups.push({
@@ -1208,6 +1269,16 @@ export default function StudioPage() {
       }))
       .filter((agent) => !q || agent.skills.length > 0);
   }, [skillAgents, query]);
+
+  // Drawer open state: while searching, every rendered group (only groups
+  // with matches survive the filter above) shows open — the remembered
+  // state in `skillsOpen` is neither read nor written for this, so clearing
+  // the search restores exactly the remembered drawers.
+  const searchingSkills = query.trim().length > 0;
+  const isAgentOpen = (agentId: string) =>
+    searchingSkills ? true : (skillsOpen[agentId] ?? false);
+  const toggleAgentOpen = (agentId: string) =>
+    setSkillsOpen((prev) => ({ ...prev, [agentId]: !(prev[agentId] ?? false) }));
 
   return (
     <div
@@ -1851,47 +1922,138 @@ export default function StudioPage() {
                         className="w-full bg-transparent text-[12px] outline-none placeholder:text-[color:var(--studio-muted)]"
                       />
                     </div>
-                    <div className="space-y-5" data-testid="skills-library">
-                      {filteredSkillAgents.map((agent) => (
-                        <div key={agent.id} data-agent-group={agent.id}>
-                          <div className="mb-2 flex items-baseline gap-2 px-1">
-                            <p className="text-[13px] font-semibold">
-                              {agent.name}
-                            </p>
-                            <span className="text-[10px] uppercase tracking-wider text-[color:var(--studio-muted)]">
-                              {agent.id} · {agent.skills.length} 个 Skill
-                            </span>
+                    <div className="space-y-3" data-testid="skills-library">
+                      {filteredSkillAgents.map((agent) => {
+                        const open = isAgentOpen(agent.id);
+                        return (
+                          <div
+                            key={agent.id}
+                            data-agent-group={agent.id}
+                            data-open={open ? "1" : "0"}
+                            className="studio-glass overflow-hidden"
+                          >
+                            <button
+                              type="button"
+                              data-testid={`skills-group-toggle-${agent.id}`}
+                              aria-expanded={open}
+                              className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
+                              onClick={() => toggleAgentOpen(agent.id)}
+                            >
+                              <span className="flex min-w-0 items-baseline gap-2">
+                                <span className="text-[13px] font-semibold">
+                                  {agent.name}
+                                </span>
+                                <span className="text-[10px] uppercase tracking-wider text-[color:var(--studio-muted)]">
+                                  {agent.id} · {agent.skills.length} 个 Skill
+                                </span>
+                              </span>
+                              <ChevronDown
+                                className={cn(
+                                  "h-4 w-4 shrink-0 transition-transform duration-200",
+                                  open && "rotate-180",
+                                )}
+                              />
+                            </button>
+                            <div
+                              className={cn(
+                                "studio-collapse",
+                                open && "studio-collapse-open",
+                              )}
+                            >
+                              <div className="studio-collapse-inner">
+                                <ul className="space-y-2 px-3 pb-3">
+                                  {agent.skills.map((s) => {
+                                    const detailOpen = openSkillId === s.id;
+                                    return (
+                                      <li key={s.id}>
+                                        <button
+                                          type="button"
+                                          data-skill={s.id}
+                                          aria-expanded={detailOpen}
+                                          className={cn(
+                                            "studio-glass flex w-full items-center justify-between gap-3 px-4 py-3 text-left hover:opacity-95",
+                                            selectedBoardId === s.id &&
+                                              "studio-row-on",
+                                          )}
+                                          onClick={() => {
+                                            setSelectedBoardId(s.id);
+                                            setOpenSkillId((prev) =>
+                                              prev === s.id ? null : s.id,
+                                            );
+                                          }}
+                                        >
+                                          <div className="min-w-0">
+                                            <p className="text-sm font-medium">
+                                              {s.zh}
+                                            </p>
+                                            <p className="truncate text-[10px] text-[color:var(--studio-muted)]">
+                                              {s.name} · {s.source}
+                                            </p>
+                                          </div>
+                                          <span className="flex shrink-0 items-center gap-2">
+                                            <span className="rounded-full px-2 py-0.5 text-[10px] studio-pill-active">
+                                              {s.tag}
+                                            </span>
+                                            <ChevronDown
+                                              className={cn(
+                                                "h-3.5 w-3.5 text-[color:var(--studio-muted)] transition-transform duration-200",
+                                                detailOpen && "rotate-180",
+                                              )}
+                                            />
+                                          </span>
+                                        </button>
+                                        <div
+                                          className={cn(
+                                            "studio-collapse",
+                                            detailOpen &&
+                                              "studio-collapse-open",
+                                          )}
+                                        >
+                                          <div className="studio-collapse-inner">
+                                            <div
+                                              className="mt-2 rounded-[10px] border border-[color:var(--studio-border)] bg-black/20 px-4 py-3"
+                                              data-testid={`skill-detail-box-${s.id}`}
+                                            >
+                                              {s.desc ? (
+                                                <p
+                                                  className="text-[12px] leading-relaxed"
+                                                  data-testid={`skill-desc-${s.id}`}
+                                                >
+                                                  {s.desc}
+                                                </p>
+                                              ) : null}
+                                              {s.detail ? (
+                                                <pre
+                                                  className="mt-2 max-h-96 overflow-y-auto whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed text-[color:var(--studio-muted)]"
+                                                  data-testid={`skill-detail-${s.id}`}
+                                                >
+                                                  {s.detail}
+                                                </pre>
+                                              ) : (
+                                                <p
+                                                  className="mt-2 text-[11px] leading-relaxed text-[color:var(--studio-muted)]"
+                                                  data-testid={`skill-detail-${s.id}`}
+                                                >
+                                                  该技能暂未同步详细介绍，待{" "}
+                                                  {agent.name}{" "}
+                                                  通过技能接口推送补充。
+                                                </p>
+                                              )}
+                                              <p className="mt-2 text-[10px] text-[color:var(--studio-muted)]">
+                                                来源 · {s.source}
+                                              </p>
+                                            </div>
+                                          </div>
+                                        </div>
+                                      </li>
+                                    );
+                                  })}
+                                </ul>
+                              </div>
+                            </div>
                           </div>
-                          <ul className="space-y-2">
-                            {agent.skills.map((s) => (
-                              <li key={s.id}>
-                                <button
-                                  type="button"
-                                  data-skill={s.id}
-                                  className={cn(
-                                    "studio-glass flex w-full items-center justify-between gap-3 px-4 py-3 text-left hover:opacity-95",
-                                    selectedBoardId === s.id && "studio-row-on",
-                                  )}
-                                  onClick={() => {
-                                    setSelectedBoardId(s.id);
-                                    showToast(`Skill · ${s.zh}`);
-                                  }}
-                                >
-                                  <div className="min-w-0">
-                                    <p className="text-sm font-medium">{s.zh}</p>
-                                    <p className="truncate text-[10px] text-[color:var(--studio-muted)]">
-                                      {s.name} · {s.source}
-                                    </p>
-                                  </div>
-                                  <span className="shrink-0 rounded-full px-2 py-0.5 text-[10px] studio-pill-active">
-                                    {s.tag}
-                                  </span>
-                                </button>
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      ))}
+                        );
+                      })}
                       {filteredSkillAgents.length === 0 && (
                         <p className="px-1 text-[12px] text-[color:var(--studio-muted)]">
                           没有匹配的 Skill
