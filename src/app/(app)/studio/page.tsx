@@ -294,7 +294,7 @@ type ModalKind = null | "edit" | "manage" | "create" | "step" | "newmodule";
 
 const WS_HUBS: WsHub[] = [
   {
-    key: "top", section: "ideas", n: WORKFLOW_STEPS.length, label: "灵感池", en: "Workflow", sub: "8 步拉新流水线",
+    key: "top", section: "ideas", n: WORKFLOW_STEPS.length, label: "灵感池", en: "Workflow", sub: `${WORKFLOW_STEPS.length} 步拉新流水线`,
     rows: WORKFLOW_STEPS.map((w) => ({
       id: w.id, title: `${w.n} ${w.title} · ${w.role}`, a: `步骤 ${w.n}/8`,
       b: w.status === "ready" ? "就绪" : "待改派", c: w.status === "ready" ? undefined : "待派",
@@ -893,7 +893,7 @@ export default function StudioPage() {
                 TANG / NEURAL
               </p>
               <p className="mt-0.5 truncate text-[10px] text-[color:var(--studio-muted)]">
-                Skill · 工作流 · 8 步拉新流水线
+                Skill · 工作流 · {WORKFLOW_STEPS.length} 步拉新流水线
               </p>
             </div>
 
@@ -2248,7 +2248,7 @@ export default function StudioPage() {
 
 /** Landing plate nodes → sections (real counts). */
 const LANDING_NODES: LandingNode[] = [
-  { key: "top", section: "ideas", n: WORKFLOW_STEPS.length, label: "灵感池", en: "Workflow", sub: "8 步拉新流水线" },
+  { key: "top", section: "ideas", n: WORKFLOW_STEPS.length, label: "灵感池", en: "Workflow", sub: `${WORKFLOW_STEPS.length} 步拉新流水线` },
   { key: "left", section: "works", n: WORK_SLOTS.length, label: "作品库", en: "Works", sub: "ep01 待发布" },
   { key: "ll", section: "drafts", n: SKILLS.length, label: "创作池", en: "Skills", sub: "已装 Skill" },
   { key: "right", section: "database", n: SKILLS.length + WORKFLOW_STEPS.length, label: "数据库", en: "Database", sub: "Skill + 流程" },
