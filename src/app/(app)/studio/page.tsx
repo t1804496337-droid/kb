@@ -41,6 +41,23 @@ const SEED_MODULES: CustomModule[] = [
   { id: "health", label: "身体健康", en: "HEALTH" },
   { id: "finance", label: "财务系统管理", en: "FINANCE" },
 ];
+/** Landing hubs are data-driven: every custom module gets a native jelly
+ *  node on the landing (health/finance pinned to the upper corners), the
+ *  rest fill the remaining layout slots; overflow falls back to the card
+ *  row under the orb. Non-seed modules pick a jelly from the pre-generated
+ *  mirror+tint variant pool (public/studio/landing/jelly-var-*.webp) by a
+ *  stable id hash, so a module always shows the same jelly + beam color. */
+const MAX_CUSTOM_LANDING_NODES = 6;
+const CUSTOM_NODE_VARIANTS = 8;
+const CUSTOM_NODE_BEAMS = [
+  "#C8C0FF", "#F2B8C6", "#A6E6EC", "#B8A6FF",
+  "#F0A6B4", "#93E2D2", "#EBC27E", "#B8C6F2",
+];
+function hashModuleId(id: string): number {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
+  return h;
+}
 const SECTION_TO_HUB: Partial<Record<string, HubKey>> = {
   ideas: "top", drafts: "ll", works: "left", database: "right", calendar: "lr",
 };
@@ -1011,7 +1028,7 @@ export default function StudioPage() {
     { value: PENDING_TICKETS.length, label: "待办票", en: "Tickets" },
     { value: WORK_SLOTS.length, label: "成片槽", en: "Slots" },
   ];
-  const landingNodes: LandingNode[] = LANDING_NODES.map((node) => {
+  const builtinLandingNodes: LandingNode[] = LANDING_NODES.map((node) => {
     const hk = SECTION_TO_HUB[node.section];
     const hub = hk ? hubs.find((h) => h.key === hk) : undefined;
     const live = hub ? hub.rows.length : node.n;
@@ -1022,12 +1039,62 @@ export default function StudioPage() {
       return { ...node, n: live, sub: `${flowCount} 步拉新流水线` };
     return { ...node, n: live };
   });
-  const landingCustomCards = customModules.map((m) => ({
-    id: m.id,
-    label: m.label,
-    en: m.en,
-    count: (customRows[m.id] ?? []).length,
-  }));
+  // Custom modules as native landing nodes: health/finance first (pinned to
+  // slots 0/1), the rest in creation order filling the remaining slots.
+  const orderedCustomModules = [
+    ...customModules.filter((m) => m.id === "health"),
+    ...customModules.filter((m) => m.id === "finance"),
+    ...customModules.filter((m) => m.id !== "health" && m.id !== "finance"),
+  ];
+  const nodeModules = orderedCustomModules.slice(0, MAX_CUSTOM_LANDING_NODES);
+  const nodeModuleIds = new Set(nodeModules.map((m) => m.id));
+  const freeSlots = [0, 1, 2, 3, 4, 5].filter(
+    (s) =>
+      !(s === 0 && nodeModuleIds.has("health")) &&
+      !(s === 1 && nodeModuleIds.has("finance")),
+  );
+  let freeSlotIdx = 0;
+  const customLandingNodes: LandingNode[] = nodeModules.map((m) => {
+    const slot =
+      m.id === "health" ? 0 : m.id === "finance" ? 1 : freeSlots[freeSlotIdx++];
+    const h = hashModuleId(m.id);
+    return {
+      key: `custom:${m.id}`,
+      section: "workspace",
+      customId: m.id,
+      slot,
+      n: (customRows[m.id] ?? []).length,
+      label: m.label,
+      en: m.en,
+      sub: "自定义模块",
+      img:
+        m.id === "health"
+          ? "/studio/landing/jelly-health.webp"
+          : m.id === "finance"
+            ? "/studio/landing/jelly-finance.webp"
+            : `/studio/landing/jelly-var-${(h % CUSTOM_NODE_VARIANTS) + 1}.webp`,
+      beam:
+        m.id === "health"
+          ? "#8FE3B8"
+          : m.id === "finance"
+            ? "#E6CF98"
+            : CUSTOM_NODE_BEAMS[h % CUSTOM_NODE_BEAMS.length],
+      feather: true,
+    };
+  });
+  const landingNodes: LandingNode[] = [
+    ...builtinLandingNodes,
+    ...customLandingNodes,
+  ];
+  // The bottom card row only carries modules that did not get a node.
+  const landingCustomCards = customModules
+    .filter((m) => !nodeModuleIds.has(m.id))
+    .map((m) => ({
+      id: m.id,
+      label: m.label,
+      en: m.en,
+      count: (customRows[m.id] ?? []).length,
+    }));
   // Workspace module map: one pseudo-hub per custom module, standing in the
   // same hub column as the five built-ins and fanning its own rows.
   const wsHubs = React.useMemo<WsHub[]>(

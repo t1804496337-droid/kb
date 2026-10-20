@@ -1370,6 +1370,14 @@ div.studio-orb.studio-orb-bg,
   animation: lp-float 7s ease-in-out infinite;
   transition: filter .25s ease;
 }
+/* Custom-module jellies are re-cut from the same footage: their webp frames
+   carry a noisy dark background that shows a square edge on the pure-black
+   corners. A wide radial mask (solid well past the dome, fading only at the
+   very rim) melts that edge away without blurring the dome's outline. */
+.lp-node img.lp-feather {
+  -webkit-mask-image: radial-gradient(ellipse closest-side at 50% 46%, #000 62%, transparent 84%);
+  mask-image: radial-gradient(ellipse closest-side at 50% 46%, #000 62%, transparent 84%);
+}
 .lp-node:hover img,
 .lp-node:focus-visible img { filter: brightness(1.45) drop-shadow(0 0 12px rgba(220,225,255,.45)); }
 .lp-node:focus-visible { outline: 1px solid rgba(236,236,233,.5); outline-offset: 2px; }
