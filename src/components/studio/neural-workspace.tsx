@@ -4,6 +4,7 @@ import * as React from "react";
 import { cn } from "@/lib/utils";
 import { jellyMotion } from "./module-jelly";
 import { JellyMedia } from "./jelly-media";
+import { RollNumber } from "@/components/ui/roll-number";
 
 export type WsHub = {
   /** Built-in hub key ("top"|"left"|"ll"|"right"|"lr") or `custom:<id>`. */
@@ -292,13 +293,13 @@ export function NeuralWorkspace({
           <h2>{moduleN} 大模块，一条拉新流水线。</h2>
           <p className="ws-head-en">{moduleWord} module{moduleN === 1 ? "" : "s"}, one growth pipeline.</p>
           <p className="ws-stats">
-            <b>{moduleN}</b> 个模块 <small>modules</small>
+            <b><RollNumber value={moduleN} /></b> 个模块 <small>modules</small>
             <i>·</i>
-            <b>{totalItems}</b> 条条目 <small>items</small>
+            <b><RollNumber value={totalItems} /></b> 条条目 <small>items</small>
             <i>·</i>
-            <b>{stepN}</b> 步流程 <small>steps</small>
+            <b><RollNumber value={stepN} /></b> 步流程 <small>steps</small>
             <i>·</i>
-            <b>{hubs.find((h) => h.key === "ll")?.n ?? 0}</b> Skill
+            <b><RollNumber value={hubs.find((h) => h.key === "ll")?.n ?? 0} /></b> Skill
           </p>
         </div>
 
@@ -338,7 +339,7 @@ export function NeuralWorkspace({
               >
                 <span className="ws-card-top">
                   <span className="ws-card-ico" aria-hidden />
-                  <b>{h.n}</b>
+                  <b><RollNumber value={h.n} /></b>
                 </span>
                 <span className="ws-card-zh" style={{ color: beamOf(h) }}>
                   {h.label}
@@ -362,7 +363,7 @@ export function NeuralWorkspace({
             {rows.map((r, i) => (
               <li
                 key={r.id}
-                style={{ left: lay.rows[i].x - LIST_X + 12, top: lay.rows[i].y - 11, animationDelay: `${0.2 + Math.min(i, 14) * 0.035}s` }}
+                style={{ left: lay.rows[i].x - LIST_X + 12, top: lay.rows[i].y - 11, animationDelay: `${0.15 + Math.min(i, 14) * 0.055}s` }}
                 onMouseEnter={() => setHot(i)}
                 onMouseLeave={() => setHot((v) => (v === i ? null : v))}
               >
@@ -607,7 +608,7 @@ export function NeuralWorkspaceMobile({
                   onClick={() => tap(h)}
                   aria-label={`选中${h.label}`}
                 >
-                  <b>{h.n}</b>
+                  <b><RollNumber value={h.n} /></b>
                   <span style={{ color: beamOf(h) }}>{h.label}</span>
                 </button>
               )}
@@ -626,7 +627,7 @@ export function NeuralWorkspaceMobile({
         >
           <span className="ws-card-top">
             <span className="ws-card-ico" aria-hidden />
-            <b>{selHub.n}</b>
+            <b><RollNumber value={selHub.n} /></b>
             <span className="ws-card-zh" style={{ color: beamOf(selHub) }}>
               {selHub.label}
               <em>{selHub.en}</em>
@@ -637,7 +638,7 @@ export function NeuralWorkspaceMobile({
 
         <ul className="ws-rows" key={`m-${sel}`}>
           {rows.map((r, i) => (
-            <li key={r.id} style={{ left: M_TEXT_X, top: dots[i].y - 25, animationDelay: `${0.2 + i * 0.04}s` }}>
+            <li key={r.id} style={{ left: M_TEXT_X, top: dots[i].y - 25, animationDelay: `${0.15 + i * 0.055}s` }}>
               <button type="button" onClick={() => onPickRow(r, selHub)} data-row={r.id} data-section={selHub.section}>
                 <span className="ws-row-t wsm-row-t">{r.title}</span>
                 <span className="ws-row-m">
