@@ -1607,6 +1607,10 @@ export default function StudioPage() {
     setDbOpen((prev) => ({ ...prev, [zoneId]: !(prev[zoneId] ?? true) }));
   const flowZoneOpen = isDbZoneOpen("workflow");
 
+  // 分析概览 Board 只属于工作台首页：分区页不再渲染该栏，内容区占满全宽。
+  // （workspace 视图下 ws-legacy 由 plate 层覆盖显示，与改前一致。）
+  const showBoard = section === "workspace" && !activeCustomModule;
+
   return (
     <div
       ref={stageRef}
@@ -2084,7 +2088,12 @@ export default function StudioPage() {
                 />
               </div>
             )}
-            <div className="ws-legacy grid min-h-0 gap-4 lg:grid-cols-[minmax(0,1fr)_260px]">
+            <div
+              className={cn(
+                "ws-legacy grid min-h-0 gap-4",
+                showBoard && "lg:grid-cols-[minmax(0,1fr)_260px]",
+              )}
+            >
               <div className="min-w-0 space-y-4" key={section}>
                 {section === "workspace" && !activeCustomModule && (
                   <SectionPane
@@ -2975,6 +2984,7 @@ export default function StudioPage() {
                 ) : null}
               </div>
 
+              {showBoard && (
               <aside className="studio-glass flex min-h-[320px] flex-col gap-3 p-3 lg:min-h-0">
                 <div className="flex items-start justify-between gap-2">
                   <div>
@@ -3119,6 +3129,7 @@ export default function StudioPage() {
                   </>
                 )}
               </aside>
+              )}
             </div>
           </div>
 
