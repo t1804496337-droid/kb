@@ -58,6 +58,8 @@ export function NeuralWorkspace({
   onReturnLanding,
   onSelectHub,
   defaultHub = "ll",
+  moduleCount,
+  stepCount,
 }: {
   hubs: WsHub[];
   themeLabel: string;
@@ -68,6 +70,10 @@ export function NeuralWorkspace({
   onReturnLanding: () => void;
   onSelectHub?: (key: WsHub["key"]) => void;
   defaultHub?: WsHub["key"];
+  /** Total studio modules (e.g. NEURAL_MODULES.length); header copy derives from it. */
+  moduleCount?: number;
+  /** Pipeline steps (e.g. WORKFLOW_STEPS.length); header copy derives from it. */
+  stepCount?: number;
 }) {
   const wrapRef = React.useRef<HTMLDivElement | null>(null);
   const listRef = React.useRef<HTMLDivElement | null>(null);
@@ -118,6 +124,12 @@ export function NeuralWorkspace({
   const lay = rowLayout(rows.length, cardY);
   const scrollable = lay.content > LIST_H;
   const totalItems = hubs.reduce((s, h) => s + h.rows.length, 0);
+  // Header copy is data-driven: adding a module to the modules list or a
+  // step to the pipeline updates the headline and stats automatically.
+  const modules = moduleCount ?? hubs.length + 1;
+  const steps = stepCount ?? hubs.find((h) => h.key === "top")?.n ?? 8;
+  const moduleWord =
+    ["Zero", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Eleven", "Twelve"][modules] ?? String(modules);
   const rafRef = React.useRef(0);
   const onScroll = () => {
     cancelAnimationFrame(rafRef.current);
@@ -219,14 +231,14 @@ export function NeuralWorkspace({
           <p className="ws-kicker">
             TANG · NEURAL STUDIO <span>网文拉新工作台</span>
           </p>
-          <h2>6 大模块，一条拉新流水线。</h2>
-          <p className="ws-head-en">Six modules, one growth pipeline.</p>
+          <h2>{modules} 大模块，一条拉新流水线。</h2>
+          <p className="ws-head-en">{moduleWord} module{modules === 1 ? "" : "s"}, one growth pipeline.</p>
           <p className="ws-stats">
-            <b>6</b> 个模块 <small>modules</small>
+            <b>{modules}</b> 个模块 <small>modules</small>
             <i>·</i>
             <b>{totalItems}</b> 条条目 <small>items</small>
             <i>·</i>
-            <b>8</b> 步流程 <small>steps</small>
+            <b>{steps}</b> 步流程 <small>steps</small>
             <i>·</i>
             <b>{hubs.find((h) => h.key === "ll")?.n ?? 0}</b> Skill
           </p>
