@@ -4454,7 +4454,6 @@ function NeuralModuleMap({
   const wrapRef = React.useRef<HTMLDivElement | null>(null);
   const hubRefs = React.useRef<Record<string, HTMLButtonElement | null>>({});
   const rowRefs = React.useRef<Record<string, HTMLButtonElement | null>>({});
-  const listSpringRef = useSpringStagger<HTMLUListElement>();
   const [lines, setLines] = React.useState<
     { x1: number; y1: number; x2: number; y2: number; key: string }[]
   >([]);
@@ -4500,16 +4499,10 @@ function NeuralModuleMap({
     if (wrapRef.current) ro.observe(wrapRef.current);
     window.addEventListener("resize", layoutLines);
     const t = window.setTimeout(layoutLines, 80);
-    // Rows play a one-shot spring entrance (batch 2) that shifts them
-    // for ~1s; recompute the plexus lines once they have settled.
-    const t2 = window.setTimeout(layoutLines, 1000);
-    const t3 = window.setTimeout(layoutLines, 1900);
     return () => {
       ro.disconnect();
       window.removeEventListener("resize", layoutLines);
       window.clearTimeout(t);
-      window.clearTimeout(t2);
-      window.clearTimeout(t3);
     };
   }, [layoutLines]);
 
@@ -4567,7 +4560,7 @@ function NeuralModuleMap({
               >
                 <span className="studio-neural-node-orb" aria-hidden />
                 <p className="text-lg font-semibold tabular-nums leading-none">
-                  <RollNumber value={m.n} />
+                  {m.n}
                 </p>
                 <p className="mt-0.5 text-[11px] font-medium">{m.label}</p>
                 <p className="text-[9px] tracking-wider text-[color:var(--studio-muted)]">
@@ -4582,12 +4575,9 @@ function NeuralModuleMap({
           <p className="mb-2 px-1 text-[10px] font-semibold tracking-[0.14em] text-[color:var(--studio-muted)]">
             流水线 · Skill · 待办
           </p>
-          <ul
-            ref={listSpringRef}
-            className="flex flex-1 flex-col gap-1 overflow-y-auto pr-1"
-          >
+          <ul className="flex flex-1 flex-col gap-1 overflow-y-auto pr-1">
             {items.map((item) => (
-              <li key={item.id} data-spring-item>
+              <li key={item.id}>
                 <button
                   type="button"
                   ref={(el) => {

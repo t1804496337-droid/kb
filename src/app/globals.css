@@ -1708,7 +1708,21 @@ div.studio-orb.studio-orb-bg,
 .ws-card-sub { font-size: 11px; color: rgba(236,236,233,.5); white-space: nowrap; }
 .ws-card-on .ws-card-sub { color: #e6cf98; }
 .ws-rows { position: absolute; inset: 0; list-style: none; margin: 0; padding: 0; pointer-events: none; }
-.ws-rows li { position: absolute; pointer-events: auto; animation: lp-fade-up .5s both; }
+/* Workspace plate rows enter on a spring (polish batch 2): rise with
+   a slight overshoot and settle; per-row stagger is set inline in the
+   plate components (0.15s base + 55ms steps). The list remounts per
+   hub switch / replay by design, so the entrance replays with it —
+   that is the plate's established behaviour, kept intact. */
+.ws-rows li { position: absolute; pointer-events: auto; animation: ws-row-spring .68s both; }
+@keyframes ws-row-spring {
+  0% { opacity: 0; transform: translateY(16px); }
+  55% { opacity: 1; transform: translateY(-2.5px); }
+  75% { transform: translateY(1.2px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ws-rows li { animation: none; }
+}
 .ws-rows button { display: flex; flex-direction: column; gap: 3px; text-align: left; background: none; border: 0; padding: 0; color: #ecece9; cursor: pointer; }
 .ws-rows button:hover .ws-row-t { color: #fff; text-shadow: 0 0 12px rgba(230,207,152,.5); }
 .ws-row-t { font-size: 14px; font-weight: 500; white-space: nowrap; max-width: 520px; overflow: hidden; text-overflow: ellipsis; }
