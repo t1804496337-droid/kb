@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
+import { NeuralOrb } from "@/components/studio/neural-orb";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -44,6 +45,7 @@ export default function LoginPage() {
 
   return (
     <div className="studio-login-page" data-testid="site-login">
+      <NeuralOrb className="studio-orb-bg" theme="silver" />
       <div className="studio-login-glow" aria-hidden />
       <form className="studio-login-card" onSubmit={onSubmit}>
         <p className="studio-login-brand">
