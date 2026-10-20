@@ -22,6 +22,7 @@ import {
 import { NeuralOrb } from "@/components/studio/neural-orb";
 import { NeuralLanding, type LandingNode } from "@/components/studio/neural-landing";
 import { NeuralWorkspace, NeuralWorkspaceMobile, type WsHub } from "@/components/studio/neural-workspace";
+import { WorksSyncSection } from "@/components/studio/works-sync";
 import { XUANZI_PROMPTS } from "@/lib/xuanzi-prompts";
 import { cn } from "@/lib/utils";
 
@@ -609,6 +610,36 @@ export default function StudioPage() {
     setActiveCustom(null);
     setSection(item.id as SectionId);
   };
+  // Landing reads live state (not the module-level constants):
+  // stats — Skills/Steps/Slots from their data sources, Tickets from state;
+  // node counts — each node's hub rows in state; calendar sub shows live tickets.
+  const landingStats = [
+    { key: "skills", value: SKILLS.length, label: "已装 Skill", en: "Skills" },
+    { key: "steps", value: WORKFLOW_STEPS.length, label: "流水线步", en: "Steps" },
+    { key: "tickets", value: tickets.length, label: "待办票", en: "Tickets" },
+    { key: "slots", value: WORK_SLOTS.length, label: "成片槽", en: "Slots" },
+  ];
+  const landingNodes: LandingNode[] = LANDING_NODES.map((node) => {
+    const hk = SECTION_TO_HUB[node.section];
+    const hub = hk ? hubs.find((h) => h.key === hk) : undefined;
+    const live = hub ? hub.rows.length : node.n;
+    return node.section === "calendar"
+      ? { ...node, n: live, sub: `${tickets.length} 条待办` }
+      : { ...node, n: live };
+  });
+  const landingCustomCards = customModules.map((m) => ({
+    id: m.id,
+    label: m.label,
+    en: m.en,
+    count: (customRows[m.id] ?? []).length,
+  }));
+  const openCustomFromLanding = (id: string) => {
+    const mod = customModules.find((m) => m.id === id);
+    if (!mod) return;
+    enterFromLanding("workspace");
+    setActiveCustom(id);
+    showToast(`打开 · ${mod.label}`);
+  };
   React.useEffect(() => {
     const hk = SECTION_TO_HUB[section];
     if (hk) setActiveHubKey(hk);
@@ -756,7 +787,7 @@ export default function StudioPage() {
       )}
       {authed && landing !== "off" && (
         <NeuralLanding
-          nodes={LANDING_NODES}
+          nodes={landingNodes}
           themeLabel={currentTheme.label}
           themeEn={currentTheme.en}
           onCycleTheme={() => {
@@ -766,7 +797,9 @@ export default function StudioPage() {
           onEnter={enterFromLanding}
           leaving={landing === "leaving"}
           quick={introQuick}
-          stats={METRICS}
+          stats={landingStats}
+          customCards={landingCustomCards}
+          onOpenCustom={openCustomFromLanding}
         />
       )}
       <div className="xuan-watermark" aria-hidden>
@@ -1160,6 +1193,8 @@ export default function StudioPage() {
 
                 {section === "works" && !activeCustomModule && (
                   <>
+                    <WorksSyncSection />
+
                     <header>
                       <h1 className="studio-slogan text-2xl font-semibold tracking-tight md:text-[1.75rem]">
                         成片槽位 · 待发布。

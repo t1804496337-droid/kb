@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { Pencil, RotateCcw } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export type LandingNode = {
@@ -186,6 +187,8 @@ export function NeuralLanding({
   leaving,
   quick = false,
   stats = [],
+  customCards = [],
+  onOpenCustom,
 }: {
   nodes: LandingNode[];
   themeLabel: string;
@@ -194,9 +197,98 @@ export function NeuralLanding({
   onEnter: (section?: string) => void;
   leaving: boolean;
   quick?: boolean;
-  stats?: { value: number; label: string; en: string }[];
+  stats?: { key?: string; value: number; label: string; en: string }[];
+  /** User-created modules, shown as node-style glass cards under the orb. */
+  customCards?: { id: string; label: string; en: string; count: number }[];
+  onOpenCustom?: (id: string) => void;
 }) {
   const rootRef = React.useRef<HTMLDivElement>(null);
+  // Landing stats overrides: label/en copy + optional manual value, kept per
+  // stat key in localStorage (studio_landing_stats_v1). A manual value wins
+  // over the live value (marked with a dot); clear it to return to automatic.
+  type StatOverride = { label?: string; en?: string; manual?: number };
+  const STATS_LS_KEY = "studio_landing_stats_v1";
+  const [statOverrides, setStatOverrides] = React.useState<
+    Record<string, StatOverride>
+  >({});
+  const [statsEditMode, setStatsEditMode] = React.useState(false);
+  const [editingStatKey, setEditingStatKey] = React.useState<string | null>(null);
+  const [draftLabel, setDraftLabel] = React.useState("");
+  const [draftEn, setDraftEn] = React.useState("");
+  const [draftManual, setDraftManual] = React.useState("");
+  React.useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(STATS_LS_KEY);
+      if (raw) setStatOverrides(JSON.parse(raw) as Record<string, StatOverride>);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+  const persistStatOverrides = (next: Record<string, StatOverride>) => {
+    setStatOverrides(next);
+    try {
+      window.localStorage.setItem(STATS_LS_KEY, JSON.stringify(next));
+    } catch {
+      /* ignore */
+    }
+  };
+  const statKeyOf = (s: { key?: string; en: string }) => s.key ?? s.en;
+  const beginEditStat = (s: {
+    key?: string;
+    value: number;
+    label: string;
+    en: string;
+  }) => {
+    const k = statKeyOf(s);
+    const ov = statOverrides[k];
+    setEditingStatKey(k);
+    setDraftLabel(ov?.label ?? s.label);
+    setDraftEn(ov?.en ?? s.en);
+    setDraftManual(ov?.manual != null ? String(ov.manual) : "");
+  };
+  const saveStatEdit = (s: { key?: string; label: string; en: string }) => {
+    const k = statKeyOf(s);
+    const next = { ...statOverrides };
+    const entry: StatOverride = { ...(next[k] ?? {}) };
+    const label = draftLabel.trim();
+    const en = draftEn.trim();
+    if (label && label !== s.label) entry.label = label;
+    else delete entry.label;
+    if (en && en !== s.en) entry.en = en;
+    else delete entry.en;
+    const manualRaw = draftManual.trim();
+    if (manualRaw === "") delete entry.manual;
+    else {
+      const n = Number(manualRaw);
+      if (Number.isFinite(n)) entry.manual = n;
+    }
+    if (Object.keys(entry).length === 0) delete next[k];
+    else next[k] = entry;
+    persistStatOverrides(next);
+    setEditingStatKey(null);
+  };
+  const resetStat = (key: string) => {
+    const next = { ...statOverrides };
+    delete next[key];
+    persistStatOverrides(next);
+    setEditingStatKey(null);
+  };
+  const resetAllStats = () => {
+    persistStatOverrides({});
+    setEditingStatKey(null);
+    setStatsEditMode(false);
+  };
+  const displayStats = stats.map((s) => {
+    const ov = statOverrides[statKeyOf(s)];
+    return {
+      ...s,
+      statKey: statKeyOf(s),
+      label: ov?.label ?? s.label,
+      en: ov?.en ?? s.en,
+      value: ov?.manual ?? s.value,
+      isManual: ov?.manual != null,
+    };
+  });
   // subtle pointer parallax (desktop pointers only; reduced-motion respected)
   React.useEffect(() => {
     const el = rootRef.current;
@@ -249,7 +341,12 @@ export function NeuralLanding({
   return (
     <div
       ref={rootRef}
-      className={cn("lp-root", leaving && "lp-leaving", quick && "lp-quick")}
+      className={cn(
+        "lp-root",
+        leaving && "lp-leaving",
+        quick && "lp-quick",
+        customCards.length > 0 && "lp-has-custom",
+      )}
       data-testid="studio-landing"
       data-quick={quick ? "1" : "0"}
     >
@@ -347,16 +444,145 @@ export function NeuralLanding({
         <span>NEURAL</span>
       </div>
 
-      {stats.length > 0 && (
-        <div className="lp-stats" data-testid="lp-stats" aria-label="概览">
-          {stats.map((m) => (
-            <span key={m.en}>
-              <small>
-                {m.label} <em>{m.en}</em>
-              </small>
-              <b>{m.value}</b>
-            </span>
+      {customCards.length > 0 && (
+        <div
+          className="lp-custom-cards"
+          data-testid="lp-custom-cards"
+          aria-label="自定义模块"
+        >
+          {customCards.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              className="lp-card lp-custom-card"
+              data-custom-card={p.id}
+              onClick={() => onOpenCustom?.(p.id)}
+            >
+              <span className="lp-card-row">
+                <span className="lp-card-ico" aria-hidden />
+                <span className="lp-card-n">{p.count}</span>
+              </span>
+              <span className="lp-card-zh">
+                {p.label}
+                <em>{p.en}</em>
+              </span>
+              <span className="lp-card-sub">自定义模块</span>
+            </button>
           ))}
+        </div>
+      )}
+
+      {stats.length > 0 && (
+        <div
+          className={cn("lp-stats", statsEditMode && "lp-stats-editing")}
+          data-testid="lp-stats"
+          aria-label="概览"
+        >
+          <button
+            type="button"
+            className="lp-stats-edit-btn"
+            data-testid="lp-stats-edit-toggle"
+            aria-label={statsEditMode ? "完成编辑" : "编辑概览数字"}
+            title={statsEditMode ? "完成" : "编辑标签与数字"}
+            onClick={() => {
+              setStatsEditMode((v) => !v);
+              setEditingStatKey(null);
+            }}
+          >
+            <Pencil className="h-3 w-3" />
+          </button>
+          {displayStats.map((m) => {
+            const original =
+              stats.find((s) => statKeyOf(s) === m.statKey) ?? m;
+            const editing = statsEditMode && editingStatKey === m.statKey;
+            return (
+              <span
+                key={m.statKey}
+                data-stat={m.statKey}
+                onClick={() => {
+                  if (statsEditMode && !editing) beginEditStat(original);
+                }}
+              >
+                {editing ? (
+                  <form
+                    className="lp-stat-editor"
+                    data-testid="lp-stat-editor"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      saveStatEdit(original);
+                    }}
+                    onBlur={(e) => {
+                      if (
+                        !e.currentTarget.contains(
+                          e.relatedTarget as Node | null,
+                        )
+                      )
+                        saveStatEdit(original);
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <input
+                      data-testid="lp-stat-label-input"
+                      value={draftLabel}
+                      onChange={(e) => setDraftLabel(e.target.value)}
+                      placeholder="中文标签"
+                      autoFocus
+                    />
+                    <input
+                      data-testid="lp-stat-en-input"
+                      value={draftEn}
+                      onChange={(e) => setDraftEn(e.target.value)}
+                      placeholder="EN"
+                    />
+                    <input
+                      data-testid="lp-stat-manual-input"
+                      value={draftManual}
+                      onChange={(e) => setDraftManual(e.target.value)}
+                      placeholder="手动值（空 = 自动）"
+                      inputMode="numeric"
+                    />
+                    <span className="lp-stat-editor-actions">
+                      <button type="submit" data-testid="lp-stat-save">
+                        保存
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => resetStat(m.statKey)}
+                      >
+                        <RotateCcw className="mr-0.5 inline h-3 w-3" />
+                        本项默认
+                      </button>
+                    </span>
+                  </form>
+                ) : (
+                  <>
+                    <small>
+                      {m.label} <em>{m.en}</em>
+                    </small>
+                    <b>
+                      {m.value}
+                      {m.isManual && (
+                        <i
+                          className="lp-manual-dot"
+                          title="手动值 · 清空手动值即回到自动"
+                        />
+                      )}
+                    </b>
+                  </>
+                )}
+              </span>
+            );
+          })}
+          {statsEditMode && (
+            <button
+              type="button"
+              className="lp-stats-restore-all"
+              data-testid="lp-stats-restore-all"
+              onClick={resetAllStats}
+            >
+              恢复全部默认
+            </button>
+          )}
         </div>
       )}
 
