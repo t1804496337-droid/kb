@@ -1975,11 +1975,29 @@ div.studio-orb.studio-orb-bg,
   background: radial-gradient(circle, rgba(230,207,152,.12), transparent 70%);
   pointer-events: none;
 }
-/* Login gate hero: neural-orb animation video as the backdrop.
-   .studio-orb-bg defaults to 0.18 opacity for window chrome; on the
-   login gate it is the main visual, so lift it and keep the card above. */
-.studio-login-page .studio-orb-bg { opacity: .6; }
+/* Login gate visual: the neural landing's orb, 1:1 — plate image at
+   full strength + the video loop blended into its core, full-bleed
+   behind the glass card ( Tang: "这种的", like the landing ). */
+.studio-login-bgwrap {
+  position: absolute; inset: 0; overflow: hidden; pointer-events: none;
+}
+.studio-login-orb {
+  position: absolute; left: 50%; top: 50%;
+  width: 118vmin; height: 118vmin;
+  translate: -50% -50%;
+}
 .studio-login-page .studio-login-card { z-index: 1; }
+/* Preview variants for the login backdrop (Tang picks one, others go):
+   a = orb dimmed + blurred ambience; c = video only, no node layers. */
+.studio-login-variant-a, .studio-login-variant-c {
+  position: absolute; inset: 0; overflow: hidden; pointer-events: none;
+}
+.studio-login-variant-a .studio-orb-bg { opacity: .38; }
+.studio-login-variant-a .studio-orb-video { filter: blur(14px) contrast(1.02) saturate(1.05); }
+.studio-login-variant-a .studio-orb-live-nodes { opacity: .45; }
+.studio-login-variant-c .studio-orb-bg { opacity: .95; }
+.studio-login-variant-c .studio-orb-live-nodes,
+.studio-login-variant-c .studio-orb-spider-cage { display: none; }
 .studio-login-card {
   position: relative; width: min(380px, 100%);
   display: flex; flex-direction: column; gap: 12px;
