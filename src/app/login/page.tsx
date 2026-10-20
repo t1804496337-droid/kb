@@ -2,27 +2,9 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { NeuralOrb } from "@/components/studio/neural-orb";
-
-/**
- * Login gate backdrop variants (preview switch, Tang picks the winner):
- * - plate (default): the neural landing's orb 1:1 — plate image + core loop.
- * - a: NeuralOrb dimmed + blurred, quiet ambience behind the card.
- * - c: NeuralOrb video only — satellite node + cage layers hidden.
- * Switch with ?variant=a|c|plate on /login.
- */
-function useVariant() {
-  const [variant, setVariant] = React.useState("plate");
-  React.useEffect(() => {
-    const v = new URLSearchParams(window.location.search).get("variant");
-    if (v === "a" || v === "c" || v === "plate") setVariant(v);
-  }, []);
-  return variant;
-}
 
 export default function LoginPage() {
   const router = useRouter();
-  const variant = useVariant();
   const [username, setUsername] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [error, setError] = React.useState<string | null>(null);
@@ -71,35 +53,29 @@ export default function LoginPage() {
 
   return (
     <div className="studio-login-page" data-testid="site-login">
-      {variant === "plate" ? (
-        <div className="studio-login-bgwrap" aria-hidden>
-          <div className="studio-login-orb">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              className="lp-orb-plate"
-              src="/studio/landing/orb-plate.webp"
-              alt=""
-              draggable={false}
-            />
-            <video
-              ref={orbVideoRef}
-              className="lp-orb-loop"
-              autoPlay
-              muted
-              loop
-              playsInline
-              preload="auto"
-            >
-              <source src="/studio/neural-orb.webm" type="video/webm" />
-              <source src="/studio/neural-orb.mp4" type="video/mp4" />
-            </video>
-          </div>
+      <div className="studio-login-bgwrap" aria-hidden>
+        <div className="studio-login-orb">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            className="lp-orb-plate"
+            src="/studio/landing/orb-plate.webp"
+            alt=""
+            draggable={false}
+          />
+          <video
+            ref={orbVideoRef}
+            className="lp-orb-loop"
+            autoPlay
+            muted
+            loop
+            playsInline
+            preload="auto"
+          >
+            <source src="/studio/neural-orb.webm" type="video/webm" />
+            <source src="/studio/neural-orb.mp4" type="video/mp4" />
+          </video>
         </div>
-      ) : (
-        <div className={`studio-login-variant-${variant}`} aria-hidden>
-          <NeuralOrb className="studio-orb-bg" theme="silver" />
-        </div>
-      )}
+      </div>
       <div className="studio-login-glow" aria-hidden />
       <form className="studio-login-card" onSubmit={onSubmit}>
         <p className="studio-login-brand">
