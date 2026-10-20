@@ -32,6 +32,7 @@ import {
   type FinanceAsset,
 } from "@/components/studio/finance-module";
 import { HealthModuleView } from "@/components/studio/health-module";
+import { moduleJellyBeam, moduleJellyImg } from "@/components/studio/module-jelly";
 import { XUANZI_PROMPTS } from "@/lib/xuanzi-prompts";
 import { cn } from "@/lib/utils";
 
@@ -89,20 +90,10 @@ const FINANCE_SEED_ENTRIES: FinanceEntry[] = [
 /** Landing hubs are data-driven: every custom module gets a native jelly
  *  node on the landing (health/finance pinned to the upper corners), the
  *  rest fill the remaining layout slots; overflow falls back to the card
- *  row under the orb. Non-seed modules pick a jelly from the pre-generated
- *  mirror+tint variant pool (public/studio/landing/jelly-var-*.webp) by a
- *  stable id hash, so a module always shows the same jelly + beam color. */
+ *  row under the orb. Which jelly + beam a module gets comes from the
+ *  shared assignment in components/studio/module-jelly (the workspace map
+ *  uses the same helpers, so a module looks identical in both places). */
 const MAX_CUSTOM_LANDING_NODES = 6;
-const CUSTOM_NODE_VARIANTS = 8;
-const CUSTOM_NODE_BEAMS = [
-  "#C8C0FF", "#F2B8C6", "#A6E6EC", "#B8A6FF",
-  "#F0A6B4", "#93E2D2", "#EBC27E", "#B8C6F2",
-];
-function hashModuleId(id: string): number {
-  let h = 0;
-  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
-  return h;
-}
 const SECTION_TO_HUB: Partial<Record<string, HubKey>> = {
   ideas: "top", drafts: "ll", works: "left", database: "right", calendar: "lr",
 };
@@ -1421,7 +1412,6 @@ export default function StudioPage() {
   const customLandingNodes: LandingNode[] = nodeModules.map((m) => {
     const slot =
       m.id === "health" ? 0 : m.id === "finance" ? 1 : freeSlots[freeSlotIdx++];
-    const h = hashModuleId(m.id);
     return {
       key: `custom:${m.id}`,
       section: "workspace",
@@ -1431,18 +1421,8 @@ export default function StudioPage() {
       label: m.label,
       en: m.en,
       sub: "自定义模块",
-      img:
-        m.id === "health"
-          ? "/studio/landing/jelly-health.webp"
-          : m.id === "finance"
-            ? "/studio/landing/jelly-finance.webp"
-            : `/studio/landing/jelly-var-${(h % CUSTOM_NODE_VARIANTS) + 1}.webp`,
-      beam:
-        m.id === "health"
-          ? "#8FE3B8"
-          : m.id === "finance"
-            ? "#E6CF98"
-            : CUSTOM_NODE_BEAMS[h % CUSTOM_NODE_BEAMS.length],
+      img: moduleJellyImg(m.id),
+      beam: moduleJellyBeam(m.id),
       feather: true,
     };
   });
@@ -1473,6 +1453,8 @@ export default function StudioPage() {
         sub: "自定义模块",
         rows: customRows[m.id] ?? [],
         customId: m.id,
+        img: moduleJellyImg(m.id),
+        beam: moduleJellyBeam(m.id),
       })),
     ],
     // finEntries / healthCheckins feed customModuleCount for their hubs' n.

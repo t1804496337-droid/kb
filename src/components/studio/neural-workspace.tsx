@@ -14,6 +14,12 @@ export type WsHub = {
   rows: { id: string; title: string; a: string; b: string; c?: string }[];
   /** Set for user-created modules: section is the module id, not a section. */
   customId?: string;
+  /** Jelly image for custom-module hubs — shared assignment with the landing
+   *  (components/studio/module-jelly), so the same module shows the same
+   *  jellyfish in the map as on the landing. Built-ins use jelly-<key>.webp. */
+  img?: string;
+  /** Beam colour for custom-module hubs, from the same shared assignment. */
+  beam?: string;
 };
 
 /** Design space matches plate frames ~6.5s / 7.5s (1024x576 → 1600x820 content area). */
@@ -38,7 +44,34 @@ const BEAM: Record<string, string> = {
 };
 /** Beam colour for user-created module hubs (no plate original). */
 const CUSTOM_BEAM = "#C9D4E8";
-const beamOf = (h: WsHub) => BEAM[h.key] ?? CUSTOM_BEAM;
+const beamOf = (h: WsHub) => h.beam ?? BEAM[h.key] ?? CUSTOM_BEAM;
+
+/** Hub jellyfish visual: built-ins use their plate jelly; custom modules use
+ *  the shared-assignment image (the same jelly as their landing node). The
+ *  glass orb with the module's initial is kept only as a fallback for when
+ *  the image itself fails to load. */
+function WsJellyVisual({ hub, index }: { hub: WsHub; index: number }) {
+  const [failed, setFailed] = React.useState(false);
+  const src = hub.customId ? hub.img : `/studio/landing/jelly-${hub.key}.webp`;
+  if (!src || failed) {
+    return (
+      <span className="ws-jelly-orb" aria-hidden>
+        <i>{hub.label.slice(0, 1)}</i>
+      </span>
+    );
+  }
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={src}
+      alt=""
+      draggable={false}
+      className={hub.customId ? "ws-feather" : undefined}
+      style={{ animationDelay: `${index * -1.4}s` }}
+      onError={() => setFailed(true)}
+    />
+  );
+}
 
 /**
  * Hub slot ys for N hubs, centred on the plate's 420 midline: with the
@@ -285,14 +318,7 @@ export function NeuralWorkspace({
                 aria-label={`选中${h.label}`}
                 onClick={() => (on ? onOpenSection(h.section) : setSelNotify(h.key))}
               >
-                {h.customId ? (
-                  <span className="ws-jelly-orb" aria-hidden>
-                    <i>{h.label.slice(0, 1)}</i>
-                  </span>
-                ) : (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={`/studio/landing/jelly-${h.key}.webp`} alt="" draggable={false} style={{ animationDelay: `${i * -1.4}s` }} />
-                )}
+                <WsJellyVisual hub={h} index={i} />
               </button>
               <button
                 type="button"
@@ -555,14 +581,7 @@ export function NeuralWorkspaceMobile({
                 aria-label={on ? `打开${h.label}` : `选中${h.label}`}
                 onClick={() => tap(h)}
               >
-                {h.customId ? (
-                  <span className="ws-jelly-orb" aria-hidden>
-                    <i>{h.label.slice(0, 1)}</i>
-                  </span>
-                ) : (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={`/studio/landing/jelly-${h.key}.webp`} alt="" draggable={false} style={{ animationDelay: `${i * -1.4}s` }} />
-                )}
+                <WsJellyVisual hub={h} index={i} />
               </button>
               {!on && (
                 <button
