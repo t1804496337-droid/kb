@@ -2,14 +2,15 @@
 
 Tang’s personal studio site (Next.js App Router).
 
-- Clone: https://github.com/tang995719-blip/kb
+- Clone: https://github.com/t1804496337-droid/kb
+- This repository is public.
 - Live studio: https://kb-zeta-one.vercel.app/studio
 - Vercel project name: `kb`
 
 ## Run locally
 
 ```bash
-git clone https://github.com/tang995719-blip/kb
+git clone https://github.com/t1804496337-droid/kb
 cd kb
 npm install
 ```
@@ -45,4 +46,4 @@ Open http://localhost:3000. A visit without a session redirects to `/login`. `/s
 
 ## For other agents
 
-Clone https://github.com/tang995719-blip/kb, then read `docs/studio-handoff-prompt.md` before editing the studio. Chinese handoff: `docs/studio-给其他AI交接.md`. Also read `AGENTS.md`. Keep the login gate, neural landing, and workspace behavior. Never commit the studio password.
+Clone https://github.com/t1804496337-droid/kb, then read `docs/studio-handoff-prompt.md` before editing the studio. Chinese handoff: `docs/studio-给其他AI交接.md`. Also read `AGENTS.md`. Keep the login gate, neural landing, and workspace behavior. Never commit the studio password.

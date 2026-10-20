@@ -6,7 +6,8 @@
 
 ## 仓库与线上
 
-- 克隆：https://github.com/tang995719-blip/kb
+- 克隆：https://github.com/t1804496337-droid/kb
+- 本仓库是公开的。
 - 线上 studio：https://kb-zeta-one.vercel.app/studio
 - Vercel 项目名：`kb`
 - 应用根目录就是本仓库（Next.js App Router + Tailwind）。克隆后：`npm install`，再 `npm run dev`。
@@ -92,7 +93,7 @@
 ## 本地预览
 
 ```bash
-git clone https://github.com/tang995719-blip/kb
+git clone https://github.com/t1804496337-droid/kb
 cd kb
 npm install
 # 在 shell 里导出 SITE_AUTH_USER 和 SITE_AUTH_PASS。不要提交。
