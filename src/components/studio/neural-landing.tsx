@@ -5,6 +5,47 @@ import { Pencil, RotateCcw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { jellyMotion } from "./module-jelly";
 import { JellyMedia } from "./jelly-media";
+import { RollNumber } from "@/components/ui/roll-number";
+
+/**
+ * Landing card tilt + glare (polish batch 2, TILT GLARE): on hover-
+ * capable fine pointers the card leans toward the pointer (≤5° per
+ * axis) while a glare spot tracks it through the --gx/--gy custom
+ * properties. Transform is written straight to the element (rAF-
+ * throttled) so React never re-renders for pointer motion; the batch-1
+ * transition on buttons smooths both the tracking and the return to
+ * rest. Touch pointers and reduced-motion never engage. The card's
+ * entrance animation uses fill backwards so a finished entrance never
+ * pins `transform: none` over the tilt.
+ */
+function useLpCardTilt() {
+  const okRef = React.useRef(false);
+  const rafRef = React.useRef(0);
+  React.useEffect(() => {
+    okRef.current =
+      window.matchMedia("(hover: hover) and (pointer: fine)").matches &&
+      !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  }, []);
+  const onPointerMove = (e: React.PointerEvent<HTMLElement>) => {
+    if (!okRef.current || e.pointerType !== "mouse") return;
+    const el = e.currentTarget;
+    const r = el.getBoundingClientRect();
+    if (r.width === 0 || r.height === 0) return;
+    const x = (e.clientX - r.left) / r.width;
+    const y = (e.clientY - r.top) / r.height;
+    cancelAnimationFrame(rafRef.current);
+    rafRef.current = requestAnimationFrame(() => {
+      el.style.transform = `perspective(720px) rotateX(${((0.5 - y) * 10).toFixed(2)}deg) rotateY(${((x - 0.5) * 10).toFixed(2)}deg)`;
+      el.style.setProperty("--gx", `${(x * 100).toFixed(1)}%`);
+      el.style.setProperty("--gy", `${(y * 100).toFixed(1)}%`);
+    });
+  };
+  const onPointerLeave = (e: React.PointerEvent<HTMLElement>) => {
+    cancelAnimationFrame(rafRef.current);
+    e.currentTarget.style.transform = "";
+  };
+  return { onPointerMove, onPointerLeave };
+}
 
 export type LandingNode = {
   key: string;
@@ -261,6 +302,7 @@ export function NeuralLanding({
   onOpenCustom?: (id: string) => void;
 }) {
   const rootRef = React.useRef<HTMLDivElement>(null);
+  const cardTilt = useLpCardTilt();
   // Landing stats overrides: label/en copy + optional manual value, kept per
   // stat key in localStorage (studio_landing_stats_v1). A manual value wins
   // over the live value (marked with a dot); clear it to return to automatic.
@@ -488,10 +530,15 @@ export function NeuralLanding({
                 } as React.CSSProperties
               }
               onClick={openNode}
+              onPointerMove={cardTilt.onPointerMove}
+              onPointerLeave={cardTilt.onPointerLeave}
             >
+              <span className="lp-card-glare" aria-hidden />
               <span className="lp-card-row">
                 <span className="lp-card-ico" aria-hidden />
-                <span className="lp-card-n">{node.n}</span>
+                <span className="lp-card-n">
+                  <RollNumber value={node.n} />
+                </span>
               </span>
               {/* Module distinction lives in the type now: the Chinese
                   title wears the node's beam colour (the <em> English and
@@ -528,10 +575,15 @@ export function NeuralLanding({
               className="lp-card lp-custom-card"
               data-custom-card={p.id}
               onClick={() => onOpenCustom?.(p.id)}
+              onPointerMove={cardTilt.onPointerMove}
+              onPointerLeave={cardTilt.onPointerLeave}
             >
+              <span className="lp-card-glare" aria-hidden />
               <span className="lp-card-row">
                 <span className="lp-card-ico" aria-hidden />
-                <span className="lp-card-n">{p.count}</span>
+                <span className="lp-card-n">
+                  <RollNumber value={p.count} />
+                </span>
               </span>
               <span
                 className="lp-card-zh"
@@ -634,7 +686,7 @@ export function NeuralLanding({
                       {m.label} <em>{m.en}</em>
                     </small>
                     <b>
-                      {m.value}
+                      <RollNumber value={m.value} />
                       {m.isManual && (
                         <i
                           className="lp-manual-dot"

@@ -1417,8 +1417,12 @@ div.studio-orb.studio-orb-bg,
   backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
   color: #ecece9;
   cursor: pointer;
-  animation: lp-fade-up .7s ease-out both;
+  /* fill backwards (not both): the finished entrance must not pin
+     `transform: none` over the batch-2 tilt's inline transform. The end
+     keyframe equals the natural state, so nothing changes visually. */
+  animation: lp-fade-up .7s ease-out backwards;
   transition: border-color .2s ease, background .2s ease;
+  overflow: hidden;
 }
 .lp-card:hover { border-color: rgba(230,207,152,.45); background: rgba(40,42,42,.7); }
 .lp-card-row { display: flex; align-items: center; gap: .5em; }
@@ -2472,4 +2476,189 @@ div.studio-orb.studio-orb-bg,
   color: #ff9d9f;
   border-color: rgba(229, 72, 77, 0.35);
   background: transparent;
+}
+
+/* ═══ Polish batch 2 (2026-10-21) — magnetic dock / ROLL / spring
+   stagger / flow drag-sort / landing card tilt ═══
+   Sources: Taku 磁吸工具坞 + 拖放收纳， 西瓜 TILT GLARE + 物理弹簧交错，
+   新拟物 ROLL 逐位滚动. Motion stays transform/opacity only, and every
+   piece degrades to a static, fully usable UI under reduced-motion or
+   on touch pointers. */
+
+/* 1 · MAGNETIC DOCK — items are scaled/lifted from JS through the
+   standalone properties; this scope only retunes their transition so
+   pointer tracking trails smoothly instead of snapping, and lifts the
+   hovered item above its neighbours. */
+.magnet-dock > :is(button, a) {
+  transition:
+    scale 0.16s ease-out,
+    translate 0.16s ease-out,
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease,
+    opacity 0.15s ease,
+    box-shadow 0.2s ease,
+    filter 0.2s ease;
+}
+.magnet-dock > :is(button, a):hover {
+  z-index: 2;
+}
+
+/* 2 · ROLL — per-digit mechanical rolling. A column is a 1em window
+   over a strip of two 0–9 cycles; JS translates the strip by the
+   column's (fractional) position, so digits pour through the window
+   and the 9→0 wrap is seamless. Width is 1ch — exactly one digit. */
+/* Specificity is deliberately raised: host contexts carry broad
+   element rules (e.g. `.lp-stats span { display:flex; min-width:
+   84px }`) that must never reshape the digit columns. */
+.roll-num.roll-num {
+  display: inline-block;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  vertical-align: baseline;
+  min-width: 0;
+  padding: 0;
+}
+.roll-num .roll-cols.roll-cols {
+  display: inline-flex;
+  flex-direction: row;
+  gap: 0;
+  min-width: 0;
+  padding: 0;
+}
+.roll-num .roll-col.roll-col {
+  display: inline-block;
+  width: 1ch;
+  height: 1em;
+  overflow: hidden;
+  vertical-align: top;
+  flex: none;
+  min-width: 0;
+  padding: 0;
+}
+.roll-num .roll-strip.roll-strip {
+  display: block;
+  will-change: transform;
+  min-width: 0;
+  padding: 0;
+}
+.roll-num .roll-digit.roll-digit {
+  display: block;
+  height: 1em;
+  line-height: 1;
+  min-width: 0;
+  padding: 0;
+  text-align: center;
+}
+
+/* 3 · SPRING STAGGER — one-shot list entrance: rise + settle on a
+   spring curve, delay set inline per item (55ms steps). The class is
+   added by useSpringStagger only when the list first appears and
+   never under reduced-motion, so the resting state needs no hiding. */
+.spring-in-item {
+  /* fill backwards, not both: a finished entrance must not pin its
+     final transform over the flow rows' drag transforms. */
+  animation: spring-in 0.68s cubic-bezier(0.22, 1.32, 0.36, 1) backwards;
+}
+@keyframes spring-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* 4 · FLOW DRAG-SORT — the grip is the drag surface (mouse + touch via
+   pointer events, touch-action none so a grip drag never scrolls the
+   page). The dragged row floats above its siblings with a shadow;
+   siblings glide via an .18s transform transition set in the list
+   scope below — but the dragged row itself must track the pointer
+   with no transition at all. */
+/* Selector outranks the batch-1 global `touch-action: manipulation`
+   on buttons — a grip drag must never turn into a page scroll. */
+.flow-list button.flow-grip {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  align-self: stretch;
+  padding: 0 2px;
+  margin-left: -6px;
+  border-radius: 8px;
+  color: var(--studio-muted);
+  cursor: grab;
+  touch-action: none;
+  opacity: 0.55;
+  transition: opacity 0.15s ease, background-color 0.15s ease;
+}
+.flow-grip:hover,
+.flow-grip:focus-visible {
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.06);
+}
+.flow-grip:active {
+  cursor: grabbing;
+}
+.flow-list li {
+  transition: transform 0.18s ease;
+}
+.flow-list li.flow-row-drag {
+  transition: none;
+  position: relative;
+  z-index: 10;
+}
+.flow-row-drag .studio-glass {
+  box-shadow:
+    0 14px 34px rgba(0, 0, 0, 0.5),
+    0 0 0 1px color-mix(in srgb, var(--studio-accent) 45%, transparent);
+}
+.flow-list-dragging {
+  cursor: grabbing;
+}
+.flow-list-dragging * {
+  user-select: none !important;
+}
+/* Toast action （撤销） — the toast grows a real button when an action
+   rides along; it stays a passive pill otherwise. */
+.xuan-toast-action {
+  margin-left: 10px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.14);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.xuan-toast-action:hover {
+  background: rgba(255, 255, 255, 0.24);
+}
+
+/* 5 · LANDING CARD TILT + GLARE — JS writes rotateX/rotateY (≤5° per
+   axis) and the --gx/--gy glare position straight onto the card; the
+   glare layer itself is pure CSS. Fine pointers only — the handlers
+   never engage for touch or reduced-motion. */
+.lp-card-glare {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  background: radial-gradient(
+    230px circle at var(--gx, 50%) var(--gy, 50%),
+    rgba(255, 255, 255, 0.16),
+    transparent 65%
+  );
+}
+.lp-card:hover .lp-card-glare {
+  opacity: 1;
+}
+@media (prefers-reduced-motion: reduce) {
+  .lp-card-glare {
+    display: none;
+  }
+  .spring-in-item {
+    animation: none;
+  }
 }

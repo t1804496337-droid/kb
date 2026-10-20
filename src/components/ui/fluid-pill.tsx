@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { cn } from "@/lib/utils";
+import { useMagneticDock } from "./magnetic-dock";
 
 /**
  * Fluid pill group (FLUID MORPH, polish batch 1): a capsule indicator that
@@ -17,15 +18,19 @@ export function FluidPillGroup({
   as = "div",
   className,
   indicatorClassName,
+  magnet = false,
   children,
   ...rest
 }: {
   as?: "div" | "nav";
   className?: string;
   indicatorClassName?: string;
+  /** Magnetic dock （磁吸）: items swell near the pointer (desktop hover only). */
+  magnet?: boolean;
   children: React.ReactNode;
 } & React.HTMLAttributes<HTMLElement>) {
   const ref = React.useRef<HTMLElement | null>(null);
+  const magnetRef = useMagneticDock<HTMLElement>(magnet);
   const [ind, setInd] = React.useState<{
     x: number;
     y: number;
@@ -79,8 +84,11 @@ export function FluidPillGroup({
   const Tag = as as "div";
   return (
     <Tag
-      ref={ref as React.Ref<HTMLDivElement>}
-      className={cn("fluid-pill", className)}
+      ref={(el: HTMLElement | null) => {
+        (ref as React.MutableRefObject<HTMLElement | null>).current = el;
+        magnetRef.current = el;
+      }}
+      className={cn("fluid-pill", magnet && "magnet-dock", className)}
       {...rest}
     >
       <span

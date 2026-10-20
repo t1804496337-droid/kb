@@ -21,6 +21,7 @@ import {
   Wallet,
   HeartPulse,
   Network,
+  GripVertical,
 } from "lucide-react";
 import { NeuralOrb } from "@/components/studio/neural-orb";
 import { NeuralLanding, type LandingNode } from "@/components/studio/neural-landing";
@@ -37,6 +38,8 @@ import { OntologyModuleView } from "@/components/studio/ontology-module";
 import { moduleJellyBeam, moduleJellyImg } from "@/components/studio/module-jelly";
 import { FluidPillGroup } from "@/components/ui/fluid-pill";
 import { InlineConfirmButton } from "@/components/ui/inline-confirm";
+import { RollNumber } from "@/components/ui/roll-number";
+import { useSpringStagger } from "@/components/ui/spring-stagger";
 import { XUANZI_PROMPTS } from "@/lib/xuanzi-prompts";
 import { cn } from "@/lib/utils";
 
@@ -560,7 +563,16 @@ export default function StudioPage() {
     dragging: false,
   });
   const sheetHintRef = React.useRef<string | null>(null);
-  const [toast, setToast] = React.useState<string | null>(null);
+  // Toast: a passive message, or a message carrying one action
+  // （撤销 for the flow drag-sort). One timer owns dismissal so rapid
+  // successive toasts never cut each other short.
+  type ToastState = {
+    msg: string;
+    actionLabel?: string;
+    onAction?: () => void;
+  };
+  const [toast, setToast] = React.useState<ToastState | null>(null);
+  const toastTimerRef = React.useRef<number | null>(null);
   const [promptsOpen, setPromptsOpen] = React.useState(false);
   const [copiedId, setCopiedId] = React.useState<string | null>(null);
   const [query, setQuery] = React.useState("");
@@ -666,6 +678,10 @@ export default function StudioPage() {
   const [isFullscreen, setIsFullscreen] = React.useState(false);
   const [fsFallback, setFsFallback] = React.useState(false);
   const stageRef = React.useRef<HTMLDivElement | null>(null);
+  // Spring-stagger entrances (batch 2): skills rows + flow step rows
+  // play once when their list first appears.
+  const skillsSpringRef = useSpringStagger<HTMLDivElement>();
+  const flowSpringRef = useSpringStagger<HTMLDivElement>();
   // Landing shows on every fresh visit (it is the entry page); only the intro
   // animation is shortened when it was already seen in this browser session.
   const [introQuick, setIntroQuick] = React.useState(false);
@@ -812,6 +828,108 @@ export default function StudioPage() {
     [persistFlowSteps],
   );
   const flowCount = flowSteps.length;
+  // ─── Flow drag-sort (polish batch 2, Taku 拖放收纳） ───
+  // Reordering happens inside a step's own zone only; the flat array
+  // keeps its shape — the zone's slice is permuted in place and the
+  // whole list is persisted exactly like add/delete. Every committed
+  // reorder snapshots the previous order and offers it back through an
+  // undo toast. The drag itself is pointer-driven from the grip
+  // (mouse and touch alike); the keyboard path is ↑/↓ on the grip.
+  type FlowDrag = {
+    id: string;
+    zone: FlowZone;
+    from: number;
+    over: number;
+    dy: number;
+    h: number;
+    count: number;
+  };
+  const [flowDrag, setFlowDrag] = React.useState<FlowDrag | null>(null);
+  const flowDragRef = React.useRef<(FlowDrag & { startY: number }) | null>(
+    null,
+  );
+  const commitFlowReorder = (zone: FlowZone, from: number, to: number) => {
+    if (from === to) return;
+    const snapshot = flowSteps;
+    setFlowSteps((prev) => {
+      const slots = prev
+        .map((s, i) => (s.zone === zone ? i : -1))
+        .filter((i) => i >= 0);
+      const zoneSteps = slots.map((i) => prev[i]);
+      const [moved] = zoneSteps.splice(from, 1);
+      zoneSteps.splice(to, 0, moved);
+      const next = [...prev];
+      slots.forEach((slot, k) => {
+        next[slot] = zoneSteps[k];
+      });
+      persistFlowSteps(next);
+      return next;
+    });
+    showActionToast("步骤顺序已调整", "撤销", () => {
+      setFlowSteps(snapshot);
+      persistFlowSteps(snapshot);
+      showToast("已恢复原顺序");
+    });
+  };
+  const startFlowDrag = (
+    e: React.PointerEvent,
+    step: FlowStep,
+    indexInZone: number,
+  ) => {
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    const row = (e.currentTarget as HTMLElement).closest<HTMLElement>(
+      "[data-flow-row]",
+    );
+    if (!row) return;
+    e.preventDefault();
+    const zoneSteps = flowSteps.filter((s) => s.zone === step.zone);
+    const state = {
+      id: step.id,
+      zone: step.zone,
+      from: indexInZone,
+      over: indexInZone,
+      dy: 0,
+      h: row.offsetHeight + 8,
+      count: zoneSteps.length,
+      startY: e.clientY,
+    };
+    flowDragRef.current = state;
+    setFlowDrag(state);
+    const onMove = (ev: PointerEvent) => {
+      const s = flowDragRef.current;
+      if (!s) return;
+      const dy = ev.clientY - s.startY;
+      const over = Math.max(
+        0,
+        Math.min(s.count - 1, s.from + Math.round(dy / s.h)),
+      );
+      const next = { ...s, dy, over };
+      flowDragRef.current = next;
+      setFlowDrag(next);
+    };
+    const onUp = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      const s = flowDragRef.current;
+      flowDragRef.current = null;
+      setFlowDrag(null);
+      if (s && s.over !== s.from) commitFlowReorder(s.zone, s.from, s.over);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  };
+  const flowGripKeyDown = (
+    e: React.KeyboardEvent,
+    step: FlowStep,
+    indexInZone: number,
+  ) => {
+    if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+    e.preventDefault();
+    const count = flowSteps.filter((s) => s.zone === step.zone).length;
+    const to = indexInZone + (e.key === "ArrowUp" ? -1 : 1);
+    if (to < 0 || to >= count) return;
+    commitFlowReorder(step.zone, indexInZone, to);
+  };
   // Calendar items （日历事项）: state + localStorage, starts empty.
   const [calItems, setCalItems] = React.useState<CalItem[]>([]);
   const [calDraft, setCalDraft] = React.useState<{
@@ -1373,7 +1491,7 @@ export default function StudioPage() {
       setAuthed(true);
       setLanding("on");
       setIntroQuick(false);
-      setToast("登录成功 · 进入神经主体"); window.setTimeout(() => setToast(null), 2200);
+      showToast("登录成功 · 进入神经主体");
     } catch {
       setLoginError("网络错误，请重试");
     } finally {
@@ -1400,7 +1518,7 @@ export default function StudioPage() {
     setLanding("on");
     setAuthed(false);
     setLoginPass("");
-    setToast("已退出登录"); window.setTimeout(() => setToast(null), 2200);
+    showToast("已退出登录");
   };
 
   const enterFromLanding = (target?: string) => {
@@ -1630,9 +1748,23 @@ export default function StudioPage() {
     boardItems[0] ||
     null;
 
+  const armToastTimer = (ms: number) => {
+    if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = window.setTimeout(() => setToast(null), ms);
+  };
   const showToast = (msg: string) => {
-    setToast(msg);
-    window.setTimeout(() => setToast(null), 2200);
+    setToast({ msg });
+    armToastTimer(2200);
+  };
+  /** Toast with one action button (Taku 拖放收纳： every re-arrangement
+   *  offers its undo). Lives longer than a passive toast. */
+  const showActionToast = (
+    msg: string,
+    actionLabel: string,
+    onAction: () => void,
+  ) => {
+    setToast({ msg, actionLabel, onAction });
+    armToastTimer(6000);
   };
   const openStepDetail = (id: string) => {
     const step = flowSteps.find((s) => s.id === id);
@@ -1980,6 +2112,7 @@ export default function StudioPage() {
 
             <FluidPillGroup
               as="nav"
+              magnet
               className="studio-pill-nav order-3 flex w-full flex-wrap items-center justify-center gap-0.5 self-stretch rounded-full p-1 lg:order-2 lg:mx-2 lg:w-auto"
               aria-label="创作面板导航"
             >
@@ -2321,7 +2454,7 @@ export default function StudioPage() {
                           )}
                         >
                           <p className="studio-metric-num text-2xl font-semibold tabular-nums md:text-3xl">
-                            {m.value.toLocaleString()}
+                            <RollNumber value={m.value} />
                           </p>
                           <p className="mt-1 text-[10px] text-[color:var(--studio-muted)]">
                             {m.label}
@@ -2402,7 +2535,11 @@ export default function StudioPage() {
                         className="w-full bg-transparent text-[12px] outline-none placeholder:text-[color:var(--studio-muted)]"
                       />
                     </div>
-                    <div className="space-y-3" data-testid="skills-library">
+                    <div
+                      className="space-y-3"
+                      data-testid="skills-library"
+                      ref={skillsSpringRef}
+                    >
                       {filteredSkillAgents.map((agent) => {
                         const open = isAgentOpen(agent.id);
                         return (
@@ -2445,7 +2582,7 @@ export default function StudioPage() {
                                   {agent.skills.map((s) => {
                                     const detailOpen = openSkillId === s.id;
                                     return (
-                                      <li key={s.id}>
+                                      <li key={s.id} data-spring-item>
                                         <button
                                           type="button"
                                           data-skill={s.id}
@@ -2550,7 +2687,11 @@ export default function StudioPage() {
                     en="Workflow"
                     desc="按执行者分区 · 我 / AI / Agent · 步骤保存在本机浏览器"
                   >
-                    <div data-testid="flow-zones" className="space-y-5">
+                    <div
+                      data-testid="flow-zones"
+                      className="space-y-5"
+                      ref={flowSpringRef}
+                    >
                       {FLOW_ZONES.map((zone) => {
                         const steps = flowSteps.filter(
                           (s) => s.zone === zone.id,
@@ -2644,9 +2785,55 @@ export default function StudioPage() {
                                 暂无步骤 · 点右上「＋ 加步骤」往这个区里加
                               </p>
                             ) : (
-                              <ol className="space-y-2">
-                                {steps.map((step, i) => (
-                                  <li key={step.id}>
+                              <ol
+                                className={cn(
+                                  "flow-list space-y-2",
+                                  flowDrag?.zone === zone.id &&
+                                    "flow-list-dragging",
+                                )}
+                                data-flow-list={zone.id}
+                              >
+                                {steps.map((step, i) => {
+                                  const drag =
+                                    flowDrag?.zone === zone.id
+                                      ? flowDrag
+                                      : null;
+                                  let liStyle:
+                                    | React.CSSProperties
+                                    | undefined;
+                                  let liClass = "";
+                                  if (drag) {
+                                    if (step.id === drag.id) {
+                                      liStyle = {
+                                        transform: `translateY(${drag.dy}px)`,
+                                      };
+                                      liClass = "flow-row-drag";
+                                    } else if (
+                                      drag.from < drag.over &&
+                                      i > drag.from &&
+                                      i <= drag.over
+                                    ) {
+                                      liStyle = {
+                                        transform: `translateY(${-drag.h}px)`,
+                                      };
+                                    } else if (
+                                      drag.over < drag.from &&
+                                      i >= drag.over &&
+                                      i < drag.from
+                                    ) {
+                                      liStyle = {
+                                        transform: `translateY(${drag.h}px)`,
+                                      };
+                                    }
+                                  }
+                                  return (
+                                  <li
+                                    key={step.id}
+                                    data-spring-item
+                                    data-flow-row={step.id}
+                                    className={liClass}
+                                    style={liStyle}
+                                  >
                                     <div
                                       className={cn(
                                         "studio-glass flex w-full items-center gap-3 px-4 py-3 text-left",
@@ -2654,6 +2841,23 @@ export default function StudioPage() {
                                           "studio-row-on",
                                       )}
                                     >
+                                      <button
+                                        type="button"
+                                        className="flow-grip"
+                                        data-testid={`flow-grip-${step.id}`}
+                                        aria-label={`调整顺序：${step.title}（拖动把手，或按上下方向键）`}
+                                        onPointerDown={(e) =>
+                                          startFlowDrag(e, step, i)
+                                        }
+                                        onKeyDown={(e) =>
+                                          flowGripKeyDown(e, step, i)
+                                        }
+                                      >
+                                        <GripVertical
+                                          className="h-4 w-4"
+                                          aria-hidden
+                                        />
+                                      </button>
                                       <button
                                         type="button"
                                         data-step={step.id}
@@ -2688,7 +2892,8 @@ export default function StudioPage() {
                                       />
                                     </div>
                                   </li>
-                                ))}
+                                  );
+                                })}
                               </ol>
                             )}
                           </div>
@@ -4177,9 +4382,26 @@ export default function StudioPage() {
         <div
           role="status"
           aria-live="polite"
-          className="xuan-toast pointer-events-none fixed bottom-6 left-1/2 z-[60] -translate-x-1/2 rounded-full px-4 py-2 text-[12px] font-medium shadow-lg"
+          className={cn(
+            "xuan-toast fixed bottom-6 left-1/2 z-[60] flex -translate-x-1/2 items-center rounded-full px-4 py-2 text-[12px] font-medium shadow-lg",
+            toast.actionLabel ? "pointer-events-auto" : "pointer-events-none",
+          )}
         >
-          {toast}
+          <span>{toast.msg}</span>
+          {toast.actionLabel && (
+            <button
+              type="button"
+              className="xuan-toast-action"
+              onClick={() => {
+                if (toastTimerRef.current)
+                  window.clearTimeout(toastTimerRef.current);
+                toast.onAction?.();
+                setToast(null);
+              }}
+            >
+              {toast.actionLabel}
+            </button>
+          )}
         </div>
       )}
     </div>
@@ -4232,6 +4454,7 @@ function NeuralModuleMap({
   const wrapRef = React.useRef<HTMLDivElement | null>(null);
   const hubRefs = React.useRef<Record<string, HTMLButtonElement | null>>({});
   const rowRefs = React.useRef<Record<string, HTMLButtonElement | null>>({});
+  const listSpringRef = useSpringStagger<HTMLUListElement>();
   const [lines, setLines] = React.useState<
     { x1: number; y1: number; x2: number; y2: number; key: string }[]
   >([]);
@@ -4277,10 +4500,16 @@ function NeuralModuleMap({
     if (wrapRef.current) ro.observe(wrapRef.current);
     window.addEventListener("resize", layoutLines);
     const t = window.setTimeout(layoutLines, 80);
+    // Rows play a one-shot spring entrance (batch 2) that shifts them
+    // for ~1s; recompute the plexus lines once they have settled.
+    const t2 = window.setTimeout(layoutLines, 1000);
+    const t3 = window.setTimeout(layoutLines, 1900);
     return () => {
       ro.disconnect();
       window.removeEventListener("resize", layoutLines);
       window.clearTimeout(t);
+      window.clearTimeout(t2);
+      window.clearTimeout(t3);
     };
   }, [layoutLines]);
 
@@ -4338,7 +4567,7 @@ function NeuralModuleMap({
               >
                 <span className="studio-neural-node-orb" aria-hidden />
                 <p className="text-lg font-semibold tabular-nums leading-none">
-                  {m.n}
+                  <RollNumber value={m.n} />
                 </p>
                 <p className="mt-0.5 text-[11px] font-medium">{m.label}</p>
                 <p className="text-[9px] tracking-wider text-[color:var(--studio-muted)]">
@@ -4353,9 +4582,12 @@ function NeuralModuleMap({
           <p className="mb-2 px-1 text-[10px] font-semibold tracking-[0.14em] text-[color:var(--studio-muted)]">
             流水线 · Skill · 待办
           </p>
-          <ul className="flex flex-1 flex-col gap-1 overflow-y-auto pr-1">
+          <ul
+            ref={listSpringRef}
+            className="flex flex-1 flex-col gap-1 overflow-y-auto pr-1"
+          >
             {items.map((item) => (
-              <li key={item.id}>
+              <li key={item.id} data-spring-item>
                 <button
                   type="button"
                   ref={(el) => {
