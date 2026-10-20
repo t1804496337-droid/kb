@@ -1184,7 +1184,10 @@ div.studio-orb.studio-orb-bg,
 }
 
 .xuan-btn:active {
-  transform: translateY(0) scale(0.98);
+  /* Press shrink now comes from the global PRESS SCALE rule (standalone
+     `scale` property, polish batch 1) so every button lands on the same
+     0.96 + spring; keep only the lift reset here to avoid double-shrinking. */
+  transform: translateY(0);
 }
 
 .xuan-btn-primary {
@@ -2241,4 +2244,232 @@ div.studio-orb.studio-orb-bg,
 .studio-root select option {
   color: #17191d;
   background-color: #ffffff;
+}
+
+/* ═══ Polish batch 1 (2026-10-21) — tactile press / fluid pill / halo / sheet ═══
+   Sources: PRESS SCALE + FLUID MORPH + BOTTOM SHEET + diffuse halo rim from
+   the 2026-10-20 design refs; interaction copy rules from Ludi's popup
+   taxonomy. One global rule set — no per-component patches. */
+
+/* 1 · PRESS SCALE — every pressable element gets the same touch response:
+   shrink to 0.96 with a deepened inner shadow on press, spring back with a
+   slight overshoot on release. Uses the standalone `scale` property so it
+   composes with (never replaces) component transforms — translateX(-50%)
+   centring, hover lifts and entrance keyframes all survive. Jelly carrier
+   buttons are excluded from the inset shadow: their box is the feathered
+   cutout itself, a rectangular inset would show as a hard vignette. */
+@media (prefers-reduced-motion: no-preference) {
+  :is(button, a, [role="button"]):not(:disabled) {
+    touch-action: manipulation;
+    transition:
+      scale 0.18s cubic-bezier(0.34, 1.56, 0.64, 1),
+      transform 0.18s ease,
+      background-color 0.15s ease,
+      border-color 0.15s ease,
+      color 0.15s ease,
+      opacity 0.15s ease,
+      box-shadow 0.2s ease,
+      filter 0.2s ease;
+  }
+  :is(button, a, [role="button"]):active:not(:disabled) {
+    scale: 0.96;
+  }
+  :is(button, a, [role="button"]):active:not(:disabled):not(.lp-node):not(.ws-jelly) {
+    box-shadow:
+      inset 0 2px 8px rgba(0, 0, 0, 0.38),
+      inset 0 1px 2px rgba(0, 0, 0, 0.3);
+  }
+}
+
+/* Visible keyboard focus (Web Interface Guidelines: never remove an outline
+   without a replacement). Soft accent ring, mouse users never see it. */
+:is(button, a, [role="button"], input, select, textarea):focus-visible {
+  outline: 2px solid rgba(143, 211, 232, 0.75);
+  outline-offset: 2px;
+}
+
+/* 2 · FLUID PILL — one sliding capsule behind the active item of a pill nav
+   / segmented control. The group measures its [data-pill-active] child and
+   moves this indicator; the active button's own background switches off so
+   only the capsule paints. Colours mirror the old .studio-pill-active. */
+.fluid-pill {
+  position: relative;
+}
+.fluid-pill-ind {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 0;
+  border-radius: 999px;
+  pointer-events: none;
+  background: color-mix(in srgb, var(--studio-accent) 28%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--studio-accent) 35%, transparent);
+  transition:
+    transform 0.38s cubic-bezier(0.22, 1, 0.36, 1),
+    width 0.38s cubic-bezier(0.22, 1, 0.36, 1),
+    height 0.38s cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 0.2s ease;
+  will-change: transform, width, height;
+}
+.fluid-pill-ind-neutral {
+  background: color-mix(in srgb, var(--studio-text) 13%, transparent);
+  box-shadow: none;
+}
+.fluid-pill > :is(button, a) {
+  position: relative;
+  z-index: 1;
+}
+.fluid-pill .studio-pill-active {
+  background: transparent;
+  box-shadow: none;
+}
+.fluid-pill .studio-theme-seg-btn.is-on {
+  background: transparent;
+}
+@media (prefers-reduced-motion: reduce) {
+  .fluid-pill-ind {
+    transition: none;
+  }
+}
+
+/* 3 · HALO RIM — a slow conic light rim + blurred diffuse halo, reusing the
+   registered --bloom-angle property that drives .panel-glow. Deliberately
+   slow (42s) and faint: the jellyfish stay the stars. Two landing spots
+   only — the ENTER pill (rim + halo) and the orb (halo only, via ::after;
+   in warm/neu themes their own orb ring outranks this rule and wins). */
+.halo-rim {
+  isolation: isolate;
+}
+.halo-rim::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  padding: 1px;
+  background: conic-gradient(
+    from var(--bloom-angle, 0deg),
+    transparent 0%,
+    rgba(200, 192, 255, 0.55) 10%,
+    rgba(166, 230, 236, 0.5) 20%,
+    transparent 34%,
+    transparent 60%,
+    rgba(235, 194, 126, 0.45) 74%,
+    rgba(147, 226, 210, 0.4) 84%,
+    transparent 96%
+  );
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+  opacity: 0.65;
+  animation: bloom-border-spin 42s linear infinite;
+}
+.halo-rim::after,
+.halo-aura::after {
+  content: "";
+  position: absolute;
+  inset: -14px;
+  border-radius: inherit;
+  z-index: -1;
+  background: conic-gradient(
+    from var(--bloom-angle, 0deg),
+    transparent 0%,
+    rgba(200, 192, 255, 0.28) 12%,
+    transparent 30%,
+    transparent 58%,
+    rgba(235, 194, 126, 0.22) 76%,
+    transparent 94%
+  );
+  filter: blur(14px);
+  pointer-events: none;
+  opacity: 0.55;
+  animation: bloom-border-spin 42s linear infinite;
+}
+.halo-aura {
+  isolation: isolate;
+}
+.halo-aura::after {
+  inset: -7%;
+  border-radius: 50%;
+}
+@media (prefers-reduced-motion: reduce) {
+  .halo-rim::before,
+  .halo-rim::after,
+  .halo-aura::after {
+    animation: none;
+  }
+}
+
+/* 4 · BOTTOM SHEET — the shared studio modal becomes a bottom sheet on
+   phones: slides up with a damped spring, drag handle on top, content
+   scrolls inside with contained overscroll. Desktop keeps the centred
+   dialog with the fly-in it shares with the rest of the chrome. */
+.studio-sheet-panel {
+  overscroll-behavior: contain;
+  animation: xuan-fly-in 0.32s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+.sheet-handle {
+  display: none;
+}
+.sheet-shake {
+  animation: sheet-shake 0.3s ease;
+}
+@keyframes sheet-shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-5px); }
+  45% { transform: translateX(5px); }
+  70% { transform: translateX(-3px); }
+}
+@media (max-width: 767px) {
+  .studio-sheet-overlay {
+    align-items: flex-end !important;
+    padding: 0 !important;
+  }
+  .studio-sheet-panel {
+    width: 100%;
+    max-width: none !important;
+    max-height: 88dvh;
+    overflow-y: auto;
+    border-radius: 22px 22px 0 0;
+    padding-bottom: max(1.25rem, env(safe-area-inset-bottom));
+    animation: sheet-in 0.42s cubic-bezier(0.32, 1.3, 0.44, 1) backwards;
+  }
+  .sheet-handle {
+    display: block;
+    width: 40px;
+    height: 4px;
+    border-radius: 999px;
+    background: rgba(236, 236, 233, 0.28);
+    margin: 0 auto 10px;
+    cursor: grab;
+    touch-action: none;
+  }
+}
+@keyframes sheet-in {
+  from { transform: translateY(46px); opacity: 0.4; }
+  to { transform: translateY(0); opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .studio-sheet-panel,
+  .sheet-shake {
+    animation: none;
+  }
+}
+
+/* Danger actions (Ludi: destructive = explicit verb + real second step,
+   never a browser confirm and never the primary-looking button). */
+.xuan-btn-danger {
+  background: rgba(229, 72, 77, 0.2);
+  color: #ffb3b5;
+  border-color: rgba(229, 72, 77, 0.5);
+}
+.xuan-btn-danger-ghost {
+  color: #ff9d9f;
+  border-color: rgba(229, 72, 77, 0.35);
+  background: transparent;
 }

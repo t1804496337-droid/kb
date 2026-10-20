@@ -413,7 +413,7 @@ export function NeuralLanding({
         <Web L={MOBILE} nodes={nodes} className="lp-only-m" />
 
         <div
-          className="lp-orb"
+          className="lp-orb halo-aura"
           data-testid="lp-orb"
           style={
             {
@@ -660,7 +660,7 @@ export function NeuralLanding({
         </div>
       )}
 
-      <button type="button" className="lp-enter" data-testid="lp-enter" onClick={() => onEnter("workspace")}>
+      <button type="button" className="lp-enter halo-rim" data-testid="lp-enter" onClick={() => onEnter("workspace")}>
         进入工作台
         <span>ENTER</span>
       </button>

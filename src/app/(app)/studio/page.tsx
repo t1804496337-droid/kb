@@ -35,6 +35,8 @@ import {
 import { HealthModuleView } from "@/components/studio/health-module";
 import { OntologyModuleView } from "@/components/studio/ontology-module";
 import { moduleJellyBeam, moduleJellyImg } from "@/components/studio/module-jelly";
+import { FluidPillGroup } from "@/components/ui/fluid-pill";
+import { InlineConfirmButton } from "@/components/ui/inline-confirm";
 import { XUANZI_PROMPTS } from "@/lib/xuanzi-prompts";
 import { cn } from "@/lib/utils";
 
@@ -487,6 +489,56 @@ const WS_HUBS: WsHub[] = [
   },
 ];
 
+/** Stepped-flow header (Taku's stepwise menu, polish batch 1): the beats
+ *  of a create flow — pick → write → confirm — stay visible the whole way,
+ *  so the state is continuous and the result is clear before committing. */
+function StepDots({
+  steps,
+  current,
+  testid,
+}: {
+  steps: string[];
+  current: number;
+  testid: string;
+}) {
+  return (
+    <ol className="flex flex-wrap items-center gap-1.5" data-testid={testid} aria-label="步骤">
+      {steps.map((s, i) => {
+        const n = i + 1;
+        const on = current === n;
+        const done = current > n;
+        return (
+          <li key={s} className="flex items-center gap-1.5">
+            <span
+              className={cn(
+                "flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold",
+                on
+                  ? "studio-pill-active"
+                  : done
+                    ? "bg-[color:var(--studio-accent)] text-black"
+                    : "bg-white/10 text-[color:var(--studio-muted)]",
+              )}
+            >
+              {done ? "✓" : n}
+            </span>
+            <span
+              className={cn(
+                "text-[11px]",
+                on ? "font-semibold" : "text-[color:var(--studio-muted)]",
+              )}
+            >
+              {s}
+            </span>
+            {n < steps.length && (
+              <span className="mx-0.5 h-px w-3 bg-white/15" aria-hidden />
+            )}
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
 export default function StudioPage() {
   const [theme, setTheme] = React.useState<ThemeId>("silver");
   const [section, setSection] = React.useState<SectionId>("workspace");
@@ -496,6 +548,18 @@ export default function StudioPage() {
   const [metricFocus, setMetricFocus] = React.useState<number | null>(null);
   const [tileFocus, setTileFocus] = React.useState<string | null>(null);
   const [modal, setModal] = React.useState<ModalKind>(null);
+  // Polish batch 1: stepped create/caladd flows (1 pick → 2 write → 3 confirm),
+  // bottom-sheet drag offset on phones, in-modal arm state for the step delete.
+  const [createStep, setCreateStep] = React.useState(1);
+  const [calStep, setCalStep] = React.useState(1);
+  const [stepDeleteArm, setStepDeleteArm] = React.useState(false);
+  const [sheetDrag, setSheetDrag] = React.useState(0);
+  const [sheetShaking, setSheetShaking] = React.useState(false);
+  const sheetDragRef = React.useRef<{ startY: number; dragging: boolean }>({
+    startY: 0,
+    dragging: false,
+  });
+  const sheetHintRef = React.useRef<string | null>(null);
   const [toast, setToast] = React.useState<string | null>(null);
   const [promptsOpen, setPromptsOpen] = React.useState(false);
   const [copiedId, setCopiedId] = React.useState<string | null>(null);
@@ -815,6 +879,7 @@ export default function StudioPage() {
   const openCalAdd = React.useCallback((date: string) => {
     setCalDraft({ date, title: "", note: "" });
     setCalFocusDate(date);
+    setCalStep(1);
     setModal("caladd");
   }, []);
   const sortedCalItems = React.useMemo(
@@ -1574,8 +1639,58 @@ export default function StudioPage() {
     if (!step) return;
     setSelectedBoardId(step.id);
     setSection("ideas");
+    setStepDeleteArm(false);
     setModal("step");
     showToast(`步骤 · ${step.title}`);
+  };
+
+  // Sheet/modal housekeeping: every open starts with no drag offset, no
+  // leftover shake, and the backdrop-hint may fire once per modal kind.
+  React.useEffect(() => {
+    setSheetDrag(0);
+    setSheetShaking(false);
+    sheetDragRef.current.dragging = false;
+  }, [modal]);
+
+  /** Form modals never close from the backdrop (Ludi: a stray tap on the
+   *  scrim must not eat half-typed input). The scrim nudges the sheet and
+   *  explains itself once; ✕ / 取消 remain the way out. Non-form modals
+   *  keep the classic backdrop-dismiss. */
+  const FORM_MODALS: ModalKind[] = ["create", "caladd", "newmodule", "edit"];
+  const onBackdropClick = () => {
+    if (modal && FORM_MODALS.includes(modal)) {
+      setSheetShaking(true);
+      window.setTimeout(() => setSheetShaking(false), 340);
+      if (sheetHintRef.current !== modal) {
+        sheetHintRef.current = modal;
+        showToast("表单还没保存 · 点 ✕ 或「取消」关闭");
+      }
+      return;
+    }
+    setModal(null);
+  };
+  /** Drag-to-dismiss for the phone bottom sheet. On form modals a hard
+   *  drag springs back instead of closing (same no-data-loss rule). */
+  const onSheetPointerDown = (e: React.PointerEvent) => {
+    sheetDragRef.current = { startY: e.clientY, dragging: true };
+    (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+  };
+  const onSheetPointerMove = (e: React.PointerEvent) => {
+    if (!sheetDragRef.current.dragging) return;
+    setSheetDrag(Math.max(0, e.clientY - sheetDragRef.current.startY));
+  };
+  const onSheetPointerUp = () => {
+    if (!sheetDragRef.current.dragging) return;
+    sheetDragRef.current.dragging = false;
+    if (sheetDrag > 110) {
+      if (modal && FORM_MODALS.includes(modal)) {
+        setSheetShaking(true);
+        window.setTimeout(() => setSheetShaking(false), 340);
+      } else {
+        setModal(null);
+      }
+    }
+    setSheetDrag(0);
   };
 
   const copyPrompt = async (id: string, body: string) => {
@@ -1863,7 +1978,8 @@ export default function StudioPage() {
               </p>
             </div>
 
-            <nav
+            <FluidPillGroup
+              as="nav"
               className="studio-pill-nav order-3 flex w-full flex-wrap items-center justify-center gap-0.5 self-stretch rounded-full p-1 lg:order-2 lg:mx-2 lg:w-auto"
               aria-label="创作面板导航"
             >
@@ -1875,6 +1991,7 @@ export default function StudioPage() {
                   <button
                     key={item.id}
                     type="button"
+                    data-pill-active={active || undefined}
                     onClick={() => openNavItem(item)}
                     className={cn(
                       "rounded-full px-2.5 py-1.5 text-left transition-all sm:px-3",
@@ -1892,15 +2009,21 @@ export default function StudioPage() {
                   </button>
                 );
               })}
-            </nav>
+            </FluidPillGroup>
 
             <div className="order-2 ml-auto flex shrink-0 items-center justify-end gap-1.5 lg:order-3 lg:ml-0">
-              <div className="studio-theme-seg hidden items-center gap-0.5 rounded-full p-0.5 lg:flex" role="group" aria-label="主题">
+              <FluidPillGroup
+                className="studio-theme-seg hidden items-center gap-0.5 rounded-full p-0.5 lg:flex"
+                indicatorClassName="fluid-pill-ind-neutral"
+                role="group"
+                aria-label="主题"
+              >
                 {THEMES.map((t) => (
                   <button
                     key={t.id}
                     type="button"
                     data-testid={`hdr-theme-${t.id}`}
+                    data-pill-active={theme === t.id || undefined}
                     aria-pressed={theme === t.id}
                     className={cn("studio-theme-seg-btn", theme === t.id && "is-on")}
                     onClick={() => setTheme(t.id)}
@@ -1908,7 +2031,7 @@ export default function StudioPage() {
                     {t.label} <small>{t.short}</small>
                   </button>
                 ))}
-              </div>
+              </FluidPillGroup>
               <button
                 type="button"
                 className="xuan-btn"
@@ -1942,6 +2065,7 @@ export default function StudioPage() {
                   setNewTitle("");
                   const hk = SECTION_TO_HUB[section];
                   if (hk) setActiveHubKey(hk);
+                  setCreateStep(1);
                   setModal("create");
                 }}
               >
@@ -2247,7 +2371,10 @@ export default function StudioPage() {
                       <button
                         type="button"
                         className="studio-glass flex min-h-[220px] flex-col items-center justify-center gap-2 border border-dashed border-[color:var(--studio-border)] px-4 py-8 text-center"
-                        onClick={() => setModal("create")}
+                        onClick={() => {
+                          setCreateStep(1);
+                          setModal("create");
+                        }}
                       >
                         <Plus className="h-5 w-5 text-[color:var(--studio-muted)]" />
                         <p className="text-[12px] font-medium">添加成片槽</p>
@@ -2546,26 +2673,19 @@ export default function StudioPage() {
                                           </span>
                                         </span>
                                       </button>
-                                      <button
-                                        type="button"
-                                        data-testid={`flow-del-${step.id}`}
-                                        aria-label={`删除步骤 ${step.title}`}
+                                      <InlineConfirmButton
+                                        label="删除"
+                                        confirmLabel="确认删除"
+                                        testId={`flow-del-${step.id}`}
+                                        ariaLabel={`删除步骤 ${step.title}`}
                                         className="shrink-0 rounded-full px-2 py-1 text-[11px] text-[color:var(--studio-muted)] transition-colors hover:bg-white/10 hover:text-red-300"
-                                        onClick={() => {
-                                          if (
-                                            !window.confirm(
-                                              `删除步骤「${step.title}」？`,
-                                            )
-                                          )
-                                            return;
+                                        onConfirm={() => {
                                           deleteFlowStep(step.id);
                                           if (selectedBoardId === step.id)
                                             setSelectedBoardId(null);
                                           showToast(`已删除 · ${step.title}`);
                                         }}
-                                      >
-                                        删除
-                                      </button>
+                                      />
                                     </div>
                                   </li>
                                 ))}
@@ -2707,23 +2827,16 @@ export default function StudioPage() {
                                     </span>
                                   )}
                                 </button>
-                                <button
-                                  type="button"
-                                  data-testid={`cal-del-${i.id}`}
+                                <InlineConfirmButton
+                                  label="删除"
+                                  confirmLabel="确认删除"
+                                  testId={`cal-del-${i.id}`}
                                   className="shrink-0 rounded-lg px-2 py-1 text-[11px] text-[color:var(--studio-muted)] transition-colors hover:bg-white/5 hover:text-[color:var(--studio-text)]"
-                                  onClick={() => {
-                                    if (
-                                      !window.confirm(
-                                        `删除事项「${i.title}」（${i.date}）？`,
-                                      )
-                                    )
-                                      return;
+                                  onConfirm={() => {
                                     deleteCalItem(i.id);
                                     showToast(`已删除 · ${i.title}`);
                                   }}
-                                >
-                                  删除
-                                </button>
+                                />
                               </li>
                             ))}
                           </ul>
@@ -3165,11 +3278,12 @@ export default function StudioPage() {
                 <p className="mb-1.5 hidden text-[9px] font-semibold uppercase tracking-[0.16em] text-[color:var(--studio-accent)] sm:block">
                   主题动效 · Theme
                 </p>
-                <div className="studio-pill-nav inline-flex flex-wrap gap-0.5 rounded-full p-1">
+                <FluidPillGroup className="studio-pill-nav inline-flex flex-wrap gap-0.5 rounded-full p-1">
                   {THEMES.map((t) => (
                     <button
                       key={t.id}
                       type="button"
+                      data-pill-active={theme === t.id || undefined}
                       onClick={() => {
                         setTheme(t.id);
                         showToast(`已切换 · ${t.label}`);
@@ -3198,7 +3312,7 @@ export default function StudioPage() {
                       </span>
                     </button>
                   ))}
-                </div>
+                </FluidPillGroup>
               </div>
 
               {(() => {
@@ -3268,20 +3382,39 @@ export default function StudioPage() {
 
       {modal && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm"
-          onClick={() => setModal(null)}
+          className="studio-sheet-overlay fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm"
+          onClick={onBackdropClick}
           role="presentation"
         >
           <div
             className={cn(
-              "studio-root studio-glass w-full max-w-md p-5 shadow-2xl",
+              "studio-root studio-glass studio-sheet-panel w-full max-w-md p-5 shadow-2xl",
               `theme-${theme}`,
+              sheetShaking && "sheet-shake",
             )}
             data-theme={theme}
+            style={
+              sheetDrag > 0
+                ? {
+                    transform: `translateY(${sheetDrag}px)`,
+                    transition: sheetDragRef.current.dragging
+                      ? "none"
+                      : "transform 0.32s cubic-bezier(0.32, 1.3, 0.44, 1)",
+                  }
+                : undefined
+            }
             onClick={(e) => e.stopPropagation()}
             role="dialog"
             aria-modal
           >
+            <div
+              className="sheet-handle"
+              aria-hidden
+              onPointerDown={onSheetPointerDown}
+              onPointerMove={onSheetPointerMove}
+              onPointerUp={onSheetPointerUp}
+              onPointerCancel={onSheetPointerUp}
+            />
             <div className="mb-3 flex items-center justify-between">
               <h2 className="text-base font-semibold">
                 {modal === "edit" && "编辑条目"}
@@ -3360,113 +3493,247 @@ export default function StudioPage() {
                         "自建步骤 · 在灵感池对应分区里管理：点分区头「＋ 加步骤」继续添加，点步骤行右侧「删除」移除。"}
                     </p>
                   </div>
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      className="xuan-btn xuan-btn-primary"
-                      data-testid="step-action-primary"
-                      onClick={() => {
-                        if (!window.confirm(`删除步骤「${step.title}」？`)) return;
-                        deleteFlowStep(step.id);
-                        if (selectedBoardId === step.id) setSelectedBoardId(null);
-                        setModal(null);
-                        showToast(`已删除 · ${step.title}`);
-                      }}
+                  {stepDeleteArm ? (
+                    <div
+                      className="space-y-2 rounded-[12px] border border-[rgba(229,72,77,0.4)] p-3"
+                      data-testid="step-delete-confirm"
                     >
-                      删除这一步
-                    </button>
-                    <button
-                      type="button"
-                      className="xuan-btn"
-                      onClick={() => setModal(null)}
-                    >
-                      关闭
-                    </button>
-                  </div>
+                      <p className="text-[12px] leading-relaxed">
+                        确定删除「{step.title}」这一步？删除后不可恢复。
+                      </p>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          className="xuan-btn xuan-btn-danger flex-1 justify-center"
+                          data-testid="step-delete-do"
+                          onClick={() => {
+                            deleteFlowStep(step.id);
+                            if (selectedBoardId === step.id)
+                              setSelectedBoardId(null);
+                            setStepDeleteArm(false);
+                            setModal(null);
+                            showToast(`已删除 · ${step.title}`);
+                          }}
+                        >
+                          删除这一步
+                        </button>
+                        <button
+                          type="button"
+                          className="xuan-btn justify-center"
+                          onClick={() => setStepDeleteArm(false)}
+                        >
+                          再想想
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        className="xuan-btn xuan-btn-primary"
+                        data-testid="step-action-primary"
+                        onClick={() => setModal(null)}
+                      >
+                        完成
+                      </button>
+                      <button
+                        type="button"
+                        className="xuan-btn xuan-btn-danger-ghost"
+                        data-testid="step-delete-arm"
+                        onClick={() => setStepDeleteArm(true)}
+                      >
+                        删除这一步
+                      </button>
+                    </div>
+                  )}
                 </div>
               );
             })()}
 
             {modal === "caladd" && calDraft && (
               <div className="space-y-3 text-[13px]" data-testid="modal-caladd">
-                <label className="block">
-                  <span className="text-[10px] text-[color:var(--studio-muted)]">
-                    日期（可改，想加到哪天改哪天）
-                  </span>
-                  <input
-                    type="date"
-                    data-testid="cal-add-date"
-                    value={calDraft.date}
-                    onChange={(e) =>
-                      setCalDraft({ ...calDraft, date: e.target.value })
-                    }
-                    className="mt-1 w-full rounded-[10px] border border-[color:var(--studio-border)] bg-black/20 px-3 py-2 outline-none [color-scheme:dark]"
-                  />
-                </label>
-                <label className="block">
-                  <span className="text-[10px] text-[color:var(--studio-muted)]">
-                    任务事项（必填）
-                  </span>
-                  <input
-                    data-testid="cal-add-title"
-                    value={calDraft.title}
-                    onChange={(e) =>
-                      setCalDraft({ ...calDraft, title: e.target.value })
-                    }
-                    placeholder="比如：发布视频号 ep02"
-                    className="mt-1 w-full rounded-[10px] border border-[color:var(--studio-border)] bg-black/20 px-3 py-2 outline-none"
-                  />
-                </label>
-                <label className="block">
-                  <span className="text-[10px] text-[color:var(--studio-muted)]">
-                    备注（可不填）
-                  </span>
-                  <input
-                    data-testid="cal-add-note"
-                    value={calDraft.note}
-                    onChange={(e) =>
-                      setCalDraft({ ...calDraft, note: e.target.value })
-                    }
-                    placeholder="补充说明…"
-                    className="mt-1 w-full rounded-[10px] border border-[color:var(--studio-border)] bg-black/20 px-3 py-2 outline-none"
-                  />
-                </label>
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    className="xuan-btn justify-center"
-                    onClick={() => setModal(null)}
-                  >
-                    取消
-                  </button>
-                  <button
-                    type="button"
-                    className="xuan-btn xuan-btn-primary flex-1 justify-center"
-                    data-testid="cal-add-confirm"
-                    onClick={() => {
-                      const title = calDraft.title.trim();
-                      if (!/^\d{4}-\d{2}-\d{2}$/.test(calDraft.date)) {
-                        showToast("先选日期");
-                        return;
-                      }
-                      if (!title) {
-                        showToast("先填任务事项");
-                        return;
-                      }
-                      const item = addCalItem(
-                        calDraft.date,
-                        title,
-                        calDraft.note.trim() || undefined,
-                      );
-                      setCalFocusDate(item.date);
-                      setCalDraft(null);
-                      setModal(null);
-                      showToast(`已加事项 · ${item.date} · ${title}`);
-                    }}
-                  >
-                    保存事项
-                  </button>
-                </div>
+                <StepDots
+                  steps={["选日期", "填事项", "确认"]}
+                  current={calStep}
+                  testid="cal-steps"
+                />
+                {calStep === 1 && (
+                  <div className="space-y-3">
+                    <label className="block">
+                      <span className="text-[10px] text-[color:var(--studio-muted)]">
+                        日期（可改，想加到哪天改哪天）
+                      </span>
+                      <input
+                        type="date"
+                        data-testid="cal-add-date"
+                        value={calDraft.date}
+                        onChange={(e) =>
+                          setCalDraft({ ...calDraft, date: e.target.value })
+                        }
+                        className="mt-1 w-full rounded-[10px] border border-[color:var(--studio-border)] bg-black/20 px-3 py-2 outline-none [color-scheme:dark]"
+                      />
+                    </label>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        className="xuan-btn justify-center"
+                        onClick={() =>
+                          setCalDraft({ ...calDraft, date: todayStr() })
+                        }
+                      >
+                        今天
+                      </button>
+                      <button
+                        type="button"
+                        className="xuan-btn justify-center"
+                        onClick={() => {
+                          const d = new Date();
+                          d.setDate(d.getDate() + 1);
+                          const s = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+                          setCalDraft({ ...calDraft, date: s });
+                        }}
+                      >
+                        明天
+                      </button>
+                      <span className="flex-1" />
+                      <button
+                        type="button"
+                        className="xuan-btn justify-center"
+                        onClick={() => setModal(null)}
+                      >
+                        取消
+                      </button>
+                      <button
+                        type="button"
+                        className="xuan-btn xuan-btn-primary justify-center"
+                        data-testid="cal-add-next-1"
+                        onClick={() => {
+                          if (!/^\d{4}-\d{2}-\d{2}$/.test(calDraft.date)) {
+                            showToast("先选日期");
+                            return;
+                          }
+                          setCalStep(2);
+                        }}
+                      >
+                        下一步 · 填事项
+                      </button>
+                    </div>
+                  </div>
+                )}
+                {calStep === 2 && (
+                  <div className="space-y-3">
+                    <label className="block">
+                      <span className="text-[10px] text-[color:var(--studio-muted)]">
+                        任务事项（必填）
+                      </span>
+                      <input
+                        data-testid="cal-add-title"
+                        value={calDraft.title}
+                        onChange={(e) =>
+                          setCalDraft({ ...calDraft, title: e.target.value })
+                        }
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            if (!calDraft.title.trim()) {
+                              showToast("先填任务事项");
+                              return;
+                            }
+                            setCalStep(3);
+                          }
+                        }}
+                        placeholder="比如：发布视频号 ep02"
+                        className="mt-1 w-full rounded-[10px] border border-[color:var(--studio-border)] bg-black/20 px-3 py-2 outline-none"
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="text-[10px] text-[color:var(--studio-muted)]">
+                        备注（可不填）
+                      </span>
+                      <input
+                        data-testid="cal-add-note"
+                        value={calDraft.note}
+                        onChange={(e) =>
+                          setCalDraft({ ...calDraft, note: e.target.value })
+                        }
+                        placeholder="补充说明…"
+                        className="mt-1 w-full rounded-[10px] border border-[color:var(--studio-border)] bg-black/20 px-3 py-2 outline-none"
+                      />
+                    </label>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        className="xuan-btn justify-center"
+                        onClick={() => setCalStep(1)}
+                      >
+                        上一步
+                      </button>
+                      <button
+                        type="button"
+                        className="xuan-btn xuan-btn-primary flex-1 justify-center"
+                        data-testid="cal-add-next-2"
+                        onClick={() => {
+                          if (!calDraft.title.trim()) {
+                            showToast("先填任务事项");
+                            return;
+                          }
+                          setCalStep(3);
+                        }}
+                      >
+                        下一步 · 确认
+                      </button>
+                    </div>
+                  </div>
+                )}
+                {calStep === 3 && (
+                  <div className="space-y-3">
+                    <div
+                      className="studio-glass space-y-1.5 p-3"
+                      data-testid="cal-add-summary"
+                    >
+                      <p>
+                        <span className="text-[color:var(--studio-muted)]">日期 · </span>
+                        <span className="tabular-nums">{calDraft.date}</span>
+                      </p>
+                      <p>
+                        <span className="text-[color:var(--studio-muted)]">事项 · </span>
+                        {calDraft.title.trim()}
+                      </p>
+                      <p>
+                        <span className="text-[color:var(--studio-muted)]">备注 · </span>
+                        {calDraft.note.trim() || "—"}
+                      </p>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        className="xuan-btn justify-center"
+                        onClick={() => setCalStep(2)}
+                      >
+                        返回修改
+                      </button>
+                      <button
+                        type="button"
+                        className="xuan-btn xuan-btn-primary flex-1 justify-center"
+                        data-testid="cal-add-confirm"
+                        onClick={() => {
+                          const title = calDraft.title.trim();
+                          const item = addCalItem(
+                            calDraft.date,
+                            title,
+                            calDraft.note.trim() || undefined,
+                          );
+                          setCalFocusDate(item.date);
+                          setCalDraft(null);
+                          setModal(null);
+                          showToast(`已加事项 · ${item.date} · ${title}`);
+                        }}
+                      >
+                        保存事项
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -3583,15 +3850,13 @@ export default function StudioPage() {
                             {customModuleCount(m)}
                           </span>
                         </button>
-                        <button
-                          type="button"
-                          data-testid={`delete-module-${m.id}`}
+                        <InlineConfirmButton
+                          label="删除"
+                          confirmLabel="删除模块"
+                          testId={`delete-module-${m.id}`}
+                          ariaLabel={`删除${m.label}`}
                           className="xuan-btn shrink-0"
-                          aria-label={`删除${m.label}`}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            const n = customModuleCount(m);
-                            if (!window.confirm(`删除模块「${m.label}」及其 ${n} 条条目？`)) return;
+                          onConfirm={() => {
                             setCustomModules((prev) => {
                               const next = prev.filter((x) => x.id !== m.id);
                               persistCustomModules(next);
@@ -3607,9 +3872,7 @@ export default function StudioPage() {
                             if (activeHubKey === m.id) setActiveHubKey("ll");
                             showToast(`已删除模块 · ${m.label}`);
                           }}
-                        >
-                          删除
-                        </button>
+                        />
                       </div>
                     ))}
                   </div>
@@ -3651,106 +3914,183 @@ export default function StudioPage() {
                 })),
               ];
               const target = targets.find((t) => t.key === activeHubKey) ?? targets[0];
+              const submitCreate = () => {
+                const title = newTitle.trim() || `未命名 · ${target.label}`;
+                const id = `row-local-${Date.now()}`;
+                const row = {
+                  id,
+                  title,
+                  a: "手动新建",
+                  b: "tang",
+                  c: "新",
+                };
+                if (target.custom) {
+                  setCustomRows((prev) => {
+                    const next = {
+                      ...prev,
+                      [target.key]: [row, ...(prev[target.key] ?? [])],
+                    };
+                    persistCustomRows(next);
+                    return next;
+                  });
+                  setSelectedBoardId(id);
+                  setModal(null);
+                  setNewTitle("");
+                  setActiveCustom(target.key);
+                  showToast(`已加入 ${target.label} · ${title}`);
+                  return;
+                }
+                setHubs((prev) => {
+                  const next = prev.map((h) =>
+                    h.key === target.key
+                      ? { ...h, rows: [row, ...h.rows], n: h.rows.length + 1 }
+                      : h,
+                  );
+                  persistHubs(next);
+                  return next;
+                });
+                if (target.section === "calendar") {
+                  setTickets((prev) => [
+                    { id, title, detail: "手动新建", owner: "tang" },
+                    ...prev,
+                  ]);
+                }
+                setSelectedBoardId(id);
+                setModal(null);
+                setNewTitle("");
+                if (target.section !== "workspace") setSection(target.section as SectionId);
+                else setSection("workspace");
+                showToast(`已加入 ${target.label} · ${title}`);
+              };
               return (
               <div className="space-y-3 text-[13px]" data-testid="modal-create">
-                <p className="text-[11px] text-[color:var(--studio-muted)]">
-                  将添加到当前模块 · <b className="text-[color:var(--studio-text)]">{target.label}</b>
-                  <span className="opacity-60"> · {target.en}</span>
-                </p>
-                <label className="block">
-                  <span className="text-[10px] text-[color:var(--studio-muted)]">
-                    条目标题
-                  </span>
-                  <input
-                    data-testid="create-title"
-                    value={newTitle}
-                    onChange={(e) => setNewTitle(e.target.value)}
-                    placeholder={`写一条${target.label}条目…`}
-                    className="mt-1 w-full rounded-[10px] border border-[color:var(--studio-border)] bg-black/20 px-3 py-2 outline-none"
-                  />
-                </label>
-                <label className="block">
-                  <span className="text-[10px] text-[color:var(--studio-muted)]">目标模块</span>
-                  <select
-                    data-testid="create-hub"
-                    value={activeHubKey}
-                    onChange={(e) => setActiveHubKey(e.target.value)}
-                    className="mt-1 w-full rounded-[10px] border border-[color:var(--studio-border)] bg-black/20 px-3 py-2 outline-none"
-                  >
-                    {targets.map((t) => (
-                      <option key={t.key} value={t.key}>
-                        {t.label} · {t.en}（{t.count}）
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    type="button"
-                    data-testid="create-new-module"
-                    className="mt-2 text-[12px] font-medium text-[color:var(--studio-accent)] hover:underline"
-                    onClick={() => {
-                      setNewModuleLabel("");
-                      setNewModuleEn("");
-                      setModal("newmodule");
-                    }}
-                  >
-                    ＋ 新建模块（不在列表里就建一个）
-                  </button>
-                </label>
-                <button
-                  type="button"
-                  className="xuan-btn xuan-btn-primary w-full justify-center"
-                  data-testid="create-submit"
-                  onClick={() => {
-                    const title = newTitle.trim() || `未命名 · ${target.label}`;
-                    const id = `row-local-${Date.now()}`;
-                    const row = {
-                      id,
-                      title,
-                      a: "手动新建",
-                      b: "tang",
-                      c: "新",
-                    };
-                    if (target.custom) {
-                      setCustomRows((prev) => {
-                        const next = {
-                          ...prev,
-                          [target.key]: [row, ...(prev[target.key] ?? [])],
-                        };
-                        persistCustomRows(next);
-                        return next;
-                      });
-                      setSelectedBoardId(id);
-                      setModal(null);
-                      setNewTitle("");
-                      setActiveCustom(target.key);
-                      showToast(`已加入 ${target.label} · ${title}`);
-                      return;
-                    }
-                    setHubs((prev) => {
-                      const next = prev.map((h) =>
-                        h.key === target.key
-                          ? { ...h, rows: [row, ...h.rows], n: h.rows.length + 1 }
-                          : h,
-                      );
-                      persistHubs(next);
-                      return next;
-                    });
-                    if (target.section === "calendar") {
-                      setTickets((prev) => [
-                        { id, title, detail: "手动新建", owner: "tang" },
-                        ...prev,
-                      ]);
-                    }
-                    setSelectedBoardId(id);
-                    setModal(null);
-                    setNewTitle("");
-                    if (target.section !== "workspace") setSection(target.section as SectionId);
-                    else setSection("workspace");
-                    showToast(`已加入 ${target.label} · ${title}`);
-                  }}
-                >
-                  加入 {target.label}
-                </button>
+                <StepDots
+                  steps={["选模块", "写标题", "确认"]}
+                  current={createStep}
+                  testid="create-steps"
+                />
+                {createStep === 1 && (
+                  <div className="space-y-2">
+                    <p className="text-[11px] text-[color:var(--studio-muted)]">
+                      先选加到哪个模块 · 点一下就进下一步
+                    </p>
+                    <div className="grid max-h-[44vh] gap-1.5 overflow-y-auto pr-0.5">
+                      {targets.map((t) => (
+                        <button
+                          key={t.key}
+                          type="button"
+                          data-testid={`create-target-${t.key}`}
+                          className={cn(
+                            "xuan-btn w-full justify-between",
+                            t.key === target.key && "xuan-btn-primary",
+                          )}
+                          onClick={() => {
+                            setActiveHubKey(t.key);
+                            setCreateStep(2);
+                          }}
+                        >
+                          <span>
+                            {t.label}{" "}
+                            <small className="opacity-60">{t.en}</small>
+                          </span>
+                          <span className="tabular-nums opacity-70">
+                            {t.count}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                    <button
+                      type="button"
+                      data-testid="create-new-module"
+                      className="text-[12px] font-medium text-[color:var(--studio-accent)] hover:underline"
+                      onClick={() => {
+                        setNewModuleLabel("");
+                        setNewModuleEn("");
+                        setModal("newmodule");
+                      }}
+                    >
+                      ＋ 新建模块（不在列表里就建一个）
+                    </button>
+                  </div>
+                )}
+                {createStep === 2 && (
+                  <div className="space-y-3">
+                    <p className="text-[11px] text-[color:var(--studio-muted)]">
+                      加到 <b className="text-[color:var(--studio-text)]">{target.label}</b>
+                      <span className="opacity-60"> · {target.en}</span>
+                    </p>
+                    <label className="block">
+                      <span className="text-[10px] text-[color:var(--studio-muted)]">
+                        条目标题
+                      </span>
+                      <input
+                        data-testid="create-title"
+                        value={newTitle}
+                        onChange={(e) => setNewTitle(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            setCreateStep(3);
+                          }
+                        }}
+                        placeholder={`写一条${target.label}条目…`}
+                        className="mt-1 w-full rounded-[10px] border border-[color:var(--studio-border)] bg-black/20 px-3 py-2 outline-none"
+                      />
+                    </label>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        className="xuan-btn justify-center"
+                        onClick={() => setCreateStep(1)}
+                      >
+                        上一步
+                      </button>
+                      <button
+                        type="button"
+                        className="xuan-btn xuan-btn-primary flex-1 justify-center"
+                        data-testid="create-next"
+                        onClick={() => setCreateStep(3)}
+                      >
+                        下一步 · 确认
+                      </button>
+                    </div>
+                  </div>
+                )}
+                {createStep === 3 && (
+                  <div className="space-y-3">
+                    <div
+                      className="studio-glass space-y-1.5 p-3"
+                      data-testid="create-summary"
+                    >
+                      <p>
+                        <span className="text-[color:var(--studio-muted)]">目标模块 · </span>
+                        {target.label}
+                        <span className="opacity-60"> · {target.en}</span>
+                      </p>
+                      <p>
+                        <span className="text-[color:var(--studio-muted)]">条目标题 · </span>
+                        {newTitle.trim() || `未命名 · ${target.label}`}
+                      </p>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        className="xuan-btn justify-center"
+                        onClick={() => setCreateStep(2)}
+                      >
+                        返回修改
+                      </button>
+                      <button
+                        type="button"
+                        className="xuan-btn xuan-btn-primary flex-1 justify-center"
+                        data-testid="create-submit"
+                        onClick={submitCreate}
+                      >
+                        加入 {target.label}
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
               );
             })()}
@@ -3789,7 +4129,10 @@ export default function StudioPage() {
                     type="button"
                     className="xuan-btn justify-center"
                     data-testid="newmodule-back"
-                    onClick={() => setModal("create")}
+                    onClick={() => {
+                      setCreateStep(1);
+                      setModal("create");
+                    }}
                   >
                     返回
                   </button>
@@ -3816,6 +4159,7 @@ export default function StudioPage() {
                         return next;
                       });
                       setActiveHubKey(mod.id);
+                      setCreateStep(2);
                       setModal("create");
                       showToast(`模块已建 · ${label}，接下来给它加条目`);
                     }}
@@ -3830,7 +4174,11 @@ export default function StudioPage() {
       )}
 
       {toast && (
-        <div className="xuan-toast pointer-events-none fixed bottom-6 left-1/2 z-[60] -translate-x-1/2 rounded-full px-4 py-2 text-[12px] font-medium shadow-lg">
+        <div
+          role="status"
+          aria-live="polite"
+          className="xuan-toast pointer-events-none fixed bottom-6 left-1/2 z-[60] -translate-x-1/2 rounded-full px-4 py-2 text-[12px] font-medium shadow-lg"
+        >
           {toast}
         </div>
       )}

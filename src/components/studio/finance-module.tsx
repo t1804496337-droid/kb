@@ -12,6 +12,7 @@ import {
   Minus,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { InlineConfirmButton } from "@/components/ui/inline-confirm";
 
 /**
  * 财务系统管理 · 模块内里（参考 Equawealth 的结构，数据全用用户真实台账）
@@ -870,25 +871,18 @@ export function FinanceModuleView(props: FinanceModuleProps) {
                   >
                     <Pencil className="h-3.5 w-3.5" />
                   </button>
-                  <button
-                    type="button"
-                    data-testid={`fin-entry-del-${e.id}`}
+                  <InlineConfirmButton
+                    label={<Trash2 className="h-3.5 w-3.5" />}
+                    confirmLabel="删除这笔"
+                    testId={`fin-entry-del-${e.id}`}
+                    ariaLabel={`删除明细 ${e.date} ${e.category}`}
                     className="xuan-btn shrink-0"
-                    aria-label="删除"
-                    onClick={() => {
-                      if (
-                        !window.confirm(
-                          `删除这笔明细（${e.date} ${e.category} ${fmtMoney(e.amount)}）？`,
-                        )
-                      )
-                        return;
+                    onConfirm={() => {
                       props.onDeleteEntry(e.id);
                       if (editingEntryId === e.id) resetEntryForm();
                       showToast("明细已删除");
                     }}
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
+                  />
                 </li>
               ))}
             </ul>
