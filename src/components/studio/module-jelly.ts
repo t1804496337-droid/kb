@@ -38,3 +38,37 @@ export function moduleJellyBeam(id: string): string {
   if (id === "finance") return "#E6CF98";
   return CUSTOM_NODE_BEAMS[hashModuleId(id) % CUSTOM_NODE_BEAMS.length];
 }
+
+/** Life-like motion parameters for a jelly, derived from its id (built-ins
+ *  pass their hub key, custom modules their module id) so the same jelly
+ *  drifts, sways and breathes with the same rhythm on the landing and in
+ *  the workspace map. Consumed as CSS variables by the `.jelly-alive`
+ *  animation rules in globals.css:
+ *  --jelly-dur / --jelly-delay   drift + sway cycle (8–14s, starts mid-cycle)
+ *  --jelly-bdur / --jelly-bdelay breathe + bell-pulse cycle (4.2–7.2s)
+ *  --jelly-ax / --jelly-ay       drift amplitude per axis (±4–7px)
+ *  --jelly-rot                   sway amplitude (0.6–1.5deg)
+ *  The glow colour itself is set separately as --jelly-glow from the
+ *  jelly's beam colour at the render site. */
+export function jellyMotion(id: string): Record<string, string> {
+  const h = hashModuleId(id);
+  // Slice the unsigned hash with division, not >> (which would reinterpret
+  // hashes >= 2^31 as negative and skew the ranges below).
+  const part = (shift: number, mod: number) => Math.floor(h / 2 ** shift) % mod;
+  const dur = 8 + part(0, 61) / 10;
+  const bdur = 4.2 + part(4, 31) / 10;
+  const delay = -(part(6, 130) / 10);
+  const bdelay = -(part(9, 70) / 10);
+  const ax = (4 + part(3, 4)) * (part(2, 2) === 0 ? 1 : -1);
+  const ay = (4 + part(8, 4)) * (part(5, 2) === 0 ? 1 : -1);
+  const rot = (6 + part(11, 10)) / 10;
+  return {
+    "--jelly-dur": `${dur.toFixed(1)}s`,
+    "--jelly-bdur": `${bdur.toFixed(1)}s`,
+    "--jelly-delay": `${delay.toFixed(1)}s`,
+    "--jelly-bdelay": `${bdelay.toFixed(1)}s`,
+    "--jelly-ax": `${ax}px`,
+    "--jelly-ay": `${ay}px`,
+    "--jelly-rot": `${rot.toFixed(1)}deg`,
+  };
+}

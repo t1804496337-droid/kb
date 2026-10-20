@@ -1383,7 +1383,6 @@ div.studio-orb.studio-orb-bg,
 }
 .lp-node img {
   width: 100%; height: 100%; display: block; user-select: none;
-  animation: lp-float 7s ease-in-out infinite;
   transition: filter .25s ease;
 }
 /* Custom-module jellies are re-cut from the same footage: their webp frames
@@ -1654,7 +1653,7 @@ div.studio-orb.studio-orb-bg,
   position: absolute; aspect-ratio: 1 / 0.92; padding: 0; border: 0; background: none; cursor: pointer;
   animation: lp-node-in .8s cubic-bezier(.2,.8,.2,1) both; transition: width .35s ease, top .35s ease;
 }
-.ws-jelly img { width: 100%; height: 100%; animation: lp-float 7s ease-in-out infinite; }
+.ws-jelly img { width: 100%; height: 100%; }
 .ws-jelly:hover img { filter: brightness(1.4) drop-shadow(0 0 10px rgba(220,225,255,.45)); }
 /* Glass orb with the module's initial: fallback only, shown if a hub's
    jelly image fails to load (custom modules normally render their real
@@ -1666,7 +1665,6 @@ div.studio-orb.studio-orb-bg,
     radial-gradient(circle at 34% 28%, rgba(255,255,255,.55), rgba(255,255,255,.07) 44%, rgba(130,140,190,.14) 70%, rgba(10,12,20,.28) 100%);
   border: 1px solid rgba(220,225,255,.35);
   box-shadow: inset 0 0 18px rgba(180,190,255,.25), 0 0 14px rgba(160,170,230,.16);
-  animation: lp-float 7s ease-in-out infinite;
   transition: filter .25s ease;
 }
 .ws-jelly-orb i { font-style: normal; font-weight: 600; font-size: 20px; color: rgba(240,242,255,.9); text-shadow: 0 0 10px rgba(200,205,255,.6); }
@@ -1930,9 +1928,44 @@ div.studio-orb.studio-orb-bg,
   animation: lp-breathe 6s ease-in-out infinite, pl-sway 22s ease-in-out infinite, pl-sheen 7.5s ease-in-out infinite;
 }
 .xuan-stage:is(.theme-warm, .theme-neu) .pl-shimmer { -webkit-mask-size: auto; opacity: 0.3; }
-.lp-node img, .ws-jelly img { animation: lp-float 7s ease-in-out infinite, pl-tilt 9.5s ease-in-out infinite, pl-glint 5.5s ease-in-out infinite; }
-.lp-node:hover img, .lp-node:focus-visible img, .ws-jelly:hover img { animation-play-state: running; }
 .lp-node:hover, .lp-node:focus-visible, .ws-jelly:hover { filter: brightness(1.35) drop-shadow(0 0 12px rgba(220, 225, 255, 0.4)); }
+
+/* jellyfish life: every jelly drifts slowly around its anchor, sways a
+   degree, pulses its bell and breathes a soft glow in its own beam colour.
+   Rhythm/amplitude arrive as --jelly-* variables derived from the module
+   id (module-jelly.ts jellyMotion), so no two jellies move in lockstep and
+   the same jelly matches on the landing and in the workspace map. Motion
+   lives on an inner wrapper (.jelly-alive); node positioning, anchors and
+   beams never move. Individual transform properties (translate / rotate /
+   scale) keep the four animations from clobbering each other. */
+.jelly-alive { display: block; width: 100%; height: 100%; will-change: transform, filter; }
+@media (prefers-reduced-motion: no-preference) {
+  .jelly-alive, .ws-jelly-orb {
+    animation:
+      jelly-drift var(--jelly-dur, 11s) ease-in-out var(--jelly-delay, 0s) infinite,
+      jelly-sway var(--jelly-dur, 11s) ease-in-out var(--jelly-delay, 0s) infinite,
+      jelly-pulse var(--jelly-bdur, 5.5s) ease-in-out var(--jelly-bdelay, 0s) infinite,
+      jelly-breathe var(--jelly-bdur, 5.5s) ease-in-out var(--jelly-bdelay, 0s) infinite;
+  }
+}
+@keyframes jelly-drift {
+  0%, 100% { translate: 0 0; }
+  30% { translate: var(--jelly-ax, 5px) calc(var(--jelly-ay, 6px) * -0.55); }
+  55% { translate: calc(var(--jelly-ax, 5px) * -0.4) var(--jelly-ay, 6px); }
+  80% { translate: calc(var(--jelly-ax, 5px) * -0.75) calc(var(--jelly-ay, 6px) * -0.3); }
+}
+@keyframes jelly-sway {
+  0%, 100% { rotate: calc(var(--jelly-rot, 1deg) * -1); }
+  50% { rotate: var(--jelly-rot, 1deg); }
+}
+@keyframes jelly-pulse {
+  0%, 100% { scale: 1; }
+  50% { scale: 1.03; }
+}
+@keyframes jelly-breathe {
+  0%, 100% { filter: brightness(1) drop-shadow(0 0 3px color-mix(in srgb, var(--jelly-glow, #dce2f0) 22%, transparent)); }
+  50% { filter: brightness(1.09) drop-shadow(0 0 13px color-mix(in srgb, var(--jelly-glow, #dce2f0) 50%, transparent)); }
+}
 .lp-stage { translate: calc(var(--px, 0) * -7px) calc(var(--py, 0) * -5px); transition: translate 0.8s cubic-bezier(.2,.8,.2,1); }
 .lp-orb { translate: calc(var(--px, 0) * 4px) calc(var(--py, 0) * 3px); transition: translate 0.8s cubic-bezier(.2,.8,.2,1); }
 @keyframes pl-sway { 0%, 100% { rotate: -2.2deg; } 50% { rotate: 2.2deg; } }
@@ -1940,7 +1973,6 @@ div.studio-orb.studio-orb-bg,
 @keyframes pl-glint { 0%, 100% { filter: brightness(1); } 45% { filter: brightness(1.22); } 55% { filter: brightness(1.12); } }
 @keyframes pl-sheen { 0% { background-position: 120% 0; } 60%, 100% { background-position: -40% 0; } }
 @keyframes pl-spin { to { rotate: 360deg; } }
-.xuan-stage.theme-warm .lp-node img, .xuan-stage.theme-warm .ws-jelly img { animation-name: lp-float, pl-tilt; }
 
 /* repeat visit in this session: landing still shows, intro is shortened */
 .lp-quick :is(.lp-orb, .lp-node, .lp-card, .lp-enter, .lp-plexus) { animation-duration: 0.35s !important; animation-delay: 0s !important; }
