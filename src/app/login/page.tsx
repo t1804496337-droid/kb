@@ -2,7 +2,6 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { NeuralOrb } from "@/components/studio/neural-orb";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -10,6 +9,15 @@ export default function LoginPage() {
   const [password, setPassword] = React.useState("");
   const [error, setError] = React.useState<string | null>(null);
   const [pending, setPending] = React.useState(false);
+
+  // Landing-plate loop: callback ref keeps it muted + playing
+  // (React's muted prop alone is not reliable).
+  const orbVideoRef = React.useCallback((el: HTMLVideoElement | null) => {
+    if (el) {
+      el.muted = true;
+      void el.play().catch(() => {});
+    }
+  }, []);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -45,7 +53,29 @@ export default function LoginPage() {
 
   return (
     <div className="studio-login-page" data-testid="site-login">
-      <NeuralOrb className="studio-orb-bg" theme="silver" />
+      <div className="studio-login-bgwrap" aria-hidden>
+        <div className="studio-login-orb">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            className="lp-orb-plate"
+            src="/studio/landing/orb-plate.webp"
+            alt=""
+            draggable={false}
+          />
+          <video
+            ref={orbVideoRef}
+            className="lp-orb-loop"
+            autoPlay
+            muted
+            loop
+            playsInline
+            preload="auto"
+          >
+            <source src="/studio/neural-orb.webm" type="video/webm" />
+            <source src="/studio/neural-orb.mp4" type="video/mp4" />
+          </video>
+        </div>
+      </div>
       <div className="studio-login-glow" aria-hidden />
       <form className="studio-login-card" onSubmit={onSubmit}>
         <p className="studio-login-brand">

@@ -415,6 +415,13 @@ export default function StudioPage() {
   const [loginPass, setLoginPass] = React.useState("");
   const [loginError, setLoginError] = React.useState<string | null>(null);
   const [loginPending, setLoginPending] = React.useState(false);
+  // Login-gate orb loop (same plate + loop as the neural landing).
+  const loginOrbVideoRef = React.useCallback((el: HTMLVideoElement | null) => {
+    if (el) {
+      el.muted = true;
+      void el.play().catch(() => {});
+    }
+  }, []);
   React.useLayoutEffect(() => {
     try {
       if (window.sessionStorage.getItem("studio-intro-seen") === "1") setIntroQuick(true);
@@ -625,7 +632,29 @@ export default function StudioPage() {
     >
       {authed === false && (
         <div className="studio-login-page studio-login-overlay" data-testid="studio-login">
-          <NeuralOrb className="studio-orb-bg" theme={theme} />
+          <div className="studio-login-bgwrap" aria-hidden>
+            <div className="studio-login-orb">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                className="lp-orb-plate"
+                src="/studio/landing/orb-plate.webp"
+                alt=""
+                draggable={false}
+              />
+              <video
+                ref={loginOrbVideoRef}
+                className="lp-orb-loop"
+                autoPlay
+                muted
+                loop
+                playsInline
+                preload="auto"
+              >
+                <source src="/studio/neural-orb.webm" type="video/webm" />
+                <source src="/studio/neural-orb.mp4" type="video/mp4" />
+              </video>
+            </div>
+          </div>
           <div className="studio-login-glow" aria-hidden />
           <form className="studio-login-card" onSubmit={doLogin}>
             <p className="studio-login-brand">
