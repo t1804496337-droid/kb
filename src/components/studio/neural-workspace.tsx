@@ -4,20 +4,22 @@ import * as React from "react";
 import { cn } from "@/lib/utils";
 
 export type WsHub = {
-  key: "top" | "left" | "ll" | "right" | "lr";
+  /** Built-in hub key ("top"|"left"|"ll"|"right"|"lr") or `custom:<id>`. */
+  key: string;
   section: string;
   n: number;
   label: string;
   en: string;
   sub: string;
   rows: { id: string; title: string; a: string; b: string; c?: string }[];
+  /** Set for user-created modules: section is the module id, not a section. */
+  customId?: string;
 };
 
 /** Design space matches plate frames ~6.5s / 7.5s (1024x576 → 1600x820 content area). */
 const W = 1600;
 const H = 820;
 const ORB = { x: 150, y: 420, size: 270 };
-const SLOT_Y = [200, 310, 420, 530, 640];
 const JELLY_X = 300;
 const CARD_X = JELLY_X + 88;
 /** Dense fan list viewport (plate f750: ~20 rows packed on a soft arc, scrolls inside). */
@@ -27,13 +29,36 @@ const LIST_H = 716;
 const ROW_GAP_MIN = 38;
 const ROW_GAP_MAX = 58;
 
-const BEAM: Record<WsHub["key"], string> = {
+const BEAM: Record<string, string> = {
   top: "#EEF1FF",
   left: "#C8C0FF",
   ll: "#A6E6EC",
   right: "#93E2D2",
   lr: "#EBC27E",
 };
+/** Beam colour for user-created module hubs (no plate original). */
+const CUSTOM_BEAM = "#C9D4E8";
+const beamOf = (h: WsHub) => BEAM[h.key] ?? CUSTOM_BEAM;
+
+/**
+ * Hub slot ys for N hubs, centred on the plate's 420 midline: with the
+ * original five hubs this reproduces 200/310/420/530/640 exactly; extra
+ * (custom) hubs compress the spacing instead of overflowing the plate.
+ */
+function slotYs(n: number): number[] {
+  if (n <= 1) return [420];
+  const step = Math.min(110, 440 / (n - 1));
+  return Array.from({ length: n }, (_, i) => 420 + (i - (n - 1) / 2) * step);
+}
+
+/** Order with the selected hub in the middle slot, the rest in hub order. */
+function orderHubs(hubs: WsHub[], selKey: string): WsHub[] {
+  const s = hubs.find((h) => h.key === selKey) ?? hubs[0];
+  if (!s) return [];
+  const others = hubs.filter((h) => h.key !== s.key);
+  const at = Math.ceil(others.length / 2);
+  return [...others.slice(0, at), s, ...others.slice(at)];
+}
 
 function rowLayout(n: number, cardY: number) {
   const gap = n <= 1 ? ROW_GAP_MAX : Math.max(ROW_GAP_MIN, Math.min(ROW_GAP_MAX, (LIST_H - 40) / (n - 1)));
@@ -68,8 +93,8 @@ export function NeuralWorkspace({
   onOpenSection: (section: string) => void;
   onPickRow: (row: { id: string; title: string }, hub: WsHub) => void;
   onReturnLanding: () => void;
-  onSelectHub?: (key: WsHub["key"]) => void;
-  defaultHub?: WsHub["key"];
+  onSelectHub?: (key: string) => void;
+  defaultHub?: string;
   /** 数据驱动的模块总数（含用户自建模块） */
   moduleCount?: number;
   /** 数据驱动的流水线步数 */
@@ -78,8 +103,8 @@ export function NeuralWorkspace({
   const wrapRef = React.useRef<HTMLDivElement | null>(null);
   const listRef = React.useRef<HTMLDivElement | null>(null);
   const [scale, setScale] = React.useState(0.85);
-  const [sel, setSel] = React.useState<WsHub["key"]>(defaultHub);
-  const setSelNotify = (k: WsHub["key"]) => {
+  const [sel, setSel] = React.useState<string>(defaultHub);
+  const setSelNotify = (k: string) => {
     setSel(k);
     onSelectHub?.(k);
   };
@@ -87,6 +112,10 @@ export function NeuralWorkspace({
     onSelectHub?.(sel);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  // A selected hub can disappear (custom module deleted) — fall back safely.
+  React.useEffect(() => {
+    if (hubs.length && !hubs.some((h) => h.key === sel)) setSel(hubs[0].key);
+  }, [hubs, sel]);
   const [replay, setReplay] = React.useState(0);
   const [paused, setPaused] = React.useState(false);
   const [scrollTop, setScrollTop] = React.useState(0);
@@ -111,15 +140,13 @@ export function NeuralWorkspace({
     setHot(null);
   }, [sel, replay]);
 
-  const order = React.useMemo(() => {
-    const others = hubs.filter((h) => h.key !== sel);
-    const s = hubs.find((h) => h.key === sel)!;
-    return [others[0], others[1], s, others[2], others[3]].filter(Boolean) as WsHub[];
-  }, [hubs, sel]);
+  const slots = React.useMemo(() => slotYs(hubs.length), [hubs.length]);
+  const order = React.useMemo(() => orderHubs(hubs, sel), [hubs, sel]);
 
-  const selHub = hubs.find((h) => h.key === sel)!;
-  const rows = selHub.rows;
-  const cardY = SLOT_Y[2];
+  const selHub = hubs.find((h) => h.key === sel) ?? hubs[0];
+  const rows = selHub?.rows ?? [];
+  const selIdx = Math.max(0, order.findIndex((h) => h.key === selHub?.key));
+  const cardY = slots[selIdx] ?? 420;
   const cardRight: [number, number] = [CARD_X + 200, cardY];
   const lay = rowLayout(rows.length, cardY);
   const scrollable = lay.content > LIST_H;
@@ -164,7 +191,7 @@ export function NeuralWorkspace({
           </defs>
           <g filter="url(#ws-glow)">
             {order.map((h, i) => {
-              const y = SLOT_Y[i];
+              const y = slots[i];
               const d = `M ${ORB.x + 30} ${ORB.y} C ${ORB.x + 90} ${ORB.y}, ${JELLY_X - 90} ${y}, ${JELLY_X - 30} ${y}`;
               const on = h.key === sel;
               return (
@@ -172,7 +199,7 @@ export function NeuralWorkspace({
                   <path
                     className={cn("ws-beam", on && "ws-beam-on")}
                     d={d}
-                    stroke={on ? "#F2D49A" : BEAM[h.key]}
+                    stroke={on ? "#F2D49A" : beamOf(h)}
                     strokeOpacity={on ? 0.95 : 0.5}
                     strokeWidth={on ? 2.4 : 1.4}
                     fill="none"
@@ -244,7 +271,7 @@ export function NeuralWorkspace({
         </div>
 
         {order.map((h, i) => {
-          const y = SLOT_Y[i];
+          const y = slots[i];
           const on = h.key === sel;
           const js = on ? 118 : 86;
           return (
@@ -258,8 +285,14 @@ export function NeuralWorkspace({
                 aria-label={`选中${h.label}`}
                 onClick={() => (on ? onOpenSection(h.section) : setSelNotify(h.key))}
               >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={`/studio/landing/jelly-${h.key}.webp`} alt="" draggable={false} style={{ animationDelay: `${i * -1.4}s` }} />
+                {h.customId ? (
+                  <span className="ws-jelly-orb" aria-hidden>
+                    <i>{h.label.slice(0, 1)}</i>
+                  </span>
+                ) : (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={`/studio/landing/jelly-${h.key}.webp`} alt="" draggable={false} style={{ animationDelay: `${i * -1.4}s` }} />
+                )}
               </button>
               <button
                 type="button"
@@ -312,6 +345,12 @@ export function NeuralWorkspace({
               </li>
             ))}
           </ul>
+          {rows.length === 0 && selHub && (
+            <div className="ws-empty" data-testid="ws-empty">
+              <b>{selHub.label}还没有条目</b>
+              <span>点右上角「新建任务」，目标选「{selHub.label}」就能加第一条。</span>
+            </div>
+          )}
         </div>
 
         <div className="ws-tools">
@@ -349,13 +388,27 @@ export function NeuralWorkspace({
 /* ───────────── Mobile portrait adaptation (batch6 → batch7 compressed) ───────────── */
 const MW = 400;
 const M_ORB = { x: 200, y: 80, size: 150 };
-const M_SLOTS: { x: number; y: number }[] = [
+/** The original five hub slots on the orb arc; other counts sample this arc. */
+const M_ARC: { x: number; y: number }[] = [
   { x: 44, y: 122 },
   { x: 122, y: 166 },
   { x: 200, y: 200 },
   { x: 278, y: 166 },
   { x: 356, y: 122 },
 ];
+function mSlots(n: number): { x: number; y: number }[] {
+  if (n <= 1) return [M_ARC[2]];
+  return Array.from({ length: n }, (_, i) => {
+    const u = (i / (n - 1)) * (M_ARC.length - 1);
+    const lo = Math.floor(u);
+    const hi = Math.min(M_ARC.length - 1, lo + 1);
+    const f = u - lo;
+    return {
+      x: M_ARC[lo].x + (M_ARC[hi].x - M_ARC[lo].x) * f,
+      y: M_ARC[lo].y + (M_ARC[hi].y - M_ARC[lo].y) * f,
+    };
+  });
+}
 const M_CARD_TOP = 252;
 const M_CARD_H = 64;
 const M_ROW0 = M_CARD_TOP + M_CARD_H + 44;
@@ -376,12 +429,12 @@ export function NeuralWorkspaceMobile({
   onOpenSection: (section: string) => void;
   onPickRow: (row: { id: string; title: string }, hub: WsHub) => void;
   onReturnLanding: () => void;
-  onSelectHub?: (key: WsHub["key"]) => void;
+  onSelectHub?: (key: string) => void;
 }) {
   const wrapRef = React.useRef<HTMLDivElement | null>(null);
   const [scale, setScale] = React.useState(0.9);
-  const [sel, setSel] = React.useState<WsHub["key"]>("top");
-  const setSelNotify = (k: WsHub["key"]) => {
+  const [sel, setSel] = React.useState<string>("top");
+  const setSelNotify = (k: string) => {
     setSel(k);
     onSelectHub?.(k);
   };
@@ -389,6 +442,9 @@ export function NeuralWorkspaceMobile({
     onSelectHub?.(sel);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  React.useEffect(() => {
+    if (hubs.length && !hubs.some((h) => h.key === sel)) setSel(hubs[0].key);
+  }, [hubs, sel]);
 
   React.useLayoutEffect(() => {
     const el = wrapRef.current;
@@ -400,15 +456,14 @@ export function NeuralWorkspaceMobile({
     return () => ro.disconnect();
   }, []);
 
-  const order = React.useMemo(() => {
-    const others = hubs.filter((h) => h.key !== sel);
-    const s = hubs.find((h) => h.key === sel)!;
-    return [others[0], others[1], s, others[2], others[3]].filter(Boolean) as WsHub[];
-  }, [hubs, sel]);
-  const selHub = hubs.find((h) => h.key === sel)!;
-  const rows = selHub.rows.slice(0, 9);
-  const extra = selHub.rows.length - rows.length;
-  const n = rows.length + (extra > 0 ? 1 : 0);
+  const slots = React.useMemo(() => mSlots(hubs.length), [hubs.length]);
+  const order = React.useMemo(() => orderHubs(hubs, sel), [hubs, sel]);
+  const selHub = hubs.find((h) => h.key === sel) ?? hubs[0];
+  const selSlot = slots[Math.max(0, order.findIndex((h) => h.key === selHub?.key))] ?? M_ARC[2];
+  const allRows = selHub?.rows ?? [];
+  const rows = allRows.slice(0, 9);
+  const extra = allRows.length - rows.length;
+  const n = Math.max(1, rows.length + (extra > 0 ? 1 : 0));
   const H = M_ROW0 + (n - 1) * M_ROW_GAP + 40;
   const cardBottom = M_CARD_TOP + M_CARD_H;
   const J: [number, number] = [M_GUTTER - 4, cardBottom + 18];
@@ -431,7 +486,7 @@ export function NeuralWorkspaceMobile({
           </defs>
           <g filter="url(#wsm-glow)">
             {order.map((h, i) => {
-              const s = M_SLOTS[i];
+              const s = slots[i];
               const ang = Math.atan2(s.y - M_ORB.y, s.x - M_ORB.x);
               const sx = M_ORB.x + Math.cos(ang) * orbR * 0.55;
               const sy = M_ORB.y + Math.sin(ang) * orbR * 0.55;
@@ -439,7 +494,7 @@ export function NeuralWorkspaceMobile({
               const on = h.key === sel;
               return (
                 <g key={h.key}>
-                  <path className={cn("ws-beam", on && "ws-beam-on")} d={d} fill="none" stroke={on ? "#F2D49A" : BEAM[h.key]} strokeOpacity={on ? 0.95 : 0.5} strokeWidth={on ? 2 : 1.2} />
+                  <path className={cn("ws-beam", on && "ws-beam-on")} d={d} fill="none" stroke={on ? "#F2D49A" : beamOf(h)} strokeOpacity={on ? 0.95 : 0.5} strokeWidth={on ? 2 : 1.2} />
                   <circle r={2} className="ws-spark" opacity={0.85}>
                     <animateMotion dur={`${2.4 + i * 0.3}s`} repeatCount="indefinite" path={d} />
                   </circle>
@@ -448,7 +503,7 @@ export function NeuralWorkspaceMobile({
             })}
             <path
               className="ws-beam ws-beam-on"
-              d={`M 200 ${M_SLOTS[2].y + 30} L 200 ${M_CARD_TOP}`}
+              d={`M ${selSlot.x} ${selSlot.y + 30} C ${selSlot.x} ${selSlot.y + 62}, 200 ${M_CARD_TOP - 42}, 200 ${M_CARD_TOP}`}
               stroke="#F2D49A"
               strokeOpacity={0.8}
               strokeWidth={1.4}
@@ -486,7 +541,7 @@ export function NeuralWorkspaceMobile({
         </button>
 
         {order.map((h, i) => {
-          const s = M_SLOTS[i];
+          const s = slots[i];
           const on = h.key === sel;
           const js = on ? 64 : 54;
           return (
@@ -500,8 +555,14 @@ export function NeuralWorkspaceMobile({
                 aria-label={on ? `打开${h.label}` : `选中${h.label}`}
                 onClick={() => tap(h)}
               >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={`/studio/landing/jelly-${h.key}.webp`} alt="" draggable={false} style={{ animationDelay: `${i * -1.4}s` }} />
+                {h.customId ? (
+                  <span className="ws-jelly-orb" aria-hidden>
+                    <i>{h.label.slice(0, 1)}</i>
+                  </span>
+                ) : (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={`/studio/landing/jelly-${h.key}.webp`} alt="" draggable={false} style={{ animationDelay: `${i * -1.4}s` }} />
+                )}
               </button>
               {!on && (
                 <button
@@ -558,6 +619,13 @@ export function NeuralWorkspaceMobile({
               <button type="button" onClick={() => onOpenSection(selHub.section)}>
                 <span className="ws-row-t ws-row-more">+{extra} 更多 · 进入{selHub.label}</span>
               </button>
+            </li>
+          )}
+          {allRows.length === 0 && (
+            <li style={{ left: M_TEXT_X, top: dots[0].y - 25 }} data-testid="wsm-empty">
+              <span className="ws-row-t wsm-empty-t">
+                {selHub.label}还没有条目 · 在「新建任务」里给它加第一条
+              </span>
             </li>
           )}
         </ul>

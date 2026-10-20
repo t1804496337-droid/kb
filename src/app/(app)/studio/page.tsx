@@ -60,7 +60,7 @@ type BoardItem = {
   meta: string;
   hub: SectionId;
   status: string;
-  kind: "workflow" | "skill" | "pending" | "slot";
+  kind: "workflow" | "skill" | "pending" | "slot" | "custom";
 };
 
 const PILL_NAV: { id: SectionId; label: string; en: string }[] = [
@@ -84,7 +84,7 @@ type SkillEntry = {
 /** Skills grouped by owning agent; each agent maintains only its own block. */
 type SkillAgentGroup = { id: string; name: string; skills: SkillEntry[] };
 
-/** grokbot's installed skills (agent-data/workflows + aigc-course/skills). */
+/** grokbot's installed skills (agent-data/workflows). */
 const SKILLS: SkillEntry[] = [
   {
     id: "s-re",
@@ -142,63 +142,12 @@ const SKILLS: SkillEntry[] = [
     tag: "分镜",
     source: "workflows/fenjing-storyboard",
   },
-  {
-    id: "s-01",
-    name: "01-学课",
-    zh: "学课 · 飞书通",
-    tag: "流水线",
-    source: "aigc-course/skills/01-学课",
-  },
-  {
-    id: "s-02",
-    name: "02-搭账号",
-    zh: "搭账号 · Muse",
-    tag: "流水线",
-    source: "aigc-course/skills/02-搭账号",
-  },
-  {
-    id: "s-03",
-    name: "03-养号",
-    zh: "养号 · WorkBuddy",
-    tag: "流水线",
-    source: "aigc-course/skills/03-养号",
-  },
-  {
-    id: "s-04",
-    name: "04-写大纲",
-    zh: "写大纲 · 待改派",
-    tag: "流水线",
-    source: "aigc-course/skills/04-写大纲",
-  },
-  {
-    id: "s-05",
-    name: "05-出分镜",
-    zh: "出分镜 · 分镜工/豆包",
-    tag: "流水线",
-    source: "aigc-course/skills/05-出分镜",
-  },
-  {
-    id: "s-06",
-    name: "06-剪视频",
-    zh: "剪视频 · WorkBuddy+本人导出",
-    tag: "流水线",
-    source: "aigc-course/skills/06-剪视频",
-  },
-  {
-    id: "s-07",
-    name: "07-发布",
-    zh: "发布 · Muse+本人点发",
-    tag: "流水线",
-    source: "aigc-course/skills/07-发布",
-  },
-  {
-    id: "s-08",
-    name: "08-数据回炉",
-    zh: "数据回炉 · 待改派",
-    tag: "流水线",
-    source: "aigc-course/skills/08-看数据回炉",
-  },
 ];
+/** The eight aigc-course entries that used to follow (s-01…s-08:
+ *  学课/搭账号/养号/写大纲/出分镜/剪视频/发布/数据回炉) were the old 8-step
+ *  pipeline wearing skill clothes — removed together with the steps;
+ *  grokbot keeps its eight workflow skills above. Mirrored in
+ *  public/skills-sync.json. */
 
 /** Luna's installed skills (~/workspace/custom-skills). */
 const LUNA_SKILLS: SkillEntry[] = [
@@ -293,6 +242,64 @@ const todayStr = (): string => {
 const LEGACY_STEP_IDS = new Set([
   "w1", "w2", "w3", "w4", "w5", "w6", "w7", "w8",
 ]);
+/** One-time purge marker: legacy 8-step rows scrubbed from persisted hubs. */
+const PURGED_LEGACY_STEPS_KEY = "studio_purged_legacy_steps_v1";
+/**
+ * Why a purge is needed: PR #11 deleted the built-in steps from code and its
+ * sync effect cleaned React state, but the pre-#11 app had already saved the
+ * default hub rows into `studio_hub_rows_v1` ("top" rows id `w1`–`w8`,
+ * database rows `db-w1`–`db-w8`, static calendar placeholders `cal-d<day>`).
+ * The stored copy was never rewritten, and the sync effect treated unknown
+ * rows as hand-added "extra", so the dead steps kept resurfacing in the
+ * workspace fan and in every row count. Identification is conservative:
+ *  1. exact legacy ids (`w1`–`w8`, `db-w1`–`db-w8`);
+ *  2. the old static calendar placeholder ids (`cal-d<day>`);
+ *  3. an exact step title ("N 学课" / "学课" / "学课 · 飞书通 · 01-学课")
+ *     TOGETHER with a pipeline marker (a = 流水线 or `步骤 n/8`, the step's
+ *     legacy role in b, or a "· 0n-" fan suffix in the title).
+ * Hand-added rows can never match: the create flow stamps them with
+ * `row-local-*` ids (checked first) and user flow steps use `flow-*`.
+ */
+const LEGACY_STEP_TITLES = [
+  "学课", "搭账号", "养号", "写大纲", "出分镜", "剪视频", "发布", "数据回炉",
+];
+const LEGACY_STEP_ROLES = [
+  "飞书通", "Muse", "运营助手 / WorkBuddy", "待改派",
+  "分镜工 / 豆包", "WorkBuddy + 本人导出", "Muse + 本人点发",
+];
+type HubRowLike = { id: string; title: string; a: string; b: string };
+function isLegacyStepRow(r: HubRowLike): boolean {
+  if (!r || typeof r.id !== "string") return false;
+  if (r.id.startsWith("row-local-") || r.id.startsWith("flow-")) return false;
+  if (LEGACY_STEP_IDS.has(r.id)) return true;
+  if (/^db-w[1-8]$/.test(r.id)) return true;
+  if (/^cal-d\d{1,2}$/.test(r.id)) return true;
+  const title = typeof r.title === "string" ? r.title : "";
+  const bare = title.replace(/^[1-8]\s+/, "");
+  const titleHit = LEGACY_STEP_TITLES.some(
+    (t) => bare === t || bare.startsWith(`${t} · `),
+  );
+  if (!titleHit) return false;
+  return (
+    r.a === "流水线" ||
+    /^步骤 [1-8]\/8$/.test(r.a ?? "") ||
+    LEGACY_STEP_ROLES.includes(r.b ?? "") ||
+    /· 0[1-8]-/.test(title)
+  );
+}
+function purgeLegacyRows(
+  saved: Record<string, HubRowLike[]>,
+): { cleaned: Record<string, HubRowLike[]>; changed: boolean } {
+  let changed = false;
+  const cleaned: Record<string, HubRowLike[]> = {};
+  for (const [k, rows] of Object.entries(saved)) {
+    const list = Array.isArray(rows) ? rows : [];
+    const kept = list.filter((r) => !isLegacyStepRow(r));
+    if (kept.length !== list.length) changed = true;
+    cleaned[k] = kept;
+  }
+  return { cleaned, changed };
+}
 const flowZoneLabel = (z: FlowZone): string =>
   FLOW_ZONES.find((x) => x.id === z)?.label ?? z;
 
@@ -452,9 +459,25 @@ export default function StudioPage() {
       const raw = window.localStorage.getItem("studio_hub_rows_v1");
       if (raw) {
         const saved = JSON.parse(raw) as Record<string, WsHub["rows"]>;
+        // One-time purge (marker: studio_purged_legacy_steps_v1): scrub the
+        // persisted legacy 8-step rows out of every hub and write the cleaned
+        // copy back, so they cannot ride in again as "extra" rows. The
+        // parse-time filter runs on every load as a belt-and-braces.
+        const { cleaned, changed } = purgeLegacyRows(saved);
+        if (changed) {
+          window.localStorage.setItem(
+            "studio_hub_rows_v1",
+            JSON.stringify(cleaned),
+          );
+        }
+        if (!window.localStorage.getItem(PURGED_LEGACY_STEPS_KEY)) {
+          window.localStorage.setItem(PURGED_LEGACY_STEPS_KEY, "1");
+        }
         setHubs((prev) =>
-          prev.map((h) => (saved[h.key] ? { ...h, rows: saved[h.key], n: saved[h.key].length } : h)),
+          prev.map((h) => (cleaned[h.key] ? { ...h, rows: cleaned[h.key], n: cleaned[h.key].length } : h)),
         );
+      } else if (!window.localStorage.getItem(PURGED_LEGACY_STEPS_KEY)) {
+        window.localStorage.setItem(PURGED_LEGACY_STEPS_KEY, "1");
       }
     } catch {
       /* ignore */
@@ -694,7 +717,9 @@ export default function StudioPage() {
     setHubs((prev) =>
       prev.map((h) => {
         if (h.key === "ll") {
-          const extra = h.rows.filter((r) => !skillIds.has(r.id));
+          const extra = h.rows.filter(
+            (r) => !skillIds.has(r.id) && !isLegacyStepRow(r),
+          );
           const rows = [
             ...allSkills.map((k) => ({
               id: k.id,
@@ -711,7 +736,8 @@ export default function StudioPage() {
             (r) =>
               !flowIds.has(r.id) &&
               !LEGACY_STEP_IDS.has(r.id) &&
-              !r.id.startsWith("flow-"),
+              !r.id.startsWith("flow-") &&
+              !isLegacyStepRow(r),
           );
           const rows = [
             ...flowSteps.map((s, i) => ({
@@ -730,7 +756,9 @@ export default function StudioPage() {
           };
         }
         if (h.key === "right") {
-          const extra = h.rows.filter((r) => !r.id.startsWith("db-"));
+          const extra = h.rows.filter(
+            (r) => !r.id.startsWith("db-") && !isLegacyStepRow(r),
+          );
           const rows = [
             ...flowSteps.map((s) => ({
               id: `db-${s.id}`,
@@ -753,7 +781,10 @@ export default function StudioPage() {
           // `cal-d*` placeholder rows are stripped, ticket mirrors (`cal-*`)
           // and hand-added rows are preserved as-is.
           const extra = h.rows.filter(
-            (r) => !r.id.startsWith("cal-d") && !r.id.startsWith("calitem-row-"),
+            (r) =>
+              !r.id.startsWith("cal-d") &&
+              !r.id.startsWith("calitem-row-") &&
+              !isLegacyStepRow(r),
           );
           const rows = [
             ...extra,
@@ -997,6 +1028,24 @@ export default function StudioPage() {
     en: m.en,
     count: (customRows[m.id] ?? []).length,
   }));
+  // Workspace module map: one pseudo-hub per custom module, standing in the
+  // same hub column as the five built-ins and fanning its own rows.
+  const wsHubs = React.useMemo<WsHub[]>(
+    () => [
+      ...hubs,
+      ...customModules.map((m) => ({
+        key: `custom:${m.id}`,
+        section: m.id,
+        n: (customRows[m.id] ?? []).length,
+        label: m.label,
+        en: m.en,
+        sub: "自定义模块",
+        rows: customRows[m.id] ?? [],
+        customId: m.id,
+      })),
+    ],
+    [hubs, customModules, customRows],
+  );
   const openCustomFromLanding = (id: string) => {
     const mod = customModules.find((m) => m.id === id);
     if (!mod) return;
@@ -1018,7 +1067,8 @@ export default function StudioPage() {
     el?.scrollIntoView({ block: "nearest", behavior: "smooth" });
   }, [section, selectedBoardId]);
 
-  // Board items = workflow steps from state + the static ticket/skill base.
+  // Board items = workflow steps from state + the static ticket/skill base
+  // + every custom module's rows (so the module map fans them to their hub).
   const boardItems = React.useMemo<BoardItem[]>(
     () => [
       ...flowSteps.map((s, i) => ({
@@ -1030,9 +1080,20 @@ export default function StudioPage() {
         status: "自建",
         kind: "workflow" as const,
       })),
+      ...customModules.flatMap((m) =>
+        (customRows[m.id] ?? []).map((r) => ({
+          id: r.id,
+          title: r.title,
+          subtitle: m.label,
+          meta: r.a,
+          hub: m.id as SectionId,
+          status: r.c ?? "自建",
+          kind: "custom" as const,
+        })),
+      ),
       ...BOARD_ITEMS,
     ],
-    [flowSteps],
+    [flowSteps, customModules, customRows],
   );
 
   const selected =
@@ -1469,23 +1530,38 @@ export default function StudioPage() {
             {section === "workspace" && !activeCustomModule && (
               <div className="ws-desktop-layer">
                 <NeuralWorkspace
-                  hubs={hubs}
+                  hubs={wsHubs}
                   moduleCount={NEURAL_MODULES.length + customModules.length}
                   stepCount={flowCount}
                   themeLabel={currentTheme.label}
                   themeEn={currentTheme.en}
-                  onSelectHub={(k) => setActiveHubKey(k)}
+                  onSelectHub={(k) =>
+                    setActiveHubKey(k.startsWith("custom:") ? k.slice(7) : k)
+                  }
                   onCycleTheme={() => {
                     const i = THEMES.findIndex((t) => t.id === theme);
                     setTheme(THEMES[(i + 1) % THEMES.length].id);
                   }}
                   onOpenSection={(id) => {
+                    const cm = customModules.find((m) => m.id === id);
+                    if (cm) {
+                      setActiveCustom(cm.id);
+                      showToast(`打开 · ${cm.label}`);
+                      return;
+                    }
                     if (!PILL_NAV.some((p) => p.id === id)) return;
                     setSection(id as SectionId);
                     showToast(`打开 · ${PILL_NAV.find((p) => p.id === id)?.label ?? id}`);
                   }}
                   onReturnLanding={returnToLanding}
                   onPickRow={(row, hub) => {
+                    if (hub.customId) {
+                      const cm = customModules.find((m) => m.id === hub.customId);
+                      setSelectedBoardId(row.id);
+                      setActiveCustom(hub.customId);
+                      showToast(`打开 · ${cm?.label ?? hub.label} · ${row.title}`);
+                      return;
+                    }
                     if (hub.section === "ideas" && flowSteps.some((w) => w.id === row.id)) {
                       openStepDetail(row.id);
                       return;
@@ -1504,15 +1580,30 @@ export default function StudioPage() {
             {section === "workspace" && !activeCustomModule && (
               <div className="ws-mobile-layer">
                 <NeuralWorkspaceMobile
-                  hubs={hubs}
-                  onSelectHub={(k) => setActiveHubKey(k)}
+                  hubs={wsHubs}
+                  onSelectHub={(k) =>
+                    setActiveHubKey(k.startsWith("custom:") ? k.slice(7) : k)
+                  }
                   onOpenSection={(id) => {
+                    const cm = customModules.find((m) => m.id === id);
+                    if (cm) {
+                      setActiveCustom(cm.id);
+                      showToast(`打开 · ${cm.label}`);
+                      return;
+                    }
                     if (!PILL_NAV.some((p) => p.id === id)) return;
                     setSection(id as SectionId);
                     showToast(`打开 · ${PILL_NAV.find((p) => p.id === id)?.label ?? id}`);
                   }}
                   onReturnLanding={returnToLanding}
                   onPickRow={(row, hub) => {
+                    if (hub.customId) {
+                      const cm = customModules.find((m) => m.id === hub.customId);
+                      setSelectedBoardId(row.id);
+                      setActiveCustom(hub.customId);
+                      showToast(`打开 · ${cm?.label ?? hub.label} · ${row.title}`);
+                      return;
+                    }
                     if (hub.section === "ideas" && flowSteps.some((w) => w.id === row.id)) {
                       openStepDetail(row.id);
                       return;
