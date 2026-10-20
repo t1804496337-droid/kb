@@ -21,7 +21,9 @@
       "name": "My Skill",
       "zh": "我的技能",
       "tag": "工具",
-      "source": "skills/my-skill"
+      "source": "skills/my-skill",
+      "desc": "一两句话说清这个技能是做什么的、什么时候用。",
+      "detail": "详细介绍全文，可以直接放 SKILL.md 正文……"
     }
   ]
 }
@@ -35,6 +37,8 @@
 | `skills[].tag` | string | 是 | 分类标签，如「工具」「文案」 |
 | `skills[].source` | string | 是 | 来源路径/出处 |
 | `skills[].id` | string | 否 | 稳定 id；不传时前端按位置自动生成 |
+| `skills[].desc` | string | 否 | 介绍（≤ 500 字）。技能库里点开该技能时显示在详情区顶部 |
+| `skills[].detail` | string | 否 | 详细介绍全文（≤ 20000 字），如 SKILL.md 正文。点开技能时在详情区以预排版展示；不传则详情区显示「暂未同步详细介绍」 |
 
 注意：请求体里写任何 agent id 都没用——服务端只认令牌绑定的 agent，
 你只能改到自己那一段。
@@ -53,7 +57,7 @@ curl -X POST https://kb-zeta-one.vercel.app/api/skills/push \
 | 状态码 | 含义 |
 | --- | --- |
 | 200 | 成功。返回 `{ ok, agent, skills, updated_at }`；提交已进仓库 main 分支，Vercel 自动部署，约 1 分钟后线上生效 |
-| 400 | 请求体不合法：不是 JSON、`skills` 不是数组、超 200 条、字段不是字符串或超长、体积超限 |
+| 400 | 请求体不合法：不是 JSON、`skills` 不是数组、超 200 条、字段不是字符串或超长（`desc` ≤ 500 字、`detail` ≤ 20000 字）、体积超限 |
 | 401 | 没有令牌或令牌不对 |
 | 502 | 服务端读写 GitHub 失败，稍后重试 |
 | 503 | 接口未配置（服务端环境变量没配好），找 Luna |
