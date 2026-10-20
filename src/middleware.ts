@@ -40,6 +40,13 @@ export function middleware(request: NextRequest) {
   }
 
   if (authed && pathname === "/login") {
+    // Preview mode: let the owner view the login gate design without
+    // logging out or opening an incognito window. No content is exposed —
+    // /login renders only the credential form, auth still goes through
+    // /api/auth/login.
+    if (request.nextUrl.searchParams.get("preview") === "1") {
+      return NextResponse.next();
+    }
     const url = request.nextUrl.clone();
     const from = request.nextUrl.searchParams.get("from") || "/studio";
     url.pathname = from.startsWith("/") ? from : "/studio";
