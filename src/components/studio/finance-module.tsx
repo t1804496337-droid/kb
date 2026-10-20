@@ -188,7 +188,7 @@ function StatCard({
     <div
       data-testid={testid}
       {...dataProps}
-      className="studio-glass rounded-2xl p-4"
+      className="studio-glass p-4"
     >
       <p className="text-[11px] text-[color:var(--studio-muted)]">{label}</p>
       <div className="mt-1.5">{children}</div>
@@ -497,7 +497,7 @@ export function FinanceModuleView(props: FinanceModuleProps) {
     <div data-testid="finance-view" className="space-y-6">
       {/* ---------- 概览 ---------- */}
       <FinSection title="概览" en="Overview" testid="fin-overview">
-        <div className="studio-glass flex flex-wrap items-center justify-between gap-2 rounded-2xl px-4 py-3">
+        <div className="studio-glass flex flex-wrap items-center justify-between gap-2 px-4 py-3">
           <p className="text-[13px]">
             {greeting()}，这是你在 {monthLabel(nowMonth)} 的财务概览。
             <span className="ml-2 text-[11px] text-[color:var(--studio-muted)]">
@@ -699,7 +699,7 @@ export function FinanceModuleView(props: FinanceModuleProps) {
       {/* ---------- 记账明细 ---------- */}
       <FinSection title="记账明细" en="Entries" testid="fin-entries-section">
         <form
-          className="studio-glass grid gap-2 rounded-2xl p-4 md:grid-cols-[150px_110px_130px_1fr_1fr_auto]"
+          className="studio-glass grid gap-2 p-4 md:grid-cols-[150px_110px_130px_1fr_1fr_auto]"
           onSubmit={(e) => {
             e.preventDefault();
             submitEntry();
@@ -821,7 +821,7 @@ export function FinanceModuleView(props: FinanceModuleProps) {
                   key={e.id}
                   data-testid="fin-entry-row"
                   data-entry-id={e.id}
-                  className="studio-glass flex items-center gap-3 rounded-2xl px-4 py-3"
+                  className="studio-glass flex items-center gap-3 px-4 py-3"
                 >
                   <div className="min-w-0 flex-1">
                     <p className="flex flex-wrap items-center gap-2 text-sm font-medium">
@@ -1077,7 +1077,7 @@ export function FinanceModuleView(props: FinanceModuleProps) {
           data-total={liabTotal}
           data-min={liabMin}
           data-count={liabilities.length}
-          className="studio-glass flex flex-wrap items-center gap-x-6 gap-y-1 rounded-2xl px-4 py-3 text-[13px]"
+          className="studio-glass flex flex-wrap items-center gap-x-6 gap-y-1 px-4 py-3 text-[13px]"
         >
           <span>
             总负债 <b className="tabular-nums">{fmtMoney(liabTotal)}</b>
@@ -1092,7 +1092,7 @@ export function FinanceModuleView(props: FinanceModuleProps) {
         <div
           data-testid="fin-liab-advice"
           data-name={advice ? advice.name : "none"}
-          className="studio-glass rounded-2xl border-l-4 border-l-violet-500 p-4"
+          className="studio-glass border-l-4 border-l-violet-500 p-4"
         >
           <p className="flex items-center gap-2 text-[13px] font-semibold">
             优先偿还建议
@@ -1116,7 +1116,7 @@ export function FinanceModuleView(props: FinanceModuleProps) {
           )}
         </div>
         <form
-          className="studio-glass grid gap-2 rounded-2xl p-4 md:grid-cols-[1fr_120px_120px_110px_120px_auto]"
+          className="studio-glass grid gap-2 p-4 md:grid-cols-[1fr_120px_120px_110px_120px_auto]"
           onSubmit={(e) => {
             e.preventDefault();
             submitLiab();
@@ -1238,7 +1238,7 @@ export function FinanceModuleView(props: FinanceModuleProps) {
                   key={l.id}
                   data-testid="fin-liab-row"
                   data-liab-id={l.id}
-                  className="studio-glass flex items-center gap-3 rounded-2xl px-4 py-3"
+                  className="studio-glass flex items-center gap-3 px-4 py-3"
                 >
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium">
@@ -1313,7 +1313,7 @@ export function FinanceModuleView(props: FinanceModuleProps) {
           data-count={assets.length}
           data-cost={assetCost}
           data-value={assetValue === null ? "none" : assetValue}
-          className="studio-glass flex flex-wrap items-center gap-x-6 gap-y-1 rounded-2xl px-4 py-3 text-[13px]"
+          className="studio-glass flex flex-wrap items-center gap-x-6 gap-y-1 px-4 py-3 text-[13px]"
         >
           <span>
             共 <b className="tabular-nums">{assets.length}</b> 项
@@ -1332,7 +1332,7 @@ export function FinanceModuleView(props: FinanceModuleProps) {
           </span>
         </div>
         <form
-          className="studio-glass grid gap-2 rounded-2xl p-4 md:grid-cols-[1fr_110px_130px_130px_auto]"
+          className="studio-glass grid gap-2 p-4 md:grid-cols-[1fr_110px_130px_130px_auto]"
           onSubmit={(e) => {
             e.preventDefault();
             submitAsset();
@@ -1432,7 +1432,7 @@ export function FinanceModuleView(props: FinanceModuleProps) {
                   key={a.id}
                   data-testid="fin-asset-row"
                   data-asset-id={a.id}
-                  className="studio-glass flex items-center gap-3 rounded-2xl px-4 py-3"
+                  className="studio-glass flex items-center gap-3 px-4 py-3"
                 >
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium">
@@ -1488,7 +1488,7 @@ export function FinanceModuleView(props: FinanceModuleProps) {
       {/* ---------- AI 诊断（占位，走聊天回路） ---------- */}
       <div
         data-testid="fin-ai-card"
-        className="studio-glass rounded-2xl border-violet-400/30 p-4"
+        className="studio-glass border-violet-400/30 p-4"
       >
         <p className="flex items-center gap-2 text-[13px] font-semibold">
           <Sparkles className="h-4 w-4 text-violet-400" />

@@ -160,7 +160,7 @@ function ExerciseRow({
     <li
       data-testid="health-exercise-row"
       data-exercise={item.id}
-      className="studio-glass rounded-2xl px-4 py-3"
+      className="studio-glass px-4 py-3"
     >
       <div className="flex items-center gap-3">
         <div className="min-w-0 flex-1">
@@ -324,7 +324,7 @@ export function HealthModuleView({
           data-testid="health-today"
           data-dow={now.getDay()}
           data-training={training ? "1" : "0"}
-          className="studio-glass flex flex-wrap items-center justify-between gap-2 rounded-2xl px-4 py-3"
+          className="studio-glass flex flex-wrap items-center justify-between gap-2 px-4 py-3"
         >
           <p className="text-[13px]">
             今天 {WEEKDAY_LABELS[now.getDay()]} ·{" "}
@@ -371,7 +371,7 @@ export function HealthModuleView({
 
       {/* ---------- 每日打卡 ---------- */}
       <HealthSection title="每日打卡" en="Check-in" testid="health-checkin-section">
-        <div className="studio-glass rounded-2xl p-4">
+        <div className="studio-glass p-4">
           <div className="flex flex-wrap items-center gap-4">
             <button
               type="button"
@@ -463,7 +463,7 @@ export function HealthModuleView({
         ) : !sync ? (
           <div
             data-testid="health-sync-empty"
-            className="studio-glass rounded-2xl px-4 py-6 text-center"
+            className="studio-glass px-4 py-6 text-center"
           >
             <Moon className="mx-auto h-5 w-5 text-[color:var(--studio-muted)]" />
             <p className="mt-2 text-[13px] font-medium">数据待同步</p>
@@ -477,7 +477,7 @@ export function HealthModuleView({
               <div
                 data-testid="health-sleep-card"
                 data-hours={lastSleep ? lastSleep.hours : "none"}
-                className="studio-glass rounded-2xl p-4"
+                className="studio-glass p-4"
               >
                 <p className="text-[11px] text-[color:var(--studio-muted)]">
                   最近一晚睡眠
@@ -521,7 +521,7 @@ export function HealthModuleView({
                   <p className="mt-1.5 text-[13px]">暂无睡眠记录</p>
                 )}
               </div>
-              <div data-testid="health-body-card" className="studio-glass rounded-2xl p-4">
+              <div data-testid="health-body-card" className="studio-glass p-4">
                 <p className="text-[11px] text-[color:var(--studio-muted)]">
                   步数 · 体重
                 </p>
@@ -555,7 +555,7 @@ export function HealthModuleView({
       {/* ---------- 饮食 ---------- */}
       <HealthSection title="饮食" en="Diet" testid="health-diet-section">
         <div className="grid gap-3 md:grid-cols-2">
-          <div data-testid="health-diet-card" className="studio-glass rounded-2xl p-4">
+          <div data-testid="health-diet-card" className="studio-glass p-4">
             <p className="text-[11px] text-[color:var(--studio-muted)]">
               每日建议
             </p>
@@ -575,7 +575,7 @@ export function HealthModuleView({
           </div>
           <div
             data-testid="health-diet-analysis"
-            className="studio-glass rounded-2xl p-4"
+            className="studio-glass p-4"
           >
             <p className="flex items-center gap-1.5 text-[11px] text-[color:var(--studio-muted)]">
               <Camera className="h-3.5 w-3.5" />

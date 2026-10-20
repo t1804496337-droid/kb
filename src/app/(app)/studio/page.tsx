@@ -308,6 +308,10 @@ type CalItem = { id: string; date: string; title: string; note?: string };
 const CAL_ITEMS_KEY = "studio_calendar_items_v1";
 const CAL_YEAR = 2026;
 const CAL_MONTH = 10;
+/** Monday-first leading blanks for the fixed month (same formula as the
+ *  health check-in month grid, so both calendar grids align alike). */
+const CAL_FIRST_DOW =
+  (new Date(CAL_YEAR, CAL_MONTH - 1, 1).getDay() + 6) % 7;
 const calDateStr = (day: number): string =>
   `${CAL_YEAR}-${String(CAL_MONTH).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 const todayStr = (): string => {
@@ -2236,7 +2240,7 @@ export default function StudioPage() {
                               type="button"
                               data-testid={`skills-group-toggle-${agent.id}`}
                               aria-expanded={open}
-                              className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
+                              className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left hover:opacity-95"
                               onClick={() => toggleAgentOpen(agent.id)}
                             >
                               <span className="flex min-w-0 items-baseline gap-2">
@@ -2547,6 +2551,17 @@ export default function StudioPage() {
                         </button>
                       </div>
                       <div className="grid grid-cols-7 gap-1.5" data-testid="cal-grid">
+                        {["一", "二", "三", "四", "五", "六", "日"].map((w) => (
+                          <span
+                            key={w}
+                            className="text-center text-[9px] text-[color:var(--studio-muted)]"
+                          >
+                            {w}
+                          </span>
+                        ))}
+                        {Array.from({ length: CAL_FIRST_DOW }).map((_, i) => (
+                          <span key={`cal-blank-${i}`} aria-hidden="true" />
+                        ))}
                         {CAL_DAYS.map((d) => {
                           const ds = calDateStr(d);
                           const count = calItems.reduce(
