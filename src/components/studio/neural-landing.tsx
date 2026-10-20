@@ -3,6 +3,7 @@
 import * as React from "react";
 import { Pencil, RotateCcw } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { jellyMotion } from "./module-jelly";
 
 export type LandingNode = {
   key: string;
@@ -453,20 +454,23 @@ export function NeuralLanding({
                 {
                   ...toVars("d", place(DESKTOP, node)),
                   ...toVars("m", place(MOBILE, node)),
+                  ...jellyMotion(node.customId ?? node.key),
+                  "--jelly-glow": node.beam ?? BEAM[node.key] ?? "#DCE2F0",
                   animationDelay: `${0.55 + i * 0.12}s`,
                 } as React.CSSProperties
               }
               onClick={openNode}
               aria-label={`进入${node.label}`}
             >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                className={node.feather ? "lp-feather" : undefined}
-                src={node.img ?? `/studio/landing/jelly-${node.key}.webp`}
-                alt=""
-                draggable={false}
-                style={{ animationDelay: `${i * -1.3}s` }}
-              />
+              <span className="jelly-alive" aria-hidden>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  className={node.feather ? "lp-feather" : undefined}
+                  src={node.img ?? `/studio/landing/jelly-${node.key}.webp`}
+                  alt=""
+                  draggable={false}
+                />
+              </span>
             </button>
             <button
               type="button"

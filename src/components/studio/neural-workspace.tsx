@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { cn } from "@/lib/utils";
+import { jellyMotion } from "./module-jelly";
 
 export type WsHub = {
   /** Built-in hub key ("top"|"left"|"ll"|"right"|"lr") or `custom:<id>`. */
@@ -50,7 +51,7 @@ const beamOf = (h: WsHub) => h.beam ?? BEAM[h.key] ?? CUSTOM_BEAM;
  *  the shared-assignment image (the same jelly as their landing node). The
  *  glass orb with the module's initial is kept only as a fallback for when
  *  the image itself fails to load. */
-function WsJellyVisual({ hub, index }: { hub: WsHub; index: number }) {
+function WsJellyVisual({ hub }: { hub: WsHub }) {
   const [failed, setFailed] = React.useState(false);
   const src = hub.customId ? hub.img : `/studio/landing/jelly-${hub.key}.webp`;
   if (!src || failed) {
@@ -61,15 +62,16 @@ function WsJellyVisual({ hub, index }: { hub: WsHub; index: number }) {
     );
   }
   return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img
-      src={src}
-      alt=""
-      draggable={false}
-      className={hub.customId ? "ws-feather" : undefined}
-      style={{ animationDelay: `${index * -1.4}s` }}
-      onError={() => setFailed(true)}
-    />
+    <span className="jelly-alive" aria-hidden>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={src}
+        alt=""
+        draggable={false}
+        className={hub.customId ? "ws-feather" : undefined}
+        onError={() => setFailed(true)}
+      />
+    </span>
   );
 }
 
@@ -312,13 +314,21 @@ export function NeuralWorkspace({
               <button
                 type="button"
                 className={cn("ws-jelly", on && "ws-jelly-on")}
-                style={{ left: JELLY_X - js / 2 + 10, top: y - js * 0.46, width: js }}
+                style={
+                  {
+                    left: JELLY_X - js / 2 + 10,
+                    top: y - js * 0.46,
+                    width: js,
+                    ...jellyMotion(h.customId ?? h.key),
+                    "--jelly-glow": beamOf(h),
+                  } as React.CSSProperties
+                }
                 data-hub={h.section}
                 data-key={h.key}
                 aria-label={`选中${h.label}`}
                 onClick={() => (on ? onOpenSection(h.section) : setSelNotify(h.key))}
               >
-                <WsJellyVisual hub={h} index={i} />
+                <WsJellyVisual hub={h} />
               </button>
               <button
                 type="button"
@@ -575,13 +585,21 @@ export function NeuralWorkspaceMobile({
               <button
                 type="button"
                 className={cn("ws-jelly wsm-jelly", on && "ws-jelly-on")}
-                style={{ left: s.x - js / 2, top: s.y - js * 0.46, width: js }}
+                style={
+                  {
+                    left: s.x - js / 2,
+                    top: s.y - js * 0.46,
+                    width: js,
+                    ...jellyMotion(h.customId ?? h.key),
+                    "--jelly-glow": beamOf(h),
+                  } as React.CSSProperties
+                }
                 data-hub={h.section}
                 data-key={h.key}
                 aria-label={on ? `打开${h.label}` : `选中${h.label}`}
                 onClick={() => tap(h)}
               >
-                <WsJellyVisual hub={h} index={i} />
+                <WsJellyVisual hub={h} />
               </button>
               {!on && (
                 <button
