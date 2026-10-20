@@ -5,24 +5,35 @@ import { Pencil, RotateCcw } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export type LandingNode = {
-  key: "top" | "left" | "ll" | "right" | "lr";
+  key: string;
   section: string;
   n: number;
   label: string;
   en: string;
   sub: string;
+  /** Custom-module node: clicking opens the module view, not a section. */
+  customId?: string;
+  /** Explicit jelly image src (custom nodes); built-ins use jelly-<key>.webp. */
+  img?: string;
+  /** Beam color override (custom nodes). */
+  beam?: string;
+  /** Layout slot index for custom nodes (Layout.slots). */
+  slot?: number;
+  /** Feather the cutout edges with a radial mask (custom nodes only). */
+  feather?: boolean;
 };
 
 type Pt = [number, number];
+type NodeGeom = { c: Pt; w: number; anchor: Pt; card: Pt; cardW: number; bend: number };
 type Layout = {
   w: number;
   h: number;
   core: Pt;
   orb: number;
-  nodes: Record<
-    LandingNode["key"],
-    { c: Pt; w: number; anchor: Pt; card: Pt; cardW: number; bend: number }
-  >;
+  nodes: Record<"top" | "left" | "ll" | "right" | "lr", NodeGeom>;
+  /** Extra hub positions for custom-module nodes (slot 0 = upper-left,
+   *  slot 1 = upper-right, then top band / lower corners). */
+  slots: NodeGeom[];
 };
 
 /** Desktop = plate geometry (frame 01, 1024x576 → 1600x900). */
@@ -38,6 +49,20 @@ const DESKTOP: Layout = {
     right: { c: [1453, 425], w: 188, anchor: [1404, 430], card: [1390, 505], cardW: 150, bend: -0.03 },
     lr: { c: [1341, 602], w: 156, anchor: [1298, 588], card: [1290, 672], cardW: 150, bend: -0.12 },
   },
+  slots: [
+    // 0 · upper-left (health's fixed home)
+    { c: [395, 205], w: 156, anchor: [433, 226], card: [240, 280], cardW: 150, bend: 0.1 },
+    // 1 · upper-right (finance's fixed home)
+    { c: [1445, 225], w: 156, anchor: [1404, 240], card: [1205, 205], cardW: 150, bend: -0.1 },
+    // 2 · top band, left of the core
+    { c: [600, 105], w: 140, anchor: [623, 137], card: [515, 195], cardW: 150, bend: 0.05 },
+    // 3 · top band, right of the core
+    { c: [1235, 130], w: 140, anchor: [1204, 155], card: [1310, 30], cardW: 150, bend: -0.05 },
+    // 4 · lower-left corner
+    { c: [168, 692], w: 140, anchor: [205, 679], card: [262, 758], cardW: 150, bend: -0.08 },
+    // 5 · lower-right corner
+    { c: [1512, 650], w: 140, anchor: [1475, 639], card: [1330, 756], cardW: 150, bend: 0.08 },
+  ],
 };
 
 /** Mobile portrait: same angles, composition re-packed into 2:3 so nothing stacks. */
@@ -53,18 +78,42 @@ const MOBILE: Layout = {
     ll: { c: [200, 1205], w: 180, anchor: [245, 1165], card: [40, 1300], cardW: 250, bend: 0.14 },
     lr: { c: [810, 1220], w: 180, anchor: [765, 1180], card: [715, 1315], cardW: 250, bend: -0.14 },
   },
+  slots: [
+    // 0 · upper-left (health's fixed home)
+    { c: [185, 225], w: 150, anchor: [185, 225], card: [16, 296], cardW: 230, bend: 0.08 },
+    // 1 · band under the top card, jelly right of its card (finance's fixed home)
+    { c: [700, 377], w: 96, anchor: [700, 377], card: [420, 356], cardW: 230, bend: -0.06 },
+    // 2 · left edge, mid-height
+    { c: [118, 905], w: 120, anchor: [118, 905], card: [16, 972], cardW: 230, bend: 0.1 },
+    // 3 · right edge, mid-height
+    { c: [882, 905], w: 120, anchor: [882, 905], card: [754, 982], cardW: 230, bend: -0.1 },
+    // 4 · below the orb, left
+    { c: [392, 1242], w: 120, anchor: [392, 1242], card: [296, 1332], cardW: 200, bend: 0.12 },
+    // 5 · below the orb, right
+    { c: [618, 1242], w: 120, anchor: [618, 1242], card: [500, 1364], cardW: 200, bend: -0.12 },
+  ],
 };
 
 /** Mobile beam stubs: anchor = point on the jelly body facing the core (so floats never show a gap). */
-for (const key of Object.keys(MOBILE.nodes) as LandingNode["key"][]) {
-  const n = MOBILE.nodes[key];
-  const dx = MOBILE.core[0] - n.c[0];
-  const dy = MOBILE.core[1] - n.c[1];
+const aimAtCore = (L: Layout, n: NodeGeom) => {
+  const dx = L.core[0] - n.c[0];
+  const dy = L.core[1] - n.c[1];
   const d = Math.hypot(dx, dy) || 1;
   n.anchor = [Math.round(n.c[0] + (dx / d) * n.w * 0.24), Math.round(n.c[1] + (dy / d) * n.w * 0.24)];
+};
+for (const key of Object.keys(MOBILE.nodes) as (keyof Layout["nodes"])[]) {
+  aimAtCore(MOBILE, MOBILE.nodes[key]);
+}
+for (const slot of MOBILE.slots) {
+  aimAtCore(MOBILE, slot);
 }
 
-const BEAM: Record<LandingNode["key"], string> = {
+function geomOf(L: Layout, node: LandingNode): NodeGeom {
+  if (node.slot != null) return L.slots[node.slot] ?? L.slots[0];
+  return L.nodes[node.key as keyof Layout["nodes"]];
+}
+
+const BEAM: Partial<Record<string, string>> = {
   top: "#EEF1FF",
   left: "#C8C0FF",
   ll: "#A6E6EC",
@@ -117,8 +166,7 @@ const PLEXUS = (() => {
   return { pts, edges };
 })();
 
-function Web({ L, className }: { L: Layout; className: string }) {
-  const keys = Object.keys(L.nodes) as LandingNode["key"][];
+function Web({ L, nodes, className }: { L: Layout; nodes: LandingNode[]; className: string }) {
   const k = L.orb;
   return (
     <svg
@@ -161,14 +209,15 @@ function Web({ L, className }: { L: Layout; className: string }) {
         ))}
       </g>
       <g filter={`url(#lp-glow-${L.w})`}>
-        {keys.map((key) => {
-          const n = L.nodes[key];
+        {nodes.map((node, i) => {
+          const n = geomOf(L, node);
+          if (!n) return null;
           const d = curve(n.anchor, L.core, n.bend);
           return (
-            <g key={key}>
-              <path className="lp-beam" data-beam={key} d={d} stroke={BEAM[key]} strokeWidth={2} fill="none" strokeLinecap="round" />
+            <g key={node.key}>
+              <path className="lp-beam" data-beam={node.key} d={d} stroke={node.beam ?? BEAM[node.key] ?? "#DCE2F0"} strokeWidth={2} fill="none" strokeLinecap="round" />
               <circle r={3.2} className="lp-spark">
-                <animateMotion dur={`${3.2 + keys.indexOf(key) * 0.45}s`} repeatCount="indefinite" path={d} keyPoints="1;0" keyTimes="0;1" calcMode="linear" />
+                <animateMotion dur={`${3.2 + i * 0.45}s`} repeatCount="indefinite" path={d} keyPoints="1;0" keyTimes="0;1" calcMode="linear" />
               </circle>
             </g>
           );
@@ -319,16 +368,16 @@ export function NeuralLanding({
     void v.play().catch(() => {});
   }, []);
 
-  const place = (L: Layout, key: LandingNode["key"]) => {
-    const n = L.nodes[key];
+  const place = (L: Layout, node: LandingNode) => {
+    const n = geomOf(L, node);
     return {
       left: `${((n.c[0] - n.w / 2) / L.w) * 100}%`,
       top: `${((n.c[1] - (n.w * 0.92) / 2) / L.h) * 100}%`,
       width: `${(n.w / L.w) * 100}%`,
     };
   };
-  const cardPlace = (L: Layout, key: LandingNode["key"]) => {
-    const n = L.nodes[key];
+  const cardPlace = (L: Layout, node: LandingNode) => {
+    const n = geomOf(L, node);
     return {
       left: `${(n.card[0] / L.w) * 100}%`,
       top: `${(n.card[1] / L.h) * 100}%`,
@@ -351,8 +400,8 @@ export function NeuralLanding({
       data-quick={quick ? "1" : "0"}
     >
       <div className="lp-stage" data-testid="lp-stage">
-        <Web L={DESKTOP} className="lp-only-d" />
-        <Web L={MOBILE} className="lp-only-m" />
+        <Web L={DESKTOP} nodes={nodes} className="lp-only-d" />
+        <Web L={MOBILE} nodes={nodes} className="lp-only-m" />
 
         <div
           className="lp-orb"
@@ -387,26 +436,33 @@ export function NeuralLanding({
           </video>
         </div>
 
-        {nodes.map((node, i) => (
+        {nodes.map((node, i) => {
+          const openNode = () =>
+            node.customId && onOpenCustom
+              ? onOpenCustom(node.customId)
+              : onEnter(node.section);
+          return (
           <React.Fragment key={node.key}>
             <button
               type="button"
               className="lp-node"
               data-node={node.key}
               data-section={node.section}
+              data-custom={node.customId}
               style={
                 {
-                  ...toVars("d", place(DESKTOP, node.key)),
-                  ...toVars("m", place(MOBILE, node.key)),
+                  ...toVars("d", place(DESKTOP, node)),
+                  ...toVars("m", place(MOBILE, node)),
                   animationDelay: `${0.55 + i * 0.12}s`,
                 } as React.CSSProperties
               }
-              onClick={() => onEnter(node.section)}
+              onClick={openNode}
               aria-label={`进入${node.label}`}
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src={`/studio/landing/jelly-${node.key}.webp`}
+                className={node.feather ? "lp-feather" : undefined}
+                src={node.img ?? `/studio/landing/jelly-${node.key}.webp`}
                 alt=""
                 draggable={false}
                 style={{ animationDelay: `${i * -1.3}s` }}
@@ -416,14 +472,15 @@ export function NeuralLanding({
               type="button"
               className="lp-card"
               data-card={node.key}
+              data-custom={node.customId}
               style={
                 {
-                  ...toVars("d", cardPlace(DESKTOP, node.key)),
-                  ...toVars("m", cardPlace(MOBILE, node.key)),
+                  ...toVars("d", cardPlace(DESKTOP, node)),
+                  ...toVars("m", cardPlace(MOBILE, node)),
                   animationDelay: `${1.25 + i * 0.1}s`,
                 } as React.CSSProperties
               }
-              onClick={() => onEnter(node.section)}
+              onClick={openNode}
             >
               <span className="lp-card-row">
                 <span className="lp-card-ico" aria-hidden />
@@ -436,7 +493,8 @@ export function NeuralLanding({
               <span className="lp-card-sub">{node.sub}</span>
             </button>
           </React.Fragment>
-        ))}
+          );
+        })}
       </div>
 
       <div className="lp-brand" aria-label="TANG NEURAL">
