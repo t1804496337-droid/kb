@@ -1394,6 +1394,12 @@ div.studio-orb.studio-orb-bg,
   -webkit-mask-image: radial-gradient(ellipse closest-side at 50% 46%, #000 62%, transparent 84%);
   mask-image: radial-gradient(ellipse closest-side at 50% 46%, #000 62%, transparent 84%);
 }
+/* Same melt-the-square-edge mask for custom-module jellies in the workspace
+   map (they are the same re-cut frames as the landing's custom nodes). */
+.ws-jelly img.ws-feather {
+  -webkit-mask-image: radial-gradient(ellipse closest-side at 50% 46%, #000 62%, transparent 84%);
+  mask-image: radial-gradient(ellipse closest-side at 50% 46%, #000 62%, transparent 84%);
+}
 .lp-node:hover img,
 .lp-node:focus-visible img { filter: brightness(1.45) drop-shadow(0 0 12px rgba(220,225,255,.45)); }
 .lp-node:focus-visible { outline: 1px solid rgba(236,236,233,.5); outline-offset: 2px; }
@@ -1650,8 +1656,9 @@ div.studio-orb.studio-orb-bg,
 }
 .ws-jelly img { width: 100%; height: 100%; animation: lp-float 7s ease-in-out infinite; }
 .ws-jelly:hover img { filter: brightness(1.4) drop-shadow(0 0 10px rgba(220,225,255,.45)); }
-/* Custom-module hubs have no plate jellyfish: a glass orb with the module's
-   initial stands in, same float + hover language as the baked jellies. */
+/* Glass orb with the module's initial: fallback only, shown if a hub's
+   jelly image fails to load (custom modules normally render their real
+   shared-assignment jellyfish, same as the landing). */
 .ws-jelly-orb {
   display: flex; align-items: center; justify-content: center;
   width: 100%; height: 100%; border-radius: 50%;
