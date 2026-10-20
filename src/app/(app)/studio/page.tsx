@@ -27,6 +27,11 @@ import { cn } from "@/lib/utils";
 
 type ThemeId = "silver" | "warm" | "neu";
 type HubKey = "top" | "left" | "ll" | "right" | "lr";
+/** A module the user added from the UI (create-task modal). Persisted locally. */
+type CustomModule = { id: string; label: string; en: string };
+type CustomRow = { id: string; title: string; a: string; b: string; c?: string };
+const CUSTOM_MODULES_KEY = "studio_custom_modules_v1";
+const CUSTOM_ROWS_KEY = "studio_custom_rows_v1";
 const SECTION_TO_HUB: Partial<Record<string, HubKey>> = {
   ideas: "top", drafts: "ll", works: "left", database: "right", calendar: "lr",
 };
@@ -285,7 +290,7 @@ const THEMES: { id: ThemeId; label: string; en: string; short: string }[] = [
 const CAL_DAYS = Array.from({ length: 31 }, (_, i) => i + 1);
 const CAL_MARKS = new Set([19, 20, 22, 25, 28]); // ops rhythm placeholders
 
-type ModalKind = null | "edit" | "manage" | "create" | "step";
+type ModalKind = null | "edit" | "manage" | "create" | "step" | "newmodule";
 
 const WS_HUBS: WsHub[] = [
   {
@@ -338,7 +343,13 @@ export default function StudioPage() {
   const [newTitle, setNewTitle] = React.useState("");
   const [tickets, setTickets] = React.useState(PENDING_TICKETS);
   const [hubs, setHubs] = React.useState<WsHub[]>(() => WS_HUBS.map((h) => ({ ...h, rows: [...h.rows] })));
-  const [activeHubKey, setActiveHubKey] = React.useState<HubKey>("ll");
+  // Create-task target: a built-in hub key, or a custom module id.
+  const [activeHubKey, setActiveHubKey] = React.useState<string>("ll");
+  const [customModules, setCustomModules] = React.useState<CustomModule[]>([]);
+  const [customRows, setCustomRows] = React.useState<Record<string, CustomRow[]>>({});
+  const [activeCustom, setActiveCustom] = React.useState<string | null>(null);
+  const [newModuleLabel, setNewModuleLabel] = React.useState("");
+  const [newModuleEn, setNewModuleEn] = React.useState("");
   const [profileOpen, setProfileOpen] = React.useState(false);
   const [editMode, setEditMode] = React.useState(false);
   const [landing, setLanding] = React.useState<"on" | "leaving" | "off">("on");
@@ -376,6 +387,30 @@ export default function StudioPage() {
         payload[h.key] = h.rows;
       });
       window.localStorage.setItem("studio_hub_rows_v1", JSON.stringify(payload));
+    } catch {
+      /* ignore */
+    }
+  }, []);
+  React.useEffect(() => {
+    try {
+      const rawM = window.localStorage.getItem(CUSTOM_MODULES_KEY);
+      if (rawM) setCustomModules(JSON.parse(rawM) as CustomModule[]);
+      const rawR = window.localStorage.getItem(CUSTOM_ROWS_KEY);
+      if (rawR) setCustomRows(JSON.parse(rawR) as Record<string, CustomRow[]>);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+  const persistCustomModules = React.useCallback((next: CustomModule[]) => {
+    try {
+      window.localStorage.setItem(CUSTOM_MODULES_KEY, JSON.stringify(next));
+    } catch {
+      /* ignore */
+    }
+  }, []);
+  const persistCustomRows = React.useCallback((next: Record<string, CustomRow[]>) => {
+    try {
+      window.localStorage.setItem(CUSTOM_ROWS_KEY, JSON.stringify(next));
     } catch {
       /* ignore */
     }
@@ -559,6 +594,21 @@ export default function StudioPage() {
     return () => document.removeEventListener("fullscreenchange", onFs);
   }, []);
   const currentTheme = THEMES.find((t) => t.id === theme) ?? THEMES[0];
+  const activeCustomModule =
+    customModules.find((m) => m.id === activeCustom) ?? null;
+  const navItems: { id: string; label: string; en: string; custom?: boolean }[] = [
+    ...PILL_NAV.map((p) => ({ id: p.id as string, label: p.label, en: p.en })),
+    ...customModules.map((m) => ({ id: m.id, label: m.label, en: m.en, custom: true })),
+  ];
+  const openNavItem = (item: { id: string; label: string; custom?: boolean }) => {
+    if (item.custom) {
+      setActiveCustom(item.id);
+      showToast(`打开 · ${item.label}`);
+      return;
+    }
+    setActiveCustom(null);
+    setSection(item.id as SectionId);
+  };
   React.useEffect(() => {
     const hk = SECTION_TO_HUB[section];
     if (hk) setActiveHubKey(hk);
@@ -624,7 +674,7 @@ export default function StudioPage() {
         fsFallback && "xuan-stage-fs-fallback",
       )}
       data-theme={theme}
-      data-section={section}
+      data-section={activeCustomModule ? "custom" : section}
       data-minimized={minimized ? "1" : "0"}
       data-fs={isFullscreen || fsFallback ? "1" : "0"}
       data-fs-mode={fsFallback ? "css" : isFullscreen ? "api" : "off"}
@@ -730,7 +780,7 @@ export default function StudioPage() {
           "xuan-window studio-root relative z-[1] flex h-[100dvh] max-h-[100dvh] w-full flex-col overflow-hidden rounded-none border-0 md:rounded-[12px] md:border",
           `theme-${theme}`,
         )}
-        data-section={section}
+        data-section={activeCustomModule ? "custom" : section}
       >
         <NeuralOrb className="studio-orb-bg" theme={theme} />
 
@@ -851,13 +901,15 @@ export default function StudioPage() {
               className="studio-pill-nav order-3 flex w-full flex-wrap items-center justify-center gap-0.5 self-stretch rounded-full p-1 lg:order-2 lg:mx-2 lg:w-auto"
               aria-label="创作面板导航"
             >
-              {PILL_NAV.map((item) => {
-                const active = section === item.id;
+              {navItems.map((item) => {
+                const active = item.custom
+                  ? activeCustomModule?.id === item.id
+                  : section === item.id && !activeCustomModule;
                 return (
                   <button
                     key={item.id}
                     type="button"
-                    onClick={() => setSection(item.id)}
+                    onClick={() => openNavItem(item)}
                     className={cn(
                       "rounded-full px-2.5 py-1.5 text-left transition-all sm:px-3",
                       active
@@ -995,11 +1047,11 @@ export default function StudioPage() {
           </div>
 
           <div className="studio-scroll min-h-0 flex-1 overflow-y-auto pb-2">
-            {section === "workspace" && (
+            {section === "workspace" && !activeCustomModule && (
               <div className="ws-desktop-layer">
                 <NeuralWorkspace
                   hubs={hubs}
-                  moduleCount={NEURAL_MODULES.length}
+                  moduleCount={NEURAL_MODULES.length + customModules.length}
                   stepCount={WORKFLOW_STEPS.length}
                   themeLabel={currentTheme.label}
                   themeEn={currentTheme.en}
@@ -1030,7 +1082,7 @@ export default function StudioPage() {
                 />
               </div>
             )}
-            {section === "workspace" && (
+            {section === "workspace" && !activeCustomModule && (
               <div className="ws-mobile-layer">
                 <NeuralWorkspaceMobile
                   hubs={hubs}
@@ -1059,7 +1111,7 @@ export default function StudioPage() {
             )}
             <div className="ws-legacy grid min-h-0 gap-4 lg:grid-cols-[minmax(0,1fr)_260px]">
               <div className="min-w-0 space-y-4" key={section}>
-                {section === "workspace" && (
+                {section === "workspace" && !activeCustomModule && (
                   <SectionPane
                     icon={<LayoutGrid className="h-4 w-4" />}
                     title="工作台"
@@ -1077,7 +1129,22 @@ export default function StudioPage() {
                     <NeuralModuleMap
                       items={BOARD_ITEMS}
                       selectedId={selectedBoardId}
+                      modules={[
+                        ...NEURAL_MODULES,
+                        ...customModules.map((m) => ({
+                          id: m.id as SectionId,
+                          n: (customRows[m.id] ?? []).length,
+                          label: m.label,
+                          en: m.en,
+                        })),
+                      ]}
                       onOpen={(id) => {
+                        const cm = customModules.find((m) => m.id === id);
+                        if (cm) {
+                          setActiveCustom(cm.id);
+                          showToast(`打开 · ${cm.label}`);
+                          return;
+                        }
                         setSection(id);
                         showToast(
                           `打开 · ${PILL_NAV.find((p) => p.id === id)?.label ?? id}`,
@@ -1091,7 +1158,7 @@ export default function StudioPage() {
                   </SectionPane>
                 )}
 
-                {section === "works" && (
+                {section === "works" && !activeCustomModule && (
                   <>
                     <header>
                       <h1 className="studio-slogan text-2xl font-semibold tracking-tight md:text-[1.75rem]">
@@ -1179,7 +1246,7 @@ export default function StudioPage() {
                   </>
                 )}
 
-                {section === "drafts" && (
+                {section === "drafts" && !activeCustomModule && (
                   <SectionPane
                     icon={<Wrench className="h-4 w-4" />}
                     title="创作池 · Skill 库"
@@ -1226,7 +1293,7 @@ export default function StudioPage() {
                   </SectionPane>
                 )}
 
-                {section === "ideas" && (
+                {section === "ideas" && !activeCustomModule && (
                   <SectionPane
                     icon={<Workflow className="h-4 w-4" />}
                     title="灵感池 · 8 步工作流"
@@ -1271,7 +1338,7 @@ export default function StudioPage() {
                   </SectionPane>
                 )}
 
-                {section === "calendar" && (
+                {section === "calendar" && !activeCustomModule && (
                   <SectionPane
                     icon={<CalendarDays className="h-4 w-4" />}
                     title="日历表"
@@ -1338,7 +1405,7 @@ export default function StudioPage() {
                   </SectionPane>
                 )}
 
-                {section === "database" && (
+                {section === "database" && !activeCustomModule && (
                   <SectionPane
                     icon={<Database className="h-4 w-4" />}
                     title="数据库"
@@ -1394,6 +1461,53 @@ export default function StudioPage() {
                           ))}
                         </tbody>
                       </table>
+                    </div>
+                  </SectionPane>
+                )}
+
+                {activeCustomModule && (
+                  <SectionPane
+                    icon={<LayoutGrid className="h-4 w-4" />}
+                    title={activeCustomModule.label}
+                    en={activeCustomModule.en}
+                    desc="自定义模块 · 在「新建任务」里给它加条目，数据保存在本机浏览器"
+                  >
+                    <div data-testid="custom-module-view">
+                      {(customRows[activeCustomModule.id] ?? []).length === 0 ? (
+                        <p className="text-[12px] text-[color:var(--studio-muted)]">
+                          还没有条目。点右上角「新建任务」，目标模块选「{activeCustomModule.label}」即可添加。
+                        </p>
+                      ) : (
+                        <ul className="space-y-2">
+                          {(customRows[activeCustomModule.id] ?? []).map((row) => (
+                            <li key={row.id}>
+                              <button
+                                type="button"
+                                className={cn(
+                                  "studio-glass flex w-full items-center justify-between gap-3 px-4 py-3 text-left hover:opacity-95",
+                                  selectedBoardId === row.id && "studio-row-on",
+                                )}
+                                onClick={() => {
+                                  setSelectedBoardId(row.id);
+                                  showToast(`选中 · ${row.title}`);
+                                }}
+                              >
+                                <div className="min-w-0">
+                                  <p className="text-sm font-medium">{row.title}</p>
+                                  <p className="truncate text-[10px] text-[color:var(--studio-muted)]">
+                                    {row.a} · {row.b}
+                                  </p>
+                                </div>
+                                {row.c && (
+                                  <span className="shrink-0 rounded-full px-2 py-0.5 text-[10px] studio-pill-active">
+                                    {row.c}
+                                  </span>
+                                )}
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
                     </div>
                   </SectionPane>
                 )}
@@ -1674,6 +1788,7 @@ export default function StudioPage() {
                 {modal === "edit" && "编辑条目"}
                 {modal === "manage" && "管理面板"}
                 {modal === "create" && "新建任务"}
+                {modal === "newmodule" && "新建模块"}
                 {modal === "step" && "步骤详情"}
               </h2>
               <button
@@ -1837,6 +1952,7 @@ export default function StudioPage() {
                           section === nav.id && "xuan-btn-primary",
                         )}
                         onClick={() => {
+                          setActiveCustom(null);
                           setSection(nav.id);
                           setModal(null);
                           showToast(`打开 · ${nav.label}`);
@@ -1848,6 +1964,62 @@ export default function StudioPage() {
                     );
                   })}
                 </div>
+                {customModules.length > 0 && (
+                  <div className="grid gap-1.5">
+                    <p className="text-[11px] text-[color:var(--studio-muted)]">
+                      自建模块
+                    </p>
+                    {customModules.map((m) => (
+                      <div key={m.id} className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          data-manage={m.id}
+                          className={cn(
+                            "xuan-btn w-full justify-between",
+                            activeCustom === m.id && "xuan-btn-primary",
+                          )}
+                          onClick={() => {
+                            setActiveCustom(m.id);
+                            setModal(null);
+                            showToast(`打开 · ${m.label}`);
+                          }}
+                        >
+                          <span>{m.label} <small className="opacity-60">{m.en}</small></span>
+                          <span className="tabular-nums opacity-70">
+                            {(customRows[m.id] ?? []).length}
+                          </span>
+                        </button>
+                        <button
+                          type="button"
+                          data-testid={`delete-module-${m.id}`}
+                          className="xuan-btn shrink-0"
+                          aria-label={`删除${m.label}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const n = (customRows[m.id] ?? []).length;
+                            if (!window.confirm(`删除模块「${m.label}」及其 ${n} 条条目？`)) return;
+                            setCustomModules((prev) => {
+                              const next = prev.filter((x) => x.id !== m.id);
+                              persistCustomModules(next);
+                              return next;
+                            });
+                            setCustomRows((prev) => {
+                              const next = { ...prev };
+                              delete next[m.id];
+                              persistCustomRows(next);
+                              return next;
+                            });
+                            if (activeCustom === m.id) setActiveCustom(null);
+                            if (activeHubKey === m.id) setActiveHubKey("ll");
+                            showToast(`已删除模块 · ${m.label}`);
+                          }}
+                        >
+                          删除
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
                 <div className="flex flex-wrap gap-2 border-t border-[color:var(--studio-border)] pt-3">
                   {["同步 Skill 库", "刷新流水线状态", "导出待办 CSV"].map((a) => (
                     <button
@@ -1866,7 +2038,25 @@ export default function StudioPage() {
             )}
 
             {modal === "create" && (() => {
-              const target = hubs.find((h) => h.key === activeHubKey) ?? hubs[0];
+              const targets = [
+                ...hubs.map((h) => ({
+                  key: h.key as string,
+                  label: h.label,
+                  en: h.en,
+                  section: h.section as string,
+                  count: h.rows.length,
+                  custom: false,
+                })),
+                ...customModules.map((m) => ({
+                  key: m.id,
+                  label: m.label,
+                  en: m.en,
+                  section: m.id,
+                  count: (customRows[m.id] ?? []).length,
+                  custom: true,
+                })),
+              ];
+              const target = targets.find((t) => t.key === activeHubKey) ?? targets[0];
               return (
               <div className="space-y-3 text-[13px]" data-testid="modal-create">
                 <p className="text-[11px] text-[color:var(--studio-muted)]">
@@ -1890,15 +2080,27 @@ export default function StudioPage() {
                   <select
                     data-testid="create-hub"
                     value={activeHubKey}
-                    onChange={(e) => setActiveHubKey(e.target.value as HubKey)}
+                    onChange={(e) => setActiveHubKey(e.target.value)}
                     className="mt-1 w-full rounded-[10px] border border-[color:var(--studio-border)] bg-black/20 px-3 py-2 outline-none"
                   >
-                    {hubs.map((h) => (
-                      <option key={h.key} value={h.key}>
-                        {h.label} · {h.en}（{h.rows.length}）
+                    {targets.map((t) => (
+                      <option key={t.key} value={t.key}>
+                        {t.label} · {t.en}（{t.count}）
                       </option>
                     ))}
                   </select>
+                  <button
+                    type="button"
+                    data-testid="create-new-module"
+                    className="mt-2 text-[12px] font-medium text-[color:var(--studio-accent)] hover:underline"
+                    onClick={() => {
+                      setNewModuleLabel("");
+                      setNewModuleEn("");
+                      setModal("newmodule");
+                    }}
+                  >
+                    ＋ 新建模块（不在列表里就建一个）
+                  </button>
                 </label>
                 <button
                   type="button"
@@ -1914,6 +2116,22 @@ export default function StudioPage() {
                       b: "tang",
                       c: "新",
                     };
+                    if (target.custom) {
+                      setCustomRows((prev) => {
+                        const next = {
+                          ...prev,
+                          [target.key]: [row, ...(prev[target.key] ?? [])],
+                        };
+                        persistCustomRows(next);
+                        return next;
+                      });
+                      setSelectedBoardId(id);
+                      setModal(null);
+                      setNewTitle("");
+                      setActiveCustom(target.key);
+                      showToast(`已加入 ${target.label} · ${title}`);
+                      return;
+                    }
                     setHubs((prev) => {
                       const next = prev.map((h) =>
                         h.key === target.key
@@ -1942,6 +2160,77 @@ export default function StudioPage() {
               </div>
               );
             })()}
+
+            {modal === "newmodule" && (
+              <div className="space-y-3 text-[13px]" data-testid="modal-newmodule">
+                <p className="text-[11px] text-[color:var(--studio-muted)]">
+                  新模块会出现在导航、工作台模块图和管理面板里，计数自动跟着变。
+                </p>
+                <label className="block">
+                  <span className="text-[10px] text-[color:var(--studio-muted)]">
+                    模块名称（必填）
+                  </span>
+                  <input
+                    data-testid="newmodule-label"
+                    value={newModuleLabel}
+                    onChange={(e) => setNewModuleLabel(e.target.value)}
+                    placeholder="比如：选题库"
+                    className="mt-1 w-full rounded-[10px] border border-[color:var(--studio-border)] bg-black/20 px-3 py-2 outline-none"
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-[10px] text-[color:var(--studio-muted)]">
+                    英文名（可不填）
+                  </span>
+                  <input
+                    data-testid="newmodule-en"
+                    value={newModuleEn}
+                    onChange={(e) => setNewModuleEn(e.target.value)}
+                    placeholder="比如：TOPICS（空着自动用 CUSTOM）"
+                    className="mt-1 w-full rounded-[10px] border border-[color:var(--studio-border)] bg-black/20 px-3 py-2 outline-none"
+                  />
+                </label>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    className="xuan-btn justify-center"
+                    data-testid="newmodule-back"
+                    onClick={() => setModal("create")}
+                  >
+                    返回
+                  </button>
+                  <button
+                    type="button"
+                    className="xuan-btn xuan-btn-primary flex-1 justify-center"
+                    data-testid="newmodule-submit"
+                    onClick={() => {
+                      const label = newModuleLabel.trim();
+                      if (!label) {
+                        showToast("先填模块名称");
+                        return;
+                      }
+                      const en =
+                        newModuleEn.trim().toUpperCase().slice(0, 24) || "CUSTOM";
+                      const mod: CustomModule = {
+                        id: `custom-${Date.now()}`,
+                        label,
+                        en,
+                      };
+                      setCustomModules((prev) => {
+                        const next = [...prev, mod];
+                        persistCustomModules(next);
+                        return next;
+                      });
+                      setActiveHubKey(mod.id);
+                      setModal("create");
+                      showToast(`模块已建 · ${label}，接下来给它加条目`);
+                    }}
+                  >
+                    建模块
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -1990,11 +2279,13 @@ function NeuralModuleMap({
   selectedId,
   onOpen,
   onSelectItem,
+  modules = NEURAL_MODULES,
 }: {
   items: BoardItem[];
   selectedId: string | null;
   onOpen: (id: SectionId) => void;
   onSelectItem: (item: BoardItem) => void;
+  modules?: typeof NEURAL_MODULES;
 }) {
   const wrapRef = React.useRef<HTMLDivElement | null>(null);
   const hubRefs = React.useRef<Record<string, HTMLButtonElement | null>>({});
@@ -2091,7 +2382,7 @@ function NeuralModuleMap({
             <span className="studio-neural-core-badge">关系图</span>
           </div>
           <div className="studio-neural-hubs">
-            {NEURAL_MODULES.map((m) => (
+            {modules.map((m) => (
               <button
                 key={m.id}
                 type="button"
