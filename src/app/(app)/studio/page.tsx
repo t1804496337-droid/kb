@@ -18,11 +18,18 @@ import {
   Workflow,
   Wrench,
   CircleDot,
+  Wallet,
 } from "lucide-react";
 import { NeuralOrb } from "@/components/studio/neural-orb";
 import { NeuralLanding, type LandingNode } from "@/components/studio/neural-landing";
 import { NeuralWorkspace, NeuralWorkspaceMobile, type WsHub } from "@/components/studio/neural-workspace";
 import { WorksSyncSection } from "@/components/studio/works-sync";
+import {
+  FinanceModuleView,
+  type FinanceEntry,
+  type FinanceLiability,
+  type FinanceAsset,
+} from "@/components/studio/finance-module";
 import { XUANZI_PROMPTS } from "@/lib/xuanzi-prompts";
 import { cn } from "@/lib/utils";
 
@@ -40,6 +47,39 @@ const SEEDED_MODULES_KEY = "studio_seeded_modules_v1";
 const SEED_MODULES: CustomModule[] = [
   { id: "health", label: "身体健康", en: "HEALTH" },
   { id: "finance", label: "财务系统管理", en: "FINANCE" },
+];
+/** Finance module （财务系统管理） storage: entries / liabilities / assets /
+ *  monthly budget, all local — every number in the module is derived from
+ *  these, nothing is hard-coded. */
+const FIN_ENTRIES_KEY = "studio_finance_entries_v1";
+const FIN_LIABILITIES_KEY = "studio_finance_liabilities_v1";
+const FIN_ASSETS_KEY = "studio_finance_assets_v1";
+const FIN_BUDGET_KEY = "studio_finance_budget_v1";
+const FIN_SEEDED_KEY = "studio_finance_seeded_v1";
+/** First-run seed for finance entries: Tang's real ledger rows
+ *  (~/workspace/goals/ai-2/hidden_files/ledger/ledger.csv, both 2026-10-17).
+ *  Written only when the entries key is absent AND the seed marker is unset,
+ *  so entries the user deleted never come back. Marked source:"ledger" and
+ *  shown with a 「台账导入」 badge. */
+const FINANCE_SEED_ENTRIES: FinanceEntry[] = [
+  {
+    id: "fin-seed-ledger-1",
+    date: "2026-10-17",
+    kind: "expense",
+    amount: 22,
+    category: "日用",
+    note: "水+烟",
+    source: "ledger",
+  },
+  {
+    id: "fin-seed-ledger-2",
+    date: "2026-10-17",
+    kind: "expense",
+    amount: 401.54,
+    category: "还款",
+    note: "微信分付还款",
+    source: "ledger",
+  },
 ];
 /** Landing hubs are data-driven: every custom module gets a native jelly
  *  node on the landing (health/finance pinned to the upper corners), the
@@ -736,6 +776,211 @@ export default function StudioPage() {
     [calItems],
   );
   const calItemCount = calItems.length;
+  // Finance module （财务系统管理）: entries / liabilities / assets / budget,
+  // all localStorage-backed. Every figure in the module view is derived
+  // from these arrays — see components/studio/finance-module.tsx.
+  const [finEntries, setFinEntries] = React.useState<FinanceEntry[]>([]);
+  const [finLiabilities, setFinLiabilities] = React.useState<FinanceLiability[]>([]);
+  const [finAssets, setFinAssets] = React.useState<FinanceAsset[]>([]);
+  const [finBudget, setFinBudget] = React.useState<number | null>(null);
+  React.useEffect(() => {
+    try {
+      // Entries: seed once from Tang's real ledger (see FINANCE_SEED_ENTRIES).
+      const rawE = window.localStorage.getItem(FIN_ENTRIES_KEY);
+      let entries: FinanceEntry[] = [];
+      if (rawE) {
+        const arr = JSON.parse(rawE) as FinanceEntry[];
+        if (Array.isArray(arr)) {
+          entries = arr.filter(
+            (e) =>
+              e &&
+              typeof e.id === "string" &&
+              typeof e.date === "string" &&
+              /^\d{4}-\d{2}-\d{2}$/.test(e.date) &&
+              (e.kind === "income" || e.kind === "expense") &&
+              typeof e.amount === "number" &&
+              Number.isFinite(e.amount) &&
+              typeof e.category === "string",
+          );
+        }
+      }
+      if (!window.localStorage.getItem(FIN_SEEDED_KEY)) {
+        if (!rawE) {
+          entries = [...FINANCE_SEED_ENTRIES];
+          window.localStorage.setItem(FIN_ENTRIES_KEY, JSON.stringify(entries));
+        }
+        window.localStorage.setItem(FIN_SEEDED_KEY, "1");
+      }
+      setFinEntries(entries);
+      const rawL = window.localStorage.getItem(FIN_LIABILITIES_KEY);
+      if (rawL) {
+        const arr = JSON.parse(rawL) as FinanceLiability[];
+        if (Array.isArray(arr)) {
+          setFinLiabilities(
+            arr.filter(
+              (l) =>
+                l &&
+                typeof l.id === "string" &&
+                typeof l.name === "string" &&
+                typeof l.total === "number" &&
+                typeof l.remaining === "number",
+            ),
+          );
+        }
+      }
+      const rawA = window.localStorage.getItem(FIN_ASSETS_KEY);
+      if (rawA) {
+        const arr = JSON.parse(rawA) as FinanceAsset[];
+        if (Array.isArray(arr)) {
+          setFinAssets(
+            arr.filter(
+              (a) =>
+                a &&
+                typeof a.id === "string" &&
+                typeof a.name === "string" &&
+                typeof a.cost === "number",
+            ),
+          );
+        }
+      }
+      const rawB = window.localStorage.getItem(FIN_BUDGET_KEY);
+      if (rawB) {
+        const n = Number(rawB);
+        if (Number.isFinite(n) && n > 0) setFinBudget(n);
+      }
+    } catch {
+      /* ignore */
+    }
+  }, []);
+  const persistFinEntries = React.useCallback((next: FinanceEntry[]) => {
+    try {
+      window.localStorage.setItem(FIN_ENTRIES_KEY, JSON.stringify(next));
+    } catch {
+      /* ignore */
+    }
+  }, []);
+  const persistFinLiabilities = React.useCallback(
+    (next: FinanceLiability[]) => {
+      try {
+        window.localStorage.setItem(FIN_LIABILITIES_KEY, JSON.stringify(next));
+      } catch {
+        /* ignore */
+      }
+    },
+    [],
+  );
+  const persistFinAssets = React.useCallback((next: FinanceAsset[]) => {
+    try {
+      window.localStorage.setItem(FIN_ASSETS_KEY, JSON.stringify(next));
+    } catch {
+      /* ignore */
+    }
+  }, []);
+  const addFinEntry = React.useCallback(
+    (data: Omit<FinanceEntry, "id">) => {
+      const entry: FinanceEntry = { ...data, id: `fin-${Date.now()}` };
+      setFinEntries((prev) => {
+        const next = [...prev, entry];
+        persistFinEntries(next);
+        return next;
+      });
+      return entry;
+    },
+    [persistFinEntries],
+  );
+  const updateFinEntry = React.useCallback(
+    (id: string, data: Omit<FinanceEntry, "id" | "source">) => {
+      setFinEntries((prev) => {
+        const next = prev.map((e) => (e.id === id ? { ...e, ...data } : e));
+        persistFinEntries(next);
+        return next;
+      });
+    },
+    [persistFinEntries],
+  );
+  const deleteFinEntry = React.useCallback(
+    (id: string) => {
+      setFinEntries((prev) => {
+        const next = prev.filter((e) => e.id !== id);
+        persistFinEntries(next);
+        return next;
+      });
+    },
+    [persistFinEntries],
+  );
+  const addFinLiability = React.useCallback(
+    (data: Omit<FinanceLiability, "id">) => {
+      const item: FinanceLiability = { ...data, id: `finl-${Date.now()}` };
+      setFinLiabilities((prev) => {
+        const next = [...prev, item];
+        persistFinLiabilities(next);
+        return next;
+      });
+      return item;
+    },
+    [persistFinLiabilities],
+  );
+  const updateFinLiability = React.useCallback(
+    (id: string, data: Omit<FinanceLiability, "id">) => {
+      setFinLiabilities((prev) => {
+        const next = prev.map((l) => (l.id === id ? { ...l, ...data } : l));
+        persistFinLiabilities(next);
+        return next;
+      });
+    },
+    [persistFinLiabilities],
+  );
+  const deleteFinLiability = React.useCallback(
+    (id: string) => {
+      setFinLiabilities((prev) => {
+        const next = prev.filter((l) => l.id !== id);
+        persistFinLiabilities(next);
+        return next;
+      });
+    },
+    [persistFinLiabilities],
+  );
+  const addFinAsset = React.useCallback(
+    (data: Omit<FinanceAsset, "id">) => {
+      const item: FinanceAsset = { ...data, id: `fina-${Date.now()}` };
+      setFinAssets((prev) => {
+        const next = [...prev, item];
+        persistFinAssets(next);
+        return next;
+      });
+      return item;
+    },
+    [persistFinAssets],
+  );
+  const updateFinAsset = React.useCallback(
+    (id: string, data: Omit<FinanceAsset, "id">) => {
+      setFinAssets((prev) => {
+        const next = prev.map((a) => (a.id === id ? { ...a, ...data } : a));
+        persistFinAssets(next);
+        return next;
+      });
+    },
+    [persistFinAssets],
+  );
+  const deleteFinAsset = React.useCallback(
+    (id: string) => {
+      setFinAssets((prev) => {
+        const next = prev.filter((a) => a.id !== id);
+        persistFinAssets(next);
+        return next;
+      });
+    },
+    [persistFinAssets],
+  );
+  const setFinBudgetPersisted = React.useCallback((n: number | null) => {
+    setFinBudget(n);
+    try {
+      if (n === null) window.localStorage.removeItem(FIN_BUDGET_KEY);
+      else window.localStorage.setItem(FIN_BUDGET_KEY, String(n));
+    } catch {
+      /* ignore */
+    }
+  }, []);
   const allSkills = React.useMemo(
     () => skillAgents.flatMap((a) => a.skills),
     [skillAgents],
@@ -1100,6 +1345,13 @@ export default function StudioPage() {
       return { ...node, n: live, sub: `${flowCount} 步拉新流水线` };
     return { ...node, n: live };
   });
+  // Site-wide count for a custom module. 口径： finance counts its ledger
+  // entries (finEntries) — its rows live in the finance store, not in
+  // customRows — every other module counts its custom rows. All surfaces
+  // (landing node / card row, module map, manage panel, create targets)
+  // go through this one helper so the numbers can never disagree.
+  const customModuleCount = (m: CustomModule): number =>
+    m.id === "finance" ? finEntries.length : (customRows[m.id] ?? []).length;
   // Custom modules as native landing nodes: health/finance first (pinned to
   // slots 0/1), the rest in creation order filling the remaining slots.
   const orderedCustomModules = [
@@ -1124,7 +1376,7 @@ export default function StudioPage() {
       section: "workspace",
       customId: m.id,
       slot,
-      n: (customRows[m.id] ?? []).length,
+      n: customModuleCount(m),
       label: m.label,
       en: m.en,
       sub: "自定义模块",
@@ -1154,7 +1406,7 @@ export default function StudioPage() {
       id: m.id,
       label: m.label,
       en: m.en,
-      count: (customRows[m.id] ?? []).length,
+      count: customModuleCount(m),
     }));
   // Workspace module map: one pseudo-hub per custom module, standing in the
   // same hub column as the five built-ins and fanning its own rows.
@@ -1164,7 +1416,7 @@ export default function StudioPage() {
       ...customModules.map((m) => ({
         key: `custom:${m.id}`,
         section: m.id,
-        n: (customRows[m.id] ?? []).length,
+        n: customModuleCount(m),
         label: m.label,
         en: m.en,
         sub: "自定义模块",
@@ -1172,7 +1424,8 @@ export default function StudioPage() {
         customId: m.id,
       })),
     ],
-    [hubs, customModules, customRows],
+    // finEntries feeds customModuleCount for the finance hub's n.
+    [hubs, customModules, customRows, finEntries],
   );
   const openCustomFromLanding = (id: string) => {
     const mod = customModules.find((m) => m.id === id);
@@ -1791,7 +2044,7 @@ export default function StudioPage() {
                         ),
                         ...customModules.map((m) => ({
                           id: m.id as SectionId,
-                          n: (customRows[m.id] ?? []).length,
+                          n: customModuleCount(m),
                           label: m.label,
                           en: m.en,
                         })),
@@ -2453,7 +2706,32 @@ export default function StudioPage() {
                   </SectionPane>
                 )}
 
-                {activeCustomModule && (
+                {activeCustomModule && activeCustomModule.id === "finance" ? (
+                  <SectionPane
+                    icon={<Wallet className="h-4 w-4" />}
+                    title={activeCustomModule.label}
+                    en={activeCustomModule.en}
+                    desc="概览 · 记账 · 月度报告 · 负债 · 资产 —— 数字全部由本机数据派生"
+                  >
+                    <FinanceModuleView
+                      entries={finEntries}
+                      liabilities={finLiabilities}
+                      assets={finAssets}
+                      budget={finBudget}
+                      onAddEntry={addFinEntry}
+                      onUpdateEntry={updateFinEntry}
+                      onDeleteEntry={deleteFinEntry}
+                      onAddLiability={addFinLiability}
+                      onUpdateLiability={updateFinLiability}
+                      onDeleteLiability={deleteFinLiability}
+                      onAddAsset={addFinAsset}
+                      onUpdateAsset={updateFinAsset}
+                      onDeleteAsset={deleteFinAsset}
+                      onSetBudget={setFinBudgetPersisted}
+                      showToast={showToast}
+                    />
+                  </SectionPane>
+                ) : activeCustomModule ? (
                   <SectionPane
                     icon={<LayoutGrid className="h-4 w-4" />}
                     title={activeCustomModule.label}
@@ -2498,7 +2776,7 @@ export default function StudioPage() {
                       )}
                     </div>
                   </SectionPane>
-                )}
+                ) : null}
               </div>
 
               <aside className="studio-glass flex min-h-[320px] flex-col gap-3 p-3 lg:min-h-0">
@@ -3069,7 +3347,7 @@ export default function StudioPage() {
                         >
                           <span>{m.label} <small className="opacity-60">{m.en}</small></span>
                           <span className="tabular-nums opacity-70">
-                            {(customRows[m.id] ?? []).length}
+                            {customModuleCount(m)}
                           </span>
                         </button>
                         <button
@@ -3079,7 +3357,7 @@ export default function StudioPage() {
                           aria-label={`删除${m.label}`}
                           onClick={(e) => {
                             e.stopPropagation();
-                            const n = (customRows[m.id] ?? []).length;
+                            const n = customModuleCount(m);
                             if (!window.confirm(`删除模块「${m.label}」及其 ${n} 条条目？`)) return;
                             setCustomModules((prev) => {
                               const next = prev.filter((x) => x.id !== m.id);
@@ -3135,7 +3413,7 @@ export default function StudioPage() {
                   label: m.label,
                   en: m.en,
                   section: m.id,
-                  count: (customRows[m.id] ?? []).length,
+                  count: customModuleCount(m),
                   custom: true,
                 })),
               ];
