@@ -19,6 +19,7 @@ import {
   Wrench,
   CircleDot,
   Wallet,
+  HeartPulse,
 } from "lucide-react";
 import { NeuralOrb } from "@/components/studio/neural-orb";
 import { NeuralLanding, type LandingNode } from "@/components/studio/neural-landing";
@@ -30,6 +31,7 @@ import {
   type FinanceLiability,
   type FinanceAsset,
 } from "@/components/studio/finance-module";
+import { HealthModuleView } from "@/components/studio/health-module";
 import { XUANZI_PROMPTS } from "@/lib/xuanzi-prompts";
 import { cn } from "@/lib/utils";
 
@@ -56,6 +58,9 @@ const FIN_LIABILITIES_KEY = "studio_finance_liabilities_v1";
 const FIN_ASSETS_KEY = "studio_finance_assets_v1";
 const FIN_BUDGET_KEY = "studio_finance_budget_v1";
 const FIN_SEEDED_KEY = "studio_finance_seeded_v1";
+/** Health module （身体健康） check-ins: "YYYY-MM-DD" array, local only.
+ *  The module's site-wide count is the total number of check-in days. */
+const HEALTH_CHECKINS_KEY = "studio_health_checkins_v1";
 /** First-run seed for finance entries: Tang's real ledger rows
  *  (~/workspace/goals/ai-2/hidden_files/ledger/ledger.csv, both 2026-10-17).
  *  Written only when the entries key is absent AND the seed marker is unset,
@@ -981,6 +986,43 @@ export default function StudioPage() {
       /* ignore */
     }
   }, []);
+  // Health module （身体健康）: daily check-ins, localStorage-backed.
+  // Site-wide count for the module = total check-in days (see
+  // customModuleCount) — same pattern as finance entries.
+  const [healthCheckins, setHealthCheckins] = React.useState<string[]>([]);
+  React.useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(HEALTH_CHECKINS_KEY);
+      if (raw) {
+        const arr = JSON.parse(raw) as unknown;
+        if (Array.isArray(arr)) {
+          setHealthCheckins([
+            ...new Set(
+              arr.filter(
+                (d): d is string =>
+                  typeof d === "string" && /^\d{4}-\d{2}-\d{2}$/.test(d),
+              ),
+            ),
+          ]);
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+  }, []);
+  const toggleHealthCheckin = React.useCallback((date: string) => {
+    setHealthCheckins((prev) => {
+      const next = prev.includes(date)
+        ? prev.filter((d) => d !== date)
+        : [...prev, date].sort();
+      try {
+        window.localStorage.setItem(HEALTH_CHECKINS_KEY, JSON.stringify(next));
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  }, []);
   const allSkills = React.useMemo(
     () => skillAgents.flatMap((a) => a.skills),
     [skillAgents],
@@ -1346,12 +1388,17 @@ export default function StudioPage() {
     return { ...node, n: live };
   });
   // Site-wide count for a custom module. 口径： finance counts its ledger
-  // entries (finEntries) — its rows live in the finance store, not in
+  // entries (finEntries), health counts its total check-in days
+  // (healthCheckins) — their rows live in their own stores, not in
   // customRows — every other module counts its custom rows. All surfaces
   // (landing node / card row, module map, manage panel, create targets)
   // go through this one helper so the numbers can never disagree.
   const customModuleCount = (m: CustomModule): number =>
-    m.id === "finance" ? finEntries.length : (customRows[m.id] ?? []).length;
+    m.id === "finance"
+      ? finEntries.length
+      : m.id === "health"
+        ? healthCheckins.length
+        : (customRows[m.id] ?? []).length;
   // Custom modules as native landing nodes: health/finance first (pinned to
   // slots 0/1), the rest in creation order filling the remaining slots.
   const orderedCustomModules = [
@@ -1424,8 +1471,8 @@ export default function StudioPage() {
         customId: m.id,
       })),
     ],
-    // finEntries feeds customModuleCount for the finance hub's n.
-    [hubs, customModules, customRows, finEntries],
+    // finEntries / healthCheckins feed customModuleCount for their hubs' n.
+    [hubs, customModules, customRows, finEntries, healthCheckins],
   );
   const openCustomFromLanding = (id: string) => {
     const mod = customModules.find((m) => m.id === id);
@@ -2728,6 +2775,19 @@ export default function StudioPage() {
                       onUpdateAsset={updateFinAsset}
                       onDeleteAsset={deleteFinAsset}
                       onSetBudget={setFinBudgetPersisted}
+                      showToast={showToast}
+                    />
+                  </SectionPane>
+                ) : activeCustomModule && activeCustomModule.id === "health" ? (
+                  <SectionPane
+                    icon={<HeartPulse className="h-4 w-4" />}
+                    title={activeCustomModule.label}
+                    en={activeCustomModule.en}
+                    desc="今日安排 · 每日打卡 · 健康数据 · 饮食 —— 计划源自塑形计划，数据走 health-sync 下发"
+                  >
+                    <HealthModuleView
+                      checkins={healthCheckins}
+                      onToggleCheckin={toggleHealthCheckin}
                       showToast={showToast}
                     />
                   </SectionPane>
