@@ -539,6 +539,39 @@ export default function StudioPage() {
     }
     skillsOpenLoaded.current = true;
   }, []);
+  // Database zones: per-zone open state with its own memory
+  // (`studio_db_open_v1`, independent of the skills library drawers).
+  // Zones default to OPEN — the database is a lookup table and used to
+  // render fully expanded; remembering an explicit close is enough.
+  const [dbOpen, setDbOpen] = React.useState<Record<string, boolean>>({});
+  const dbOpenLoaded = React.useRef(false);
+  // Same save-before-load ordering as the skills drawers above.
+  React.useEffect(() => {
+    if (!dbOpenLoaded.current) return;
+    try {
+      window.localStorage.setItem("studio_db_open_v1", JSON.stringify(dbOpen));
+    } catch {
+      /* storage unavailable */
+    }
+  }, [dbOpen]);
+  React.useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem("studio_db_open_v1");
+      if (raw) {
+        const parsed = JSON.parse(raw) as Record<string, unknown>;
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+          const next: Record<string, boolean> = {};
+          for (const [k, v] of Object.entries(parsed)) {
+            if (typeof v === "boolean") next[k] = v;
+          }
+          setDbOpen(next);
+        }
+      }
+    } catch {
+      /* storage unavailable */
+    }
+    dbOpenLoaded.current = true;
+  }, []);
   // Workflow steps (灵感池): user-managed, zoned by executor, persisted
   // locally. Starts empty — the built-in 8 steps were cleared by request.
   const [flowSteps, setFlowSteps] = React.useState<FlowStep[]>([]);
@@ -1565,6 +1598,14 @@ export default function StudioPage() {
     searchingSkills ? true : (skillsOpen[agentId] ?? false);
   const toggleAgentOpen = (agentId: string) =>
     setSkillsOpen((prev) => ({ ...prev, [agentId]: !(prev[agentId] ?? false) }));
+
+  // Database zone drawers: the database table is zoned by owning agent
+  // (same grouping as the skills library) plus one zone for the workflow
+  // steps it has always carried. Unset zones render open (see dbOpen).
+  const isDbZoneOpen = (zoneId: string) => dbOpen[zoneId] ?? true;
+  const toggleDbZone = (zoneId: string) =>
+    setDbOpen((prev) => ({ ...prev, [zoneId]: !(prev[zoneId] ?? true) }));
+  const flowZoneOpen = isDbZoneOpen("workflow");
 
   return (
     <div
@@ -2695,57 +2736,155 @@ export default function StudioPage() {
                     icon={<Database className="h-4 w-4" />}
                     title="数据库"
                     en="Database"
-                    desc="Skill + 流水线字段表"
+                    desc="Skill + 流水线字段表 · 按 Agent 分区"
                   >
-                    <div className="studio-glass overflow-hidden">
-                      <table className="w-full text-left text-[12px]">
-                        <thead className="text-[color:var(--studio-muted)]">
-                          <tr className="border-b border-[color:var(--studio-border)]">
-                            <th className="px-3 py-2 font-medium">名称</th>
-                            <th className="px-3 py-2 font-medium">类型</th>
-                            <th className="px-3 py-2 font-medium">状态</th>
-                            <th className="px-3 py-2 font-medium">来源</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {allSkills.map((s) => (
-                            <tr
-                              key={s.id}
-                              className="cursor-pointer border-b border-[color:var(--studio-border)] last:border-0 hover:bg-white/5"
-                              onClick={() => {
-                                setSelectedBoardId(s.id);
-                                setSection("drafts");
-                                showToast(`定位 Skill · ${s.zh}`);
-                              }}
+                    <div className="space-y-3" data-testid="database-zones">
+                      {skillAgents.map((agent) => {
+                        const open = isDbZoneOpen(agent.id);
+                        return (
+                          <div
+                            key={agent.id}
+                            data-db-group={agent.id}
+                            data-open={open ? "1" : "0"}
+                            className="studio-glass overflow-hidden"
+                          >
+                            <button
+                              type="button"
+                              data-testid={`db-group-toggle-${agent.id}`}
+                              aria-expanded={open}
+                              className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left hover:opacity-95"
+                              onClick={() => toggleDbZone(agent.id)}
                             >
-                              <td className="px-3 py-2.5">{s.zh}</td>
-                              <td className="px-3 py-2.5">{s.tag}</td>
-                              <td className="px-3 py-2.5">已装</td>
-                              <td className="max-w-[140px] truncate px-3 py-2.5 text-[color:var(--studio-muted)]">
-                                {s.source}
-                              </td>
-                            </tr>
-                          ))}
-                          {flowSteps.map((s, i) => (
-                            <tr
-                              key={s.id}
-                              className="cursor-pointer border-b border-[color:var(--studio-border)] last:border-0 hover:bg-white/5"
-                              onClick={() => openStepDetail(s.id)}
+                              <span className="flex min-w-0 items-baseline gap-2">
+                                <span className="text-[13px] font-semibold">
+                                  {agent.name}
+                                </span>
+                                <span className="text-[10px] uppercase tracking-wider text-[color:var(--studio-muted)]">
+                                  {agent.id} · {agent.skills.length} 条
+                                </span>
+                              </span>
+                              <ChevronDown
+                                className={cn(
+                                  "h-4 w-4 shrink-0 transition-transform duration-200",
+                                  open && "rotate-180",
+                                )}
+                              />
+                            </button>
+                            <div
+                              className={cn(
+                                "studio-collapse",
+                                open && "studio-collapse-open",
+                              )}
                             >
-                              <td className="px-3 py-2.5">
-                                {i + 1} {s.title}
-                              </td>
-                              <td className="px-3 py-2.5">流水线</td>
-                              <td className="px-3 py-2.5">
-                                {flowZoneLabel(s.zone)}区
-                              </td>
-                              <td className="px-3 py-2.5 text-[color:var(--studio-muted)]">
-                                {s.note ?? "灵感池 · 自建步骤"}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                              <div className="studio-collapse-inner">
+                                <div className="overflow-x-auto">
+                                  <table className="w-full text-left text-[12px]">
+                                    <thead className="text-[color:var(--studio-muted)]">
+                                      <tr className="border-b border-[color:var(--studio-border)]">
+                                        <th className="px-3 py-2 font-medium">名称</th>
+                                        <th className="px-3 py-2 font-medium">类型</th>
+                                        <th className="px-3 py-2 font-medium">状态</th>
+                                        <th className="px-3 py-2 font-medium">来源</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {agent.skills.map((s) => (
+                                        <tr
+                                          key={s.id}
+                                          className="cursor-pointer border-b border-[color:var(--studio-border)] last:border-0 hover:bg-white/5"
+                                          onClick={() => {
+                                            setSelectedBoardId(s.id);
+                                            setSection("drafts");
+                                            showToast(`定位 Skill · ${s.zh}`);
+                                          }}
+                                        >
+                                          <td className="px-3 py-2.5">{s.zh}</td>
+                                          <td className="px-3 py-2.5">{s.tag}</td>
+                                          <td className="px-3 py-2.5">已装</td>
+                                          <td className="max-w-[140px] truncate px-3 py-2.5 text-[color:var(--studio-muted)]">
+                                            {s.source}
+                                          </td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                      {flowSteps.length > 0 && (
+                        <div
+                          data-db-group="workflow"
+                          data-open={flowZoneOpen ? "1" : "0"}
+                          className="studio-glass overflow-hidden"
+                        >
+                          <button
+                            type="button"
+                            data-testid="db-group-toggle-workflow"
+                            aria-expanded={flowZoneOpen}
+                            className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left hover:opacity-95"
+                            onClick={() => toggleDbZone("workflow")}
+                          >
+                            <span className="flex min-w-0 items-baseline gap-2">
+                              <span className="text-[13px] font-semibold">
+                                流水线步骤
+                              </span>
+                              <span className="text-[10px] uppercase tracking-wider text-[color:var(--studio-muted)]">
+                                灵感池 · {flowSteps.length} 条
+                              </span>
+                            </span>
+                            <ChevronDown
+                              className={cn(
+                                "h-4 w-4 shrink-0 transition-transform duration-200",
+                                flowZoneOpen && "rotate-180",
+                              )}
+                            />
+                          </button>
+                          <div
+                            className={cn(
+                              "studio-collapse",
+                              flowZoneOpen && "studio-collapse-open",
+                            )}
+                          >
+                            <div className="studio-collapse-inner">
+                              <div className="overflow-x-auto">
+                                <table className="w-full text-left text-[12px]">
+                                  <thead className="text-[color:var(--studio-muted)]">
+                                    <tr className="border-b border-[color:var(--studio-border)]">
+                                      <th className="px-3 py-2 font-medium">名称</th>
+                                      <th className="px-3 py-2 font-medium">类型</th>
+                                      <th className="px-3 py-2 font-medium">状态</th>
+                                      <th className="px-3 py-2 font-medium">来源</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {flowSteps.map((s, i) => (
+                                      <tr
+                                        key={s.id}
+                                        className="cursor-pointer border-b border-[color:var(--studio-border)] last:border-0 hover:bg-white/5"
+                                        onClick={() => openStepDetail(s.id)}
+                                      >
+                                        <td className="px-3 py-2.5">
+                                          {i + 1} {s.title}
+                                        </td>
+                                        <td className="px-3 py-2.5">流水线</td>
+                                        <td className="px-3 py-2.5">
+                                          {flowZoneLabel(s.zone)}区
+                                        </td>
+                                        <td className="px-3 py-2.5 text-[color:var(--studio-muted)]">
+                                          {s.note ?? "灵感池 · 自建步骤"}
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </SectionPane>
                 )}
