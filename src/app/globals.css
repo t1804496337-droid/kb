@@ -3062,6 +3062,7 @@ div.studio-orb.studio-orb-bg,
 .hud-c-pur { color: #cf7dff; text-shadow: 0 0 7px rgba(178, 0, 255, 0.8); }
 .hud-c-grn { color: #3dff9e; text-shadow: 0 0 7px rgba(61, 255, 158, 0.7); }
 .hud-c-amb { color: #ffb03a; text-shadow: 0 0 7px rgba(255, 176, 58, 0.7); }
+.hud-c-dim { color: #5f7194; }
 .hud-led {
   width: 7px;
   height: 7px;
@@ -3404,6 +3405,20 @@ div.studio-orb.studio-orb-bg,
   white-space: nowrap;
 }
 .hud-srow .hud-tag { margin-left: auto; }
+.hud-srow-btn {
+  font: inherit;
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  border-bottom: 1px dashed rgba(140, 180, 255, 0.12);
+  cursor: pointer;
+  color: inherit;
+}
+.hud-srow-btn:last-child { border-bottom: none; }
+.hud-srow-btn:hover { background: rgba(0, 255, 255, 0.05); }
+.hud-srow-btn:hover .hud-name { color: #fff; }
 .hud-bar {
   height: 5px;
   margin-top: 6px;
@@ -3821,8 +3836,121 @@ div.studio-orb.studio-orb-bg,
   color: var(--hud-cyan);
   letter-spacing: 0.08em;
 }
+/* ── module completion pass (2026-10-21, branch module-complete) ── */
+.hud-module-input {
+  font: inherit;
+  font-size: 11px;
+  color: #e8f4ff;
+  background: rgba(13, 18, 34, 0.66);
+  border: 1px solid rgba(0, 255, 255, 0.3);
+  padding: 7px 10px;
+  width: 100%;
+  margin-bottom: 12px;
+  outline: none;
+  color-scheme: dark;
+}
+.hud-module-input:focus { border-color: rgba(0, 255, 255, 0.7); box-shadow: 0 0 10px rgba(0, 255, 255, 0.15); }
+.hud-module-input::placeholder { color: #5f7194; }
+.hud-module-input-flex { flex: 1; min-width: 140px; margin-bottom: 0; }
+.hud-module-input-date { width: 150px; flex: none; margin-bottom: 0; }
+.hud-module-form {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.hud-module-toggle {
+  font: inherit;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: var(--hud-cyan);
+  background: rgba(0, 255, 255, 0.06);
+  border: 1px solid rgba(0, 255, 255, 0.4);
+  padding: 3px 9px;
+  cursor: pointer;
+  white-space: nowrap;
+  align-self: center;
+}
+.hud-module-toggle:hover { background: rgba(0, 255, 255, 0.14); }
+.hud-module-del {
+  font: inherit;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: #ff7ab8;
+  background: none;
+  border: 1px solid rgba(255, 0, 127, 0.35);
+  padding: 3px 8px;
+  cursor: pointer;
+  white-space: nowrap;
+  align-self: center;
+}
+.hud-module-del:hover { background: rgba(255, 0, 127, 0.12); }
+.hud-module-detail {
+  border: 1px solid rgba(178, 0, 255, 0.3);
+  border-top: none;
+  background: rgba(10, 8, 22, 0.72);
+  padding: 10px 12px;
+  margin: -6px 0 8px;
+  font-size: 10.5px;
+  line-height: 1.65;
+  color: var(--hud-ink);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 340px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(178, 0, 255, 0.4) transparent;
+}
+.hud-module-link {
+  display: inline-block;
+  margin-top: 3px;
+  font-size: 10.5px;
+  color: var(--hud-cyan);
+  letter-spacing: 0.03em;
+  text-decoration: none;
+  text-shadow: 0 0 6px rgba(0, 255, 255, 0.5);
+}
+.hud-module-link:hover { text-decoration: underline; }
+.hud-module-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-bottom: 6px;
+}
+.hud-module-stat {
+  border: 1px solid rgba(255, 234, 0, 0.28);
+  background: linear-gradient(180deg, rgba(26, 24, 8, 0.5), rgba(6, 8, 16, 0.6));
+  padding: 12px;
+}
+.hud-module-stat-v {
+  font-size: 17px;
+  color: var(--hud-yellow);
+  letter-spacing: 0.04em;
+  text-shadow: 0 0 9px rgba(255, 234, 0, 0.45);
+}
+.hud-module-stat-k {
+  margin-top: 4px;
+  font-size: 9.5px;
+  color: var(--hud-dim);
+  letter-spacing: 0.1em;
+}
+.hud-module-zone-empty {
+  border: 1px dashed rgba(140, 180, 255, 0.22);
+  padding: 10px 12px;
+  font-size: 10.5px;
+  color: var(--hud-dim);
+  letter-spacing: 0.06em;
+  margin-bottom: 6px;
+}
+.hud-module-cal-today {
+  outline: 1px solid rgba(0, 255, 255, 0.65);
+  outline-offset: -1px;
+  color: #fff;
+}
 @media (max-width: 760px) {
   .hud-module-hub { grid-template-columns: 1fr; }
+  .hud-module-stats { grid-template-columns: 1fr; }
   .hud-module-row { flex-wrap: wrap; }
   .hud-module-body { padding: 10px 10px 14px; }
 }
