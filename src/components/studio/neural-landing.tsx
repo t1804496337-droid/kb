@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { cn } from "@/lib/utils";
+import { HudModuleContent } from "@/components/studio/hud-module-content";
 
 export type LandingNode = {
   key: string;
@@ -239,8 +240,16 @@ export function NeuralLanding({
    * above — same caliber as the overview, never invented. ---- */
   const [sel, setSel] = React.useState<string | null>(null);
   const [hov, setHov] = React.useState<string | null>(null);
-  const toggleSel = (id: string) =>
-    setSel((s) => (s === id ? null : id));
+  /* Module content view (2026-10-21): clicking a tree row / console card
+   * opens that module's real content in place of the overview; the back
+   * button returns. Selection linkage above still applies — opening a
+   * module also focuses it, and the focus survives the trip back. */
+  const [view, setView] = React.useState<string | null>(null);
+  const openModule = (id: string) => {
+    setSel(id);
+    setView(id);
+  };
+  const viewMod = view ? (modules.find((m) => m.id === view) ?? null) : null;
   const selMod = sel ? (modules.find((m) => m.id === sel) ?? null) : null;
   const sharePct = (n: number | null) =>
     n == null || total <= 0 ? 0 : Math.round((n / total) * 100);
@@ -431,6 +440,19 @@ export function NeuralLanding({
           </div>
         </div>
 
+        {viewMod ? (
+          <HudModuleContent
+            id={viewMod.id}
+            label={viewMod.label}
+            en={viewMod.en}
+            color={viewMod.color}
+            count={viewMod.count}
+            countText={viewMod.countText}
+            onBack={() => setView(null)}
+            onOpen={openModule}
+          />
+        ) : (
+          <>
         {/* ══ MAIN ══ */}
         <div className="hud-main">
           {/* LEFT · THE ORB TREE */}
@@ -560,7 +582,7 @@ export function NeuralLanding({
                     height="28"
                     fill="transparent"
                     style={{ cursor: "pointer" }}
-                    onClick={() => toggleSel(r.id)}
+                    onClick={() => openModule(r.id)}
                     onMouseEnter={() => setHov(r.id)}
                     onMouseLeave={() => setHov(null)}
                   >
@@ -849,7 +871,7 @@ export function NeuralLanding({
                 style={{ color: m.color }}
                 data-module={m.id}
                 aria-pressed={sel === m.id}
-                onClick={() => toggleSel(m.id)}
+                onClick={() => openModule(m.id)}
               >
                 <div className="hud-ic">{m.icon}</div>
                 <div className="hud-nm">{m.label}</div>
@@ -875,6 +897,8 @@ export function NeuralLanding({
             ))}
           </div>
         </div>
+          </>
+        )}
       </div>
     </div>
   );
