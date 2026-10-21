@@ -1950,19 +1950,19 @@ div.studio-orb.studio-orb-bg,
 .xuan-stage:is(.theme-warm, .theme-neu) .ws-beam-on { stroke: var(--pl-accent); }
 .xuan-stage:is(.theme-warm, .theme-neu) .lp-plexus line { stroke: var(--pl-beam); }
 .xuan-stage:is(.theme-warm, .theme-neu) .lp-plexus circle { fill: var(--pl-dot); }
-.xuan-stage:is(.theme-warm, .theme-neu) :is(.lp-node, .ws-jelly) { isolation: isolate; }
-.xuan-stage:is(.theme-warm, .theme-neu) :is(.lp-node, .ws-jelly)::before {
+.xuan-stage:is(.theme-warm, .theme-neu) :is(.lp-node, .ws-jelly, .ws-node) { isolation: isolate; }
+.xuan-stage:is(.theme-warm, .theme-neu) :is(.lp-node, .ws-jelly, .ws-node)::before {
   content: ""; position: absolute; z-index: -1; left: 9%; width: 82%; aspect-ratio: 1; top: 50%; transform: translateY(-50%);
   border-radius: 50%;
   background: radial-gradient(circle at 47% 40%, #2c2e34 0%, #17181c 55%, #0c0d0f 100%);
   box-shadow: var(--pl-well-shadow);
 }
-.xuan-stage:is(.theme-warm, .theme-neu) :is(.lp-node, .ws-jelly) :is(img, video) {
+.xuan-stage:is(.theme-warm, .theme-neu) :is(.lp-node, .ws-jelly, .ws-node) :is(img, video) {
   -webkit-mask-image: radial-gradient(circle closest-side, #000 76%, transparent 90%);
   mask-image: radial-gradient(circle closest-side, #000 76%, transparent 90%);
 }
 .ws-orb img { position: relative; }
-.xuan-stage:is(.theme-warm, .theme-neu) :is(.lp-orb, .ws-orb)::before {
+.xuan-stage:is(.theme-warm, .theme-neu) :is(.lp-orb, .ws-orb, .ws-orb-main, .wsm-orb)::before {
   content: ""; position: absolute; inset: 13%; border-radius: 50%;
   background: radial-gradient(circle at 47% 42%, #26282d 0%, #131417 60%, #0a0b0d 100%);
   box-shadow: var(--pl-well-shadow-lg);
@@ -1978,7 +1978,7 @@ div.studio-orb.studio-orb-bg,
   mask-image: radial-gradient(circle closest-side, transparent calc(100% - 3px), #000 calc(100% - 2.5px));
   opacity: 0.9; animation: pl-spin 60s linear infinite;
 }
-.xuan-stage.theme-warm :is(.lp-orb-plate, .ws-orb img, .lp-node img, .ws-jelly img, .lp-node video, .ws-jelly video) { filter: sepia(0.16) saturate(0.95); }
+.xuan-stage.theme-warm :is(.lp-orb-plate, .ws-orb img, .lp-node img, .ws-jelly img, .lp-node video, .ws-jelly video, .ws-node img, .ws-node video) { filter: sepia(0.16) saturate(0.95); }
 .xuan-stage:is(.theme-warm, .theme-neu) .lp-orb-rays { opacity: 0.35; }
 
 /* motion: cage sway + sheen, jellyfish tilt + glint, pointer parallax (stills feel alive) */
@@ -1992,7 +1992,7 @@ div.studio-orb.studio-orb-bg,
   animation: lp-breathe 6s ease-in-out infinite, pl-sway 22s ease-in-out infinite, pl-sheen 7.5s ease-in-out infinite;
 }
 .xuan-stage:is(.theme-warm, .theme-neu) .pl-shimmer { -webkit-mask-size: auto; opacity: 0.3; }
-.lp-node:hover, .lp-node:focus-visible, .ws-jelly:hover { filter: brightness(1.35) drop-shadow(0 0 12px rgba(220, 225, 255, 0.4)); }
+.lp-node:hover, .lp-node:focus-visible, .ws-jelly:hover, .ws-node:hover, .ws-node:focus-visible { filter: brightness(1.35) drop-shadow(0 0 12px rgba(220, 225, 255, 0.4)); }
 
 /* jellyfish life: every jelly drifts slowly around its anchor, sways a
    degree, pulses its bell and breathes a soft glow in its own beam colour.
@@ -2999,4 +2999,133 @@ div.studio-orb.studio-orb-bg,
   .studio-login-field input:focus { animation: none; }
   .login-transition-orb, .login-transition { animation: none; }
   .login-transition-silk line { animation: none; stroke-dashoffset: 0; }
+}
+
+/* ═══ Framework restored: orb core + orbiting nodes + silk fan ═══
+ * The module map's original composition (see neural-workspace.tsx):
+ * the living orb is the core and single return affordance, the module
+ * jellies orbit it with their count cards, and the spider silk is the
+ * skeleton — beams in the panorama, a row fan once a hub is picked.
+ * The two-column rules above stay only for the row cards they share
+ * (.ws-panel / .ws-list / .ws-rowcard) and the mobile strip. */
+.ws-backdrop {
+  position: absolute; inset: 0; z-index: 0; pointer-events: none;
+  /* The landing's wash, verbatim: plate scenes stay a DARK well in
+   * every theme (only the page frame lightens — see .lp-backdrop),
+   * which is what lets the screen-blended jellies and orb read
+   * identically in silver / warm / neu. */
+  background: radial-gradient(120% 90% at 50% 42%, #1d1f22 0%, #131415 55%, #0b0b0c 100%);
+}
+/* Light themes on the (dark) desktop scene: the fan silk and beads
+ * keep the silver values — the tokenised dark-ink variants were tuned
+ * for the two-column era's light scene and would vanish here. The orb
+ * loop likewise blends screen against the dark well (its skin's
+ * multiply is for light backgrounds, e.g. the mobile scene). */
+.xuan-stage:is(.theme-warm, .theme-neu) [data-testid="ws-desktop"] .ws-fan-line { stroke: rgba(225, 228, 240, 0.46); }
+.xuan-stage:is(.theme-warm, .theme-neu) [data-testid="ws-desktop"] .ws-fan-dot { fill: #d8dcff; }
+.xuan-stage:is(.theme-warm, .theme-neu) [data-testid="ws-desktop"] .ws-bead { fill: rgba(236, 236, 233, 0.7); }
+.xuan-stage:is(.theme-warm, .theme-neu) .ws-orb-main .studio-orb-video { mix-blend-mode: screen; opacity: 0.92; }
+/* Same story for the plate's own headlines: they sit directly on the
+ * dark scene (not on cards), so in light themes they take the silver
+ * ink instead of the tokenised dark-on-light text colour. */
+.xuan-stage:is(.theme-warm, .theme-neu) [data-testid="ws-desktop"] :is(.ws-head h2, .ws-stats b, .ws-panel-head b) { color: #ecece9; }
+.xuan-stage:is(.theme-warm, .theme-neu) [data-testid="ws-desktop"] :is(.ws-head-en, .ws-kicker span, .ws-stats, .ws-panel-count, .ws-panel-sub) { color: rgba(236, 236, 233, 0.55); }
+.ws-orb-main {
+  /* No z-index: it would make the button a stacking context and trap
+   * the orb video's screen blend inside it (black-square core). DOM
+   * order keeps it above the silk svg and below the cards. */
+  transition: left 0.7s cubic-bezier(0.3, 0.7, 0.2, 1), top 0.7s cubic-bezier(0.3, 0.7, 0.2, 1),
+    width 0.7s cubic-bezier(0.3, 0.7, 0.2, 1), height 0.7s cubic-bezier(0.3, 0.7, 0.2, 1);
+}
+.ws-nodewrap {
+  position: absolute;
+  transition: left 0.7s cubic-bezier(0.3, 0.7, 0.2, 1), top 0.7s cubic-bezier(0.3, 0.7, 0.2, 1),
+    width 0.7s cubic-bezier(0.3, 0.7, 0.2, 1), height 0.7s cubic-bezier(0.3, 0.7, 0.2, 1);
+}
+.ws-nodewrap-on::after {
+  content: ""; position: absolute; inset: -8px; border-radius: 50%;
+  border: 1px solid var(--hub-beam, transparent); opacity: 0.55; pointer-events: none;
+}
+/* The node button reuses the .ws-hubrow hook (poster/press contracts)
+ * but none of its row chrome: it is the landing's node — a screen-
+ * blended jelly disc that melts into the scene (silver) or into its
+ * own dark well (light themes, via the shared :is() rules above). */
+.ws-node.ws-hubrow {
+  position: absolute; inset: 0; display: block; height: auto;
+  padding: 0; border: 0; border-radius: 50%;
+  background: none; box-shadow: none;
+  mix-blend-mode: screen; cursor: pointer;
+  animation: lp-node-spring 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+  transition: scale 0.25s ease;
+}
+/* Light themes: the well ::before (shared rule) must not inherit the
+ * hub row bar's opacity: 0. */
+.xuan-stage:is(.theme-warm, .theme-neu) .ws-node.ws-hubrow::before { opacity: 1; }
+.ws-nodejelly { position: absolute; inset: 0; display: block; }
+/* The orb loop's frame carries a warm haze that is not pure black, so
+ * at anchor size its rectangle survives the screen blend as a visible
+ * slab. Feather the video itself into an ellipse (the same trick the
+ * light themes apply to plate media) — the cage web and live nodes
+ * stay unmasked above it. */
+.ws-orb-main .studio-orb-video, .wsm-orb .studio-orb-video {
+  -webkit-mask-image: radial-gradient(ellipse closest-side, #000 58%, transparent 76%);
+  mask-image: radial-gradient(ellipse closest-side, #000 58%, transparent 76%);
+}
+.ws-nodebadge {
+  position: absolute; top: -5px; right: -5px; z-index: 2;
+  min-width: 23px; height: 23px; padding: 0 6px; border-radius: 999px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums;
+  background: var(--pl-pill); border: 1px solid var(--pl-card-bd);
+  color: var(--pl-text); box-shadow: var(--pl-card-shadow);
+  animation: lp-fade 0.4s 0.25s both; pointer-events: none;
+}
+.ws-nodecard {
+  position: absolute; z-index: 4; width: 150px;
+  padding: 10px 13px 9px; border-radius: 14px;
+  border: 1px solid var(--pl-card-bd); background: var(--pl-card);
+  color: var(--pl-text); box-shadow: var(--pl-card-shadow);
+  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+  cursor: pointer; text-align: left;
+  display: flex; flex-direction: column; gap: 2px;
+  animation: lp-card-spring 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+  transition: opacity 0.4s ease, scale 0.4s ease, background 0.2s, border-color 0.2s;
+  -webkit-tap-highlight-color: transparent;
+}
+.ws-nodecard:hover { background: var(--pl-card-on); border-color: var(--pl-card-on-bd); }
+.ws-nodecard:active { scale: 0.96; }
+.ws-wrap[data-mode="focused"] .ws-nodecard { opacity: 0; scale: 0.85; pointer-events: none; }
+.ws-nodecard-top { display: flex; align-items: center; justify-content: space-between; }
+.ws-nodecard-top b { font-size: 17px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.ws-nodecard-zh { font-size: 12.5px; font-weight: 700; white-space: nowrap; }
+.ws-nodecard-zh em {
+  font-style: normal; font-size: 9.5px; font-weight: 500;
+  color: var(--pl-dim); letter-spacing: 0.04em;
+}
+.ws-nodecard-sub {
+  font-size: 10.5px; color: var(--pl-dim);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.ws-nodelabel {
+  position: absolute; z-index: 6; transform: translateX(-50%);
+  display: flex; align-items: baseline; gap: 8px;
+  padding: 6px 13px; border-radius: 999px;
+  background: var(--pl-pill); border: 1px solid var(--pl-card-bd);
+  color: var(--pl-text); box-shadow: var(--pl-card-shadow);
+  font-size: 12px; white-space: nowrap; cursor: pointer;
+  animation: lp-fade-up 0.45s 0.2s both;
+  -webkit-tap-highlight-color: transparent;
+}
+.ws-nodelabel span { color: var(--pl-dim); font-size: 11px; }
+/* Mobile: the living core as the subject on top of the map. */
+.wsm-orb {
+  /* No z-index either (same blend trap as the desktop core). */
+  position: absolute; left: 50%; transform: translateX(-50%);
+  padding: 0; border: 0; background: none; border-radius: 50%;
+  cursor: pointer; -webkit-tap-highlight-color: transparent;
+}
+.wsm-orb:focus-visible { outline: 2px solid var(--pl-accent); outline-offset: 3px; }
+@media (prefers-reduced-motion: reduce) {
+  .ws-nodewrap, .ws-orb-main { transition: none; }
+  .ws-node.ws-hubrow, .ws-nodecard, .ws-nodelabel, .ws-nodebadge { animation: none; }
 }

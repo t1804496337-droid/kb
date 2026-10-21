@@ -2429,6 +2429,7 @@ export default function StudioPage() {
               <div className="ws-mobile-layer">
                 <NeuralWorkspaceMobile
                   hubs={wsHubs}
+                  themeId={theme}
                   onSelectHub={(k) =>
                     setActiveHubKey(k.startsWith("custom:") ? k.slice(7) : k)
                   }

@@ -31,25 +31,26 @@ export type WsHeadCopy = { brand: string; headline: string; en: string };
 const W = 1600;
 const H = 820;
 
-/* Two-column module map (2026-10-21 rebuild): the duplicated landing
- * hub-graph on the left is gone. Left = one clean hub column (300 wide,
- * one row per module, never compressed — it scrolls instead), crowned
- * by the living core orb (the landing's NeuralOrb: video loop +
- * breathing bloom, doubling as the single "return" affordance).
- * Right = the selected hub's rows as solid cards in one aligned
- * column, with the spider silk kept as the hero: one source point on
- * the selected hub row's right edge, one thread per card, all threads
- * sharing the same sweep, passing BEHIND the cards and ending in a
- * bead on each card's left edge — silk connects cards, never crosses
- * text. The plate is height-fitted and its design width follows the
- * container, so the panel always runs to the right edge (no dead
- * column on wide windows). */
-const COL_X = 40;
-const COL_W = 300;
-const HUB_H = 56;
-const HUB_GAP = 8;
-const PANEL_X = 452;
-const ORB_SIZE = 88;
+/* ── Framework restored (2026-10-21, user ruling): the module map is
+ * the landing scene made functional again — NOT an admin two-column
+ * layout. Three constituents, same as the landing:
+ *   1. CORE — the living orb (NeuralOrb: video loop + breathing bloom)
+ *      sits at the visual centre as the anchor; it is also the single
+ *      return affordance (tap: fan → panorama; panorama → landing).
+ *   2. ORBIT — the 9 modules ring the core as jelly nodes with their
+ *      count cards, same slot language as the landing nodes.
+ *   3. SILK — the spider silk is the global skeleton: orb→node beams
+ *      in the panorama; on selection the ring contracts to a C opening
+ *      east and the selected node's rows fan out along silk threads to
+ *      solid cards on the right (one source point, one sweep, threads
+ *      behind the cards, beads landing on card left edges).
+ * Congestion is treated INSIDE the framework (no overlaps, solid row
+ * cards, one return affordance) — the two-column detour is gone. */
+const PANO_ANGLES_9 = [-90, -52, -14, 24, 62, 96, 140, 178, 216];
+const panoAngle = (i: number, n: number) =>
+  n === PANO_ANGLES_9.length ? PANO_ANGLES_9[i] : -90 + (306 * i) / Math.max(1, n - 1);
+const focusAngle = (i: number, n: number) => 40 + (280 * i) / Math.max(1, n - 1);
+const rad = (deg: number) => (deg * Math.PI) / 180;
 
 const BEAM: Record<string, string> = {
   top: "#EEF1FF",
@@ -106,7 +107,6 @@ export function NeuralWorkspace({
   onPickRow,
   onReturnLanding,
   onSelectHub,
-  defaultHub = "ll",
   moduleCount,
   stepCount,
 }: {
@@ -117,7 +117,7 @@ export function NeuralWorkspace({
   /** Orb skin follows the site theme (same NeuralOrb as the landing). */
   themeId?: "silver" | "warm" | "neu";
   /** Page chrome collapsed: the plate head hides and the map takes the
-   *  full height (hub column + rows re-flow to the taller geometry). */
+   *  full height (panel + ring re-flow to the taller geometry). */
   compact?: boolean;
   themeLabel: string;
   themeEn: string;
@@ -126,7 +126,6 @@ export function NeuralWorkspace({
   onPickRow: (row: { id: string; title: string }, hub: WsHub) => void;
   onReturnLanding: () => void;
   onSelectHub?: (key: string) => void;
-  defaultHub?: string;
   /** 数据驱动的模块总数（含用户自建模块） */
   moduleCount?: number;
   /** 数据驱动的流水线步数 */
@@ -136,23 +135,20 @@ export function NeuralWorkspace({
   const listRef = React.useRef<HTMLDivElement | null>(null);
   const [scale, setScale] = React.useState(0.85);
   const [designW, setDesignW] = React.useState(W);
-  const [sel, setSel] = React.useState<string>(defaultHub);
-  const setSelNotify = (k: string) => {
-    setSel(k);
-    onSelectHub?.(k);
-  };
-  React.useEffect(() => {
-    onSelectHub?.(sel);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-  // A selected hub can disappear (custom module deleted) — fall back safely.
-  React.useEffect(() => {
-    if (hubs.length && !hubs.some((h) => h.key === sel)) setSel(hubs[0].key);
-  }, [hubs, sel]);
+  /** null = panorama (no selection): the map opens on the full orbit. */
+  const [sel, setSel] = React.useState<string | null>(null);
   const [replay, setReplay] = React.useState(0);
   const [paused, setPaused] = React.useState(false);
   const [scrollTop, setScrollTop] = React.useState(0);
   const [hot, setHot] = React.useState<number | null>(null);
+
+  const selHub = sel ? hubs.find((h) => h.key === sel) ?? null : null;
+  const focused = !!selHub;
+  // A selected hub can disappear (custom module deleted) — fall back to
+  // the panorama instead of pointing at a ghost.
+  React.useEffect(() => {
+    if (sel && hubs.length && !hubs.some((h) => h.key === sel)) setSel(null);
+  }, [hubs, sel]);
 
   React.useLayoutEffect(() => {
     const el = wrapRef.current;
@@ -160,12 +156,11 @@ export function NeuralWorkspace({
     const fit = () => {
       const r = el.getBoundingClientRect();
       // Height-driven fit; the design width then follows the container
-      // so the panel's right edge lands on the container's right edge.
+      // so the fan panel's right edge lands on the container's right
+      // edge (no dead column on wide windows).
       let s = r.height / H;
       let dw = r.width / s;
       if (dw < 1180) {
-        // Tall-narrow window: fall back to a minimum design width and
-        // fit by width instead of clipping the panel.
         dw = 1180;
         s = r.width / dw;
       }
@@ -184,35 +179,88 @@ export function NeuralWorkspace({
     setHot(null);
   }, [sel, replay]);
 
-  // Vertical geometry follows the head state: with the page chrome
-  // collapsed (compact) the orb + columns start near the top and the
-  // rows viewport grows by the head's height.
-  const ORB_TOP = compact ? 36 : 158;
-  const COL_TOP = ORB_TOP + ORB_SIZE + 12;
-  const PANEL_HEAD_Y = COL_TOP;
-  const ROWS_TOP = COL_TOP + 48;
+  /* ── Scene geometry (design px, H = 820) ── */
+  const n = hubs.length;
+  // Panorama: orb centre-left of middle, ring radii follow the width.
+  const panoC = {
+    x: Math.round(designW / 2 - 40 + (designW < 1350 ? 60 : 0)),
+    y: 460,
+  };
+  const panoRx = Math.max(280, designW / 2 - 300);
+  const panoRy = 246;
+  const panoOrbSize = Math.round(Math.min(470, Math.max(360, designW * 0.29)));
+  // Focused: orb anchors the west, ring contracts to a C opening east.
+  const focusC = { x: 452, y: 470 };
+  const focusRx = Math.min(350, Math.max(245, designW * 0.225));
+  const focusRy = 300;
+  const focusOrbSize = 356;
+  const orbC = focused ? focusC : panoC;
+  const orbSize = focused ? focusOrbSize : panoOrbSize;
+  const jellyPano = n > 10 ? 124 : 142;
+  const jellyFocus = 100;
+  const jellySel = 116;
+
+  const nodePos = (i: number, mode: "pano" | "focus") => {
+    if (mode === "pano") {
+      const a = rad(panoAngle(i, n));
+      return { x: panoC.x + panoRx * Math.cos(a), y: panoC.y + panoRy * Math.sin(a) };
+    }
+    const a = rad(focusAngle(i, n));
+    return { x: focusC.x + focusRx * Math.cos(a), y: focusC.y + focusRy * Math.sin(a) };
+  };
+  const jellyOf = (h: WsHub) => (focused ? (h.key === sel ? jellySel : jellyFocus) : jellyPano);
+  /** Count-card placement in the panorama: radially outward from the
+   *  node; top/bottom nodes (|sin| > .55) place theirs horizontally so
+   *  cards never ride over the orb or the ring's vertical extremes. */
+  const cardPos = (i: number) => {
+    const p = nodePos(i, "pano");
+    const dx = (p.x - panoC.x) / panoRx;
+    const dy = (p.y - panoC.y) / panoRy;
+    let ux: number, uy: number, off: number;
+    if (Math.abs(dy) > 0.55) {
+      // Near-vertical nodes (top/bottom of the ring): the top node's
+      // card goes west, the bottom node's east — the other side rides
+      // the ring tangent into the next node's jelly box either way.
+      ux = Math.abs(dx) < 0.35 ? (dy < 0 ? -1 : 1) : Math.sign(dx) || 1;
+      uy = 0;
+      off = jellyPano / 2 + 85;
+    } else {
+      const l = Math.hypot(dx, dy) || 1;
+      ux = dx / l;
+      uy = dy / l;
+      off = jellyPano / 2 + 98;
+    }
+    let cy = p.y + uy * off;
+    if (dy > 0.9) cy += 24;
+    if (dy < -0.9) cy += 16;
+    return { left: p.x + ux * off - 75, top: cy - 33 };
+  };
+
+  /* ── Fan panel geometry (focused only) ── */
+  const PANEL_X = Math.round(designW * 0.57);
+  const PANEL_TOP = compact ? 44 : 168;
+  const ROWS_TOP = PANEL_TOP + 48;
   // Bottom safe pad for the rows viewport: the floating theme switcher
   // (.ws-theme, absolute in the wrap) occupies the bottom-right corner —
-  // a ~87 screen-px footprint (16px bottom offset + tag + pill) — while
-  // the panel's right edge runs to the wrap's right edge. With only the
-  // old 36 design-px clearance, the last row cards' right ends (chips)
-  // slid under the switcher and could not be scrolled clear. Reserve
-  // 100 screen px, converted to design px at the current plate scale.
+  // a ~87 screen-px footprint — while the panel's right edge runs to
+  // the wrap's right edge. Reserve 100 screen px, converted to design
+  // px at the current plate scale (kept from the two-column fix).
   const ROWS_SAFE_BOTTOM = Math.max(36, Math.ceil(100 / scale));
   const ROWS_H = H - ROWS_TOP - ROWS_SAFE_BOTTOM;
   const PANEL_W = designW - PANEL_X - 40;
 
-  const selHub = hubs.find((h) => h.key === sel) ?? hubs[0];
   const rows = selHub?.rows ?? [];
   const selIdx = Math.max(0, hubs.findIndex((h) => h.key === selHub?.key));
-  const lay = rowLayout(rows.length, ROWS_H);
+  const lay = rowLayout(focused ? rows.length : 0, ROWS_H);
   const scrollable = lay.content > ROWS_H + 1;
   const totalItems = hubs.reduce((s, h) => s + h.rows.length, 0);
   // Header stats derive from data: module/step counts update automatically.
   const moduleN = moduleCount ?? hubs.length + 1;
   const stepN = stepCount ?? hubs.find((h) => h.key === "top")?.n ?? 8;
-  // Spider-silk source: the selected hub row's right edge.
-  const silkSrc: [number, number] = [COL_X + COL_W, COL_TOP + selIdx * (HUB_H + HUB_GAP) + HUB_H / 2];
+  // Spider-silk source: the selected node's east edge — threads leave
+  // the node itself (through the orb's field) and fan to the cards.
+  const selPos = focused ? nodePos(selIdx, "focus") : { x: 0, y: 0 };
+  const silkSrc: [number, number] = [selPos.x + jellySel / 2 - 2, selPos.y];
   const silkDstX = PANEL_X - 10;
   const rafRef = React.useRef(0);
   const onScroll = () => {
@@ -220,13 +268,26 @@ export function NeuralWorkspace({
     rafRef.current = requestAnimationFrame(() => setScrollTop(listRef.current?.scrollTop ?? 0));
   };
 
+  const pickHub = (h: WsHub) => {
+    if (h.key === sel) onOpenSection(h.section);
+    else {
+      setSel(h.key);
+      onSelectHub?.(h.key);
+    }
+  };
+  const orbClick = () => {
+    if (focused) setSel(null);
+    else onReturnLanding();
+  };
+
   return (
     <div
       ref={wrapRef}
       className={cn("ws-wrap", paused && "ws-paused")}
       data-testid="ws-desktop"
-      data-selected={sel}
-      data-rows={rows.length}
+      data-selected={sel ?? "none"}
+      data-mode={focused ? "focused" : "panorama"}
+      data-rows={focused ? rows.length : 0}
       data-scrollable={scrollable ? "1" : "0"}
     >
       <div
@@ -234,27 +295,61 @@ export function NeuralWorkspace({
         style={{ width: designW, height: H, transform: `scale(${scale})` }}
         key={replay}
       >
-        {/* Spider silk: one thread per row card, drawn from the selected
-            hub row. The svg sits below the HTML columns, so threads pass
-            behind the cards and only their ends (bead at each card's
-            left edge) touch the cards. */}
+        {/* In-plate backdrop: the plate's transform makes it a stacking
+            context, so the nodes' screen blend would otherwise melt
+            against transparency (the landing's black-square lesson).
+            Repaint the scene wash inside, in plate coordinates. */}
+        <div className="ws-backdrop" aria-hidden />
+
+        {/* Silk skeleton: orb→node beams always; the row fan when a hub
+            is selected. The svg sits below every card, so threads pass
+            behind cards and only their end beads touch card edges. */}
         <svg className="ws-svg" viewBox={`0 0 ${designW} ${H}`} width={designW} height={H} aria-hidden>
-          <g key={`${sel}-${replay}`} className="ws-fan">
-            {lay.rows.map((r, i) => {
-              const ty = ROWS_TOP + r.y - scrollTop + lay.cardH / 2;
-              if (ty < ROWS_TOP - 24 || ty > ROWS_TOP + ROWS_H + 24) return null;
-              const d = `M ${silkSrc[0]} ${silkSrc[1]} C ${silkSrc[0] + 64} ${silkSrc[1]}, ${silkDstX - 84} ${ty}, ${silkDstX} ${ty}`;
-              const mx = (silkSrc[0] + silkDstX) / 2;
-              const my = (silkSrc[1] + ty) / 2;
+          <g key={`beams-${replay}`} className="ws-beams">
+            {hubs.map((h, i) => {
+              const p = nodePos(i, focused ? "focus" : "pano");
+              const j = jellyOf(h);
+              const dx = p.x - orbC.x;
+              const dy = p.y - orbC.y;
+              const dist = Math.hypot(dx, dy) || 1;
+              const ax = p.x - (dx / dist) * j * 0.32;
+              const ay = p.y - (dy / dist) * j * 0.32;
+              const bend = ((i % 2) * 2 - 1) * Math.min(22, dist * 0.06);
+              const mx = (orbC.x + ax) / 2 + (-dy / dist) * bend;
+              const my = (orbC.y + ay) / 2 + (dx / dist) * bend;
+              const on = h.key === sel;
               return (
-                <g key={i} className={cn(hot === i && "ws-fan-hot")}>
-                  <path className="ws-fan-line" d={d} style={{ animationDelay: `${Math.min(i, 14) * 0.035}s` }} />
-                  <circle cx={mx} cy={my} r={1.4} className="ws-bead" />
-                  <circle cx={silkDstX} cy={ty} r={2.2} className="ws-fan-dot" />
-                </g>
+                <path
+                  key={h.key}
+                  className="ws-beam"
+                  d={`M ${orbC.x} ${orbC.y} Q ${mx} ${my} ${ax} ${ay}`}
+                  fill="none"
+                  stroke={beamOf(h)}
+                  strokeWidth={on ? 1.4 : 1}
+                  opacity={focused ? (on ? 0.95 : 0.34) : 0.62}
+                  style={{ animationDelay: `${0.1 + i * 0.05}s` }}
+                />
               );
             })}
           </g>
+          {focused && (
+            <g key={`fan-${sel}-${replay}`} className="ws-fan">
+              {lay.rows.map((r, i) => {
+                const ty = ROWS_TOP + r.y - scrollTop + lay.cardH / 2;
+                if (ty < ROWS_TOP - 24 || ty > ROWS_TOP + ROWS_H + 24) return null;
+                const d = `M ${silkSrc[0]} ${silkSrc[1]} C ${silkSrc[0] + 64} ${silkSrc[1]}, ${silkDstX - 84} ${ty}, ${silkDstX} ${ty}`;
+                const mx = (silkSrc[0] + silkDstX) / 2;
+                const my = (silkSrc[1] + ty) / 2;
+                return (
+                  <g key={i} className={cn(hot === i && "ws-fan-hot")}>
+                    <path className="ws-fan-line" d={d} style={{ animationDelay: `${Math.min(i, 14) * 0.035}s` }} />
+                    <circle cx={mx} cy={my} r={1.4} className="ws-bead" />
+                    <circle cx={silkDstX} cy={ty} r={2.2} className="ws-fan-dot" />
+                  </g>
+                );
+              })}
+            </g>
+          )}
         </svg>
 
         {!compact && (
@@ -307,113 +402,181 @@ export function NeuralWorkspace({
         </div>
         )}
 
-        {/* The living core orb: same NeuralOrb as the landing (video
-            loop + breathing bloom), and the map's ONE return affordance
-            — caption sits under it, no centre label, no second button. */}
+        {/* The core: the landing's living orb at anchor size — never a
+            thumbnail. It carries the ONLY return affordance: in the fan
+            it collapses back to the panorama; in the panorama it
+            returns to the landing subject. No caption, no second icon. */}
         <button
           type="button"
-          className="ws-orb-core"
-          style={{ left: COL_X + 8, top: ORB_TOP, width: ORB_SIZE, height: ORB_SIZE }}
+          className="ws-orb-core ws-orb-main"
+          style={{
+            left: orbC.x - orbSize / 2,
+            top: orbC.y - orbSize / 2,
+            width: orbSize,
+            height: orbSize,
+          }}
           data-testid="ws-orb-back"
-          onClick={onReturnLanding}
-          aria-label="返回神经主体 · 登录页"
-          title="返回主体"
+          onClick={orbClick}
+          aria-label={focused ? "收起条目 · 回到环绕主体" : "返回神经主体 · 登录页"}
+          title={focused ? "回到环绕主体" : "返回主体"}
         >
           <NeuralOrb theme={themeId ?? "silver"} />
-          <span className="ws-orb-core-cap">返回主体</span>
         </button>
 
-        {/* Hub column: one row per module, fixed height, never compressed. */}
-        <div
-          className="ws-hubcol"
-          style={{ left: COL_X, top: COL_TOP, width: COL_W, maxHeight: H - COL_TOP - 36 }}
-        >
-          {hubs.map((h, i) => {
-            const on = h.key === sel;
-            return (
-              <button
-                key={h.key}
-                type="button"
-                className={cn("ws-hubrow", on && "ws-hubrow-on")}
-                style={{ "--hub-beam": beamOf(h), animationDelay: `${0.05 + i * 0.04}s` } as React.CSSProperties}
-                data-hub={h.section}
-                data-card={h.key}
-                onClick={() => (on ? onOpenSection(h.section) : setSelNotify(h.key))}
-                aria-label={on ? `打开${h.label}` : `选中${h.label}`}
+        {/* Orbiting module nodes + their count cards. The jelly button
+            keeps the .ws-hubrow hook (media/press contracts); the card
+            is the landing's node card in the same slot language. */}
+        {hubs.map((h, i) => {
+          const p = nodePos(i, focused ? "focus" : "pano");
+          const j = jellyOf(h);
+          const card = cardPos(i);
+          const on = h.key === sel;
+          return (
+            <React.Fragment key={h.key}>
+              <div
+                className={cn("ws-nodewrap", on && "ws-nodewrap-on")}
+                style={{
+                  left: p.x - j / 2,
+                  top: p.y - j * 0.46,
+                  width: j,
+                  height: j * 0.92,
+                  // NO z-index here: a positioned wrapper with z-index
+                  // becomes a stacking context and traps the jelly's
+                  // screen blend inside it (black-square tiles — the
+                  // landing nodes blend because they sit directly in
+                  // the stage's context). Paint order comes from DOM.
+                  "--hub-beam": beamOf(h),
+                } as React.CSSProperties}
               >
-                <span className="ws-hubrow-jelly" style={jellyMotion(h.customId ?? h.key)} aria-hidden>
-                  <WsJellyVisual />
-                </span>
-                <span className="ws-hubrow-names">
-                  <b style={{ color: beamOf(h) }}>{h.label}</b>
-                  <em>{h.en}</em>
-                </span>
-                <span className="ws-hubrow-n"><RollNumber value={h.n} /></span>
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Content panel: header + the selected hub's row cards. */}
-        <div className="ws-panel" style={{ left: PANEL_X, top: PANEL_HEAD_Y, width: PANEL_W }}>
-          <div className="ws-panel-head">
-            <b>{selHub?.label}</b>
-            <span className="ws-panel-count">{rows.length} 条 · {selHub?.en}</span>
-            <span className="ws-panel-sub">{selHub?.sub}</span>
-            <button
-              type="button"
-              className="ws-panel-open"
-              onClick={() => selHub && onOpenSection(selHub.section)}
-            >
-              进入分区 →
-            </button>
-          </div>
-          <div
-            ref={listRef}
-            className={cn("ws-list", scrollable && "ws-list-scroll")}
-            style={{ left: 0, top: 36, width: PANEL_W, height: ROWS_H, marginTop: 12 }}
-            onScroll={onScroll}
-            data-testid="ws-list"
-            key={`list-${sel}-${replay}`}
-          >
-            <ul className="ws-rows ws-rows-d" style={{ height: lay.content }}>
-              {rows.map((r, i) => (
-                <li
-                  key={r.id}
-                  style={{ left: 0, top: lay.rows[i].y, width: "100%", height: lay.cardH, animationDelay: `${0.15 + Math.min(i, 14) * 0.055}s` }}
-                  onMouseEnter={() => setHot(i)}
-                  onMouseLeave={() => setHot((v) => (v === i ? null : v))}
+                <button
+                  type="button"
+                  className={cn("ws-node ws-hubrow", on && "ws-node-on")}
+                  style={{
+                    ...jellyMotion(h.customId ?? h.key),
+                    "--jelly-glow": beamOf(h),
+                    animationDelay: `${0.15 + i * 0.06}s`,
+                  } as React.CSSProperties}
+                  data-hub={h.section}
+                  data-card={h.key}
+                  data-node={h.key}
+                  onClick={() => pickHub(h)}
+                  aria-label={on ? `打开${h.label}` : `选中${h.label}`}
                 >
-                  <button
-                    type="button"
-                    className={cn("ws-rowcard", hot === i && "ws-rowcard-hot")}
-                    onClick={() => selHub && onPickRow(r, selHub)}
-                    data-row={r.id}
-                    data-section={selHub?.section}
-                  >
-                    <span className="ws-row-t">{r.title}</span>
-                    <span className="ws-row-m">
-                      <i>{r.a}</i>
-                      <i>{r.b}</i>
-                      {r.c ? <i className="ws-row-chip">{r.c}</i> : null}
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-            {rows.length === 0 && selHub && (
-              <div className="ws-empty" data-testid="ws-empty">
-                <b>{selHub.label}还没有条目</b>
-                <span>点右上角「新建任务」，目标选「{selHub.label}」就能加第一条。</span>
+                  <span className="ws-nodejelly" aria-hidden>
+                    <WsJellyVisual />
+                  </span>
+                </button>
+                {focused && (
+                  <span className="ws-nodebadge" aria-hidden>
+                    <RollNumber value={h.n} />
+                  </span>
+                )}
               </div>
-            )}
+              <button
+                type="button"
+                className="ws-nodecard"
+                style={{ left: card.left, top: card.top, animationDelay: `${0.55 + i * 0.06}s` }}
+                data-nodecard={h.key}
+                onClick={() => pickHub(h)}
+                tabIndex={focused ? -1 : 0}
+                aria-hidden={focused}
+                aria-label={`选中${h.label}`}
+              >
+                <span className="ws-nodecard-top">
+                  <span className="ws-card-ico">{h.label.slice(0, 1)}</span>
+                  <b>
+                    <RollNumber value={h.n} />
+                  </b>
+                </span>
+                <span className="ws-nodecard-zh" style={{ color: beamOf(h) }}>
+                  {h.label} <em>{h.en}</em>
+                </span>
+                <span className="ws-nodecard-sub">{h.sub}</span>
+              </button>
+              {focused && on && (
+                <button
+                  type="button"
+                  className="ws-nodelabel"
+                  style={{
+                    left: p.x,
+                    // Bottom-arc nodes flip the label above the jelly —
+                    // below would clip at the plate's bottom edge.
+                    top: p.y + j * 0.46 + 10 > H - 44 ? p.y - j * 0.46 - 40 : p.y + j * 0.46 + 10,
+                  }}
+                  onClick={() => onOpenSection(h.section)}
+                >
+                  <b style={{ color: beamOf(h) }}>{h.label}</b>
+                  <span>共 {rows.length} 条 · 进入分区 →</span>
+                </button>
+              )}
+            </React.Fragment>
+          );
+        })}
+
+        {/* Fan panel: the selected hub's rows as solid cards, fed by
+            the silk fan. Same rows contract as before (成片槽 + 全站
+            待办票, 待办行带 chip). */}
+        {focused && selHub && (
+          <div className="ws-panel" style={{ left: PANEL_X, top: PANEL_TOP, width: PANEL_W }}>
+            <div className="ws-panel-head">
+              <b>{selHub.label}</b>
+              <span className="ws-panel-count">{rows.length} 条 · {selHub.en}</span>
+              <span className="ws-panel-sub">{selHub.sub}</span>
+              <button
+                type="button"
+                className="ws-panel-open"
+                onClick={() => onOpenSection(selHub.section)}
+              >
+                进入分区 →
+              </button>
+            </div>
+            <div
+              ref={listRef}
+              className={cn("ws-list", scrollable && "ws-list-scroll")}
+              style={{ left: 0, top: 36, width: PANEL_W, height: ROWS_H, marginTop: 12 }}
+              onScroll={onScroll}
+              data-testid="ws-list"
+              key={`list-${sel}-${replay}`}
+            >
+              <ul className="ws-rows ws-rows-d" style={{ height: lay.content }}>
+                {rows.map((r, i) => (
+                  <li
+                    key={r.id}
+                    style={{ left: 0, top: lay.rows[i].y, width: "100%", height: lay.cardH, animationDelay: `${0.15 + Math.min(i, 14) * 0.055}s` }}
+                    onMouseEnter={() => setHot(i)}
+                    onMouseLeave={() => setHot((v) => (v === i ? null : v))}
+                  >
+                    <button
+                      type="button"
+                      className={cn("ws-rowcard", hot === i && "ws-rowcard-hot")}
+                      onClick={() => onPickRow(r, selHub)}
+                      data-row={r.id}
+                      data-section={selHub.section}
+                    >
+                      <span className="ws-row-t">{r.title}</span>
+                      <span className="ws-row-m">
+                        <i>{r.a}</i>
+                        <i>{r.b}</i>
+                        {r.c ? <i className="ws-row-chip">{r.c}</i> : null}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              {rows.length === 0 && (
+                <div className="ws-empty" data-testid="ws-empty">
+                  <b>{selHub.label}还没有条目</b>
+                  <span>点右上角「新建任务」，目标选「{selHub.label}」就能加第一条。</span>
+                </div>
+              )}
+            </div>
           </div>
-        </div>
+        )}
 
         <div className="ws-tools">
           <span className="ws-crumb">
-            创作空间 <small>Core</small> / 工作台 / <b>{selHub?.label}</b>
-            <small className="ws-crumb-n"> · {rows.length} 条</small>
+            创作空间 <small>Core</small> / 工作台 / <b>{focused ? selHub?.label : "全部模块"}</b>
+            {focused && <small className="ws-crumb-n"> · {rows.length} 条</small>}
           </span>
           <span className="ws-actions">
             <button type="button" onClick={() => setReplay((v) => v + 1)}>重播 <small>Replay</small></button>
@@ -423,8 +586,11 @@ export function NeuralWorkspace({
         </div>
       </div>
 
-      {lay.content < ROWS_H - 40 && (
-        <div className="ws-hint">选择一个节点查看全部条目 · Select a hub to see its items</div>
+      {!focused && (
+        <div className="ws-hint">点选一个模块节点 · 全部条目将沿蜘蛛丝向右扇出 · Select a hub to fan out its items</div>
+      )}
+      {focused && lay.content < ROWS_H - 40 && (
+        <div className="ws-hint">点光球回到环绕主体 · 再点节点进入分区 · Tap the core to return to the orbit</div>
       )}
       <div className="lp-brand ws-brand" aria-hidden>
         <span>TANG</span>
@@ -444,13 +610,16 @@ export function NeuralWorkspace({
   );
 }
 
-/* ───────────── Mobile portrait: stacked, never compressed ─────────────
- * Hubs become a horizontal swipe strip on top; below it the selected
- * hub's cards in a single column. The silk survives as a slim trunk in
- * the left gutter with a short stub + bead to each card's left edge —
- * same language as the desktop fan, geometry kept regular. */
+/* ───────────── Mobile portrait: orb subject on top, never compressed ─────────────
+ * The living core returns to the top as the subject (and the single
+ * return affordance — the old "← 主体" chip is gone). Below it the
+ * module nodes form a horizontal swipe strip; the selected hub's cards
+ * stack in one column under a slim silk trunk with a short stub + bead
+ * to each card's left edge — the desktop fan's language, kept regular. */
 const MW = 400;
-const M_STRIP_TOP = 12;
+const M_ORB_SIZE = 168;
+const M_ORB_TOP = 14;
+const M_STRIP_TOP = M_ORB_TOP + M_ORB_SIZE + 14;
 const M_STRIP_H = 48;
 const M_HEAD_Y = M_STRIP_TOP + M_STRIP_H + 14;
 const M_ROWS_TOP = M_HEAD_Y + 40;
@@ -462,12 +631,15 @@ const M_CARD_W = MW - M_CARD_X - 14;
 
 export function NeuralWorkspaceMobile({
   hubs,
+  themeId,
   onOpenSection,
   onPickRow,
   onReturnLanding,
   onSelectHub,
 }: {
   hubs: WsHub[];
+  /** Orb skin follows the site theme (same NeuralOrb as the landing). */
+  themeId?: "silver" | "warm" | "neu";
   onOpenSection: (section: string) => void;
   onPickRow: (row: { id: string; title: string }, hub: WsHub) => void;
   onReturnLanding: () => void;
@@ -530,17 +702,22 @@ export function NeuralWorkspaceMobile({
           </g>
         </svg>
 
+        {/* The core as subject: living orb on top, and the map's only
+            return affordance (tap → landing subject). */}
+        <button
+          type="button"
+          className="wsm-orb"
+          style={{ top: M_ORB_TOP, width: M_ORB_SIZE, height: M_ORB_SIZE }}
+          data-testid="ws-orb-back"
+          onClick={onReturnLanding}
+          aria-label="返回神经主体 · 登录页"
+          title="返回主体"
+        >
+          <NeuralOrb theme={themeId ?? "silver"} />
+        </button>
+
         {/* Hub selector strip: swipe horizontally, one tap selects. */}
         <div className="wsm-strip" style={{ top: M_STRIP_TOP, height: M_STRIP_H }}>
-          <button
-            type="button"
-            className="wsm-hubchip wsm-backchip"
-            data-testid="ws-orb-back"
-            onClick={onReturnLanding}
-            aria-label="返回神经主体 · 登录页"
-          >
-            ← 主体
-          </button>
           {hubs.map((h) => {
             const on = h.key === sel;
             return (
