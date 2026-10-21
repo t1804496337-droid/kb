@@ -27,19 +27,24 @@ export function hashModuleId(id: string): number {
   return h;
 }
 
-/** The one animated jelly every node plays (PR #26): a ~5.2s seamless
- *  image-to-video loop generated from the upscaled jelly-left still,
- *  transcoded to display size (450×414, H.264, pure-black backing). All
- *  nodes share this single file, same direction, same colour — modules
- *  are told apart by their beam colour and card title colour only. */
+/** The one animated jelly every node plays: a 6s image-to-video loop
+ *  of the high-resolution jelly (silver-white wireframe bell, pale
+ *  violet core; colour-locked generation, 2026-10-21), transcoded
+ *  from the 672×1344 portrait master onto a 676×622 canvas — the
+ *  exact 1 / 0.92 aspect every jelly slot uses, subject centred on
+ *  pure-black backing — so `object-fit: cover` frames it in every
+ *  slot exactly like the clip it replaced, uncropped. H.264, no
+ *  audio. All nodes share this single file, same direction, same
+ *  colour — modules are told apart by their beam colour and card
+ *  title colour only. */
 export const JELLY_ANIM_SRC = "/studio/landing/jelly-anim.mp4";
 
-/** The still the shared clip was generated from (the "A" frame): the
- *  universal poster, error fallback and reduced-motion rendering for
- *  every JellyMedia instance on every surface — landing nodes,
- *  workspace plate hubs, workspace map — so a module can never flash
- *  a different-looking jelly before the video starts or when motion
- *  is reduced. */
+/** The HD source still the shared clip was generated from, exported
+ *  onto the same 676×622 canvas: the universal poster, error
+ *  fallback and reduced-motion rendering for every JellyMedia
+ *  instance on every surface — landing nodes, workspace plate hubs,
+ *  workspace map — so a module can never flash a different-looking
+ *  jelly before the video starts or when motion is reduced. */
 export const JELLY_POSTER_SRC = "/studio/landing/jelly-left.webp";
 
 /** Beam colour for a custom module id. */
