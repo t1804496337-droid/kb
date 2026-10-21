@@ -3563,7 +3563,11 @@ div.studio-orb.studio-orb-bg,
 .hud-blink { animation: hud-pulse 1s ease-in-out infinite; }
 
 /* ---------- responsive: stack vertically, never overflow-x ---------- */
-@media (max-width: 860px) {
+/* Breakpoint is 1100px, not a phone width: some in-app webviews lay out
+   at ~980px on a phone-sized screen, which slipped past an 860px query
+   and squeezed the desktop 3-column HUD into the small screen
+   (bug report 2026-10-21). Below 1100px always stack single-column. */
+@media (max-width: 1100px) {
   .hud-root { overflow-y: auto; overflow-x: hidden; }
   .hud-wrap { height: auto; min-height: 100%; }
   .hud-topbar { height: auto; flex-wrap: wrap; padding: 6px 10px; row-gap: 6px; }
