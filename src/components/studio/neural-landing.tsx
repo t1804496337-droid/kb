@@ -27,7 +27,8 @@ export type LandingNode = {
  * CORE MAP sphere, RADAR + DECISION STACK, bottom module console.
  * Structure decisions (user, 2026-10-21): the workspace is offline
  * (disconnected in page.tsx, not deleted), there is no ENTER button,
- * module cards do not navigate yet, and the only theme is this dark
+ * module cards / tree nodes select a focus module (no navigation),
+ * and the only theme is this dark
  * silver-black HUD — theme props/wiring are gone entirely.
  *
  * Module counts come from the live `nodes`/`stats` props (same 口径 as
@@ -231,6 +232,55 @@ export function NeuralLanding({
   const total = modules.reduce((acc, m) => acc + (m.count ?? 0), 0);
   const knowledgeN = skillsN + dbN;
   const outputN = worksN + finN;
+
+  /* ---- module focus: tree nodes + console cards are clickable; the
+   * CORE MAP corner tags, telemetry strip and radar stat rows follow
+   * the selection. All copy is derived from the live counts/health
+   * above — same caliber as the overview, never invented. ---- */
+  const [sel, setSel] = React.useState<string | null>(null);
+  const [hov, setHov] = React.useState<string | null>(null);
+  const toggleSel = (id: string) =>
+    setSel((s) => (s === id ? null : id));
+  const selMod = sel ? (modules.find((m) => m.id === sel) ?? null) : null;
+  const sharePct = (n: number | null) =>
+    n == null || total <= 0 ? 0 : Math.round((n / total) * 100);
+  const moduleStatus = (m: HudModule): { main: string; note: string } => {
+    switch (m.id) {
+      case "health":
+        return {
+          main: `STALE · ${health.sleepLast ?? "10-19"}`,
+          note: `HEALTH-SYNC → MAIN · LAST ${health.syncTime ?? "--:--"}`,
+        };
+      case "calendar":
+        return {
+          main: `TICKETS ×${ticketsN} OPEN`,
+          note: `待办票未清 · 条目 ${calN}`,
+        };
+      case "ontology":
+        return { main: "IDLING", note: "空壳已上线 · 细节待排期" };
+      case "studio":
+        return { main: "HUB", note: "创作中枢 · 模块入口" };
+      default:
+        return (m.count ?? 0) > 0
+          ? { main: "ACTIVE", note: `${m.en} · 条目 ${m.count}` }
+          : { main: "EMPTY", note: `${m.en} · 条目 0 · 待填充` };
+    }
+  };
+  /** Tree SVG row centers (viewBox 276×472), keyed by module id. */
+  const treeRows: { id: string; y: number }[] = [
+    { id: "studio", y: 86 },
+    { id: "works", y: 116 },
+    { id: "skills", y: 146 },
+    { id: "database", y: 226 },
+    { id: "ontology", y: 256 },
+    { id: "inspiration", y: 336 },
+    { id: "calendar", y: 366 },
+    { id: "health", y: 396 },
+    { id: "finance", y: 426 },
+  ];
+  const treeRowY = (id: string) =>
+    treeRows.find((r) => r.id === id)?.y ?? 0;
+  const modById = (id: string) => modules.find((m) => m.id === id);
   /** Share-bar fill inside the 40-unit track, share of total entries. */
   const bw = (n: number) =>
     n <= 0 ? 0 : Math.max(2, Math.round((n / Math.max(total, 1)) * 40));
@@ -366,10 +416,18 @@ export function NeuralLanding({
         {/* ══ TICKER ══ */}
         <div className="hud-panel hud-ticker">
           <span className="hud-live">● LIVE</span>
-          <div className="hud-txt">
-            九大模块 <i>·</i> 一个第二大脑 <i>·</i> NINE MODULES <u>·</u> ONE
-            SECOND BRAIN <i>·</i> {health.ok ? "HEALTH-SYNC OK" : "HEALTH-SYNC STALE"}{" "}
-            <u>·</u> EP001 PENDING PUBLISH <i>·</i> X PAUSED <u>·</u> XHS PAUSED
+          <div className="hud-track">
+            <div className="hud-track-inner">
+              {[0, 1].map((k) => (
+                <span className="hud-txt" key={k} aria-hidden={k === 1 || undefined}>
+                  九大模块 <i>·</i> 一个第二大脑 <i>·</i> NINE MODULES <u>·</u>{" "}
+                  ONE SECOND BRAIN <i>·</i>{" "}
+                  {health.ok ? "HEALTH-SYNC OK" : "HEALTH-SYNC STALE"} <u>·</u>{" "}
+                  EP001 PENDING PUBLISH <i>·</i> X PAUSED <u>·</u> XHS PAUSED{" "}
+                  <i>·</i>
+                </span>
+              ))}
+            </div>
           </div>
         </div>
 
@@ -393,6 +451,24 @@ export function NeuralLanding({
                     </feMerge>
                   </filter>
                 </defs>
+                {[hov, sel].map((id, i) => {
+                  if (!id) return null;
+                  const m = modById(id);
+                  if (!m) return null;
+                  return (
+                    <rect
+                      key={`${i}-${id}`}
+                      x="4"
+                      y={treeRowY(id) - 14}
+                      width="268"
+                      height="28"
+                      fill={m.color}
+                      opacity={i === 1 ? 0.13 : 0.06}
+                      stroke={m.color}
+                      strokeOpacity={i === 1 ? 0.55 : 0.25}
+                    />
+                  );
+                })}
                 <line x1="14" y1="24" x2="14" y2="426" stroke="#3d5a86" strokeWidth="1.2" />
                 <line x1="14" y1="24" x2="14" y2="426" stroke="#00FFFF" strokeWidth="2" className="hud-flow-line" />
                 <circle cx="14" cy="24" r="5.5" fill="#FFEA00" filter="url(#hud-glow)" />
@@ -475,6 +551,22 @@ export function NeuralLanding({
                 <rect x="196" y="423" width={bw(finN)} height="4" fill="#FFEA00" filter="url(#hud-glow)" />
                 <text x="266" y="430" fontSize="11" fill={cntFill(finN)} textAnchor="end">{finN}</text>
                 <text x="14" y="462" fontSize="8.5" fill="#41516e" letterSpacing="1">[ DEPTH 3 · NODES 13 · BARS = SHARE ]</text>
+                {treeRows.map((r) => (
+                  <rect
+                    key={r.id}
+                    x="0"
+                    y={r.y - 14}
+                    width="276"
+                    height="28"
+                    fill="transparent"
+                    style={{ cursor: "pointer" }}
+                    onClick={() => toggleSel(r.id)}
+                    onMouseEnter={() => setHov(r.id)}
+                    onMouseLeave={() => setHov(null)}
+                  >
+                    <title>{modById(r.id)?.label}</title>
+                  </rect>
+                ))}
               </svg>
             </div>
             <div className="hud-log">
@@ -548,6 +640,7 @@ export function NeuralLanding({
               </div>
             </div>
             <div className="hud-stage">
+              <div className="hud-sphere-glow" aria-hidden />
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 className="hud-sphere"
@@ -569,43 +662,94 @@ export function NeuralLanding({
                 alt=""
                 draggable={false}
               />
-              <div className="hud-tag" style={{ left: 18, top: 14 }}>
-                ◈ LEFT HEMI · GOLD
-                <b className="hud-c-yel">KNOWLEDGE {knowledgeN}</b>
-                SKILLS {skillsN} + DATABASE {dbN}
-              </div>
-              <div className="hud-tag" style={{ right: 140, top: 14, textAlign: "right" }}>
-                RIGHT HEMI · VIOLET ◈
-                <b className="hud-c-pur">OUTPUT {outputN}</b>
-                WORKS {worksN} + FINANCE {finN}
-              </div>
-              <div className="hud-tag" style={{ left: 18, bottom: 8 }}>
-                [ NODE 技能库 · DEG {skillsN} ] · [ NODE 数据库 · DEG {dbN} ]
-              </div>
-              <div className="hud-tag" style={{ right: 18, bottom: 8, textAlign: "right" }}>
-                SIM ● RUNNING · 0xLAy0UT
-              </div>
+              {selMod ? (
+                <>
+                  <div className="hud-tag" style={{ left: 18, top: 14 }}>
+                    ◈ MODULE · {selMod.en}
+                    <b style={{ color: selMod.color }}>
+                      {selMod.label} {selMod.countText ?? selMod.count}
+                    </b>
+                    ENTRIES {selMod.count ?? "—"} · SHARE {sharePct(selMod.count)}%
+                  </div>
+                  <div className="hud-tag" style={{ right: 140, top: 14, textAlign: "right" }}>
+                    STATUS · {selMod.en} ◈
+                    <b style={{ color: selMod.color }}>{moduleStatus(selMod).main}</b>
+                    {moduleStatus(selMod).note}
+                  </div>
+                  <div className="hud-tag" style={{ left: 18, bottom: 8 }}>
+                    [ NODE {selMod.label} · DEG {selMod.count ?? "—"} ] · [ SHARE{" "}
+                    {sharePct(selMod.count)}% ]
+                  </div>
+                  <div className="hud-tag" style={{ right: 18, bottom: 8, textAlign: "right" }}>
+                    FOCUS ● {selMod.en} · 0xLAy0UT
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="hud-tag" style={{ left: 18, top: 14 }}>
+                    ◈ LEFT HEMI · GOLD
+                    <b className="hud-c-yel">KNOWLEDGE {knowledgeN}</b>
+                    SKILLS {skillsN} + DATABASE {dbN}
+                  </div>
+                  <div className="hud-tag" style={{ right: 140, top: 14, textAlign: "right" }}>
+                    RIGHT HEMI · VIOLET ◈
+                    <b className="hud-c-pur">OUTPUT {outputN}</b>
+                    WORKS {worksN} + FINANCE {finN}
+                  </div>
+                  <div className="hud-tag" style={{ left: 18, bottom: 8 }}>
+                    [ NODE 技能库 · DEG {skillsN} ] · [ NODE 数据库 · DEG {dbN} ]
+                  </div>
+                  <div className="hud-tag" style={{ right: 18, bottom: 8, textAlign: "right" }}>
+                    SIM ● RUNNING · 0xLAy0UT
+                  </div>
+                </>
+              )}
             </div>
             <div className="hud-tele">
               <span>TELEMETRY</span>
-              <span>
-                LAST SYNC <b>{health.syncTime ?? "--:--"}</b>
-              </span>
-              <span>
-                HEALTH-SYNC.JSON → <b>{health.ok ? "MAIN OK" : "STALE"}</b>
-              </span>
-              <span>
-                SKILLS SYNC <b>{skillsN}</b>
-              </span>
-              <span>
-                EP001 <b>UPLOADED</b>
-              </span>
-              <span>
-                SLEEP{" "}
-                <b className="hud-c-amb">
-                  {health.sleepLast ? `STALE · ${health.sleepLast}` : "STALE"}
-                </b>
-              </span>
+              {selMod ? (
+                <>
+                  <span>
+                    MODULE <b>{selMod.en}</b>
+                  </span>
+                  <span>
+                    COUNT <b>{selMod.countText ?? selMod.count}</b>
+                  </span>
+                  <span>
+                    SHARE <b>{sharePct(selMod.count)}%</b>
+                  </span>
+                  <span>
+                    STATUS{" "}
+                    <b style={{ color: selMod.color }}>
+                      {moduleStatus(selMod).main}
+                    </b>
+                  </span>
+                  <span>
+                    LAST SYNC <b>{health.syncTime ?? "--:--"}</b>
+                  </span>
+                </>
+              ) : (
+                <>
+                  <span>
+                    LAST SYNC <b>{health.syncTime ?? "--:--"}</b>
+                  </span>
+                  <span>
+                    HEALTH-SYNC.JSON → <b>{health.ok ? "MAIN OK" : "STALE"}</b>
+                  </span>
+                  <span>
+                    SKILLS SYNC <b>{skillsN}</b>
+                  </span>
+                  <span>
+                    EP001 <b>UPLOADED</b>
+                  </span>
+                  <span>
+                    SLEEP{" "}
+                    <b className="hud-c-amb">
+                      {health.sleepLast ? `STALE · ${health.sleepLast}` : "STALE"}
+                    </b>
+                  </span>
+                </>
+              )}
             </div>
           </div>
 
@@ -647,17 +791,23 @@ export function NeuralLanding({
                   <text x="2" y="50" fontSize="8.5" fill="#9fb8d8">健康·日历</text>
                 </svg>
                 <div className="hud-rstats">
-                  SKILLS 技能 <b className="hud-c-cyan">{skillsN}</b>
-                  <br />
-                  DATA 数据 <b className="hud-c-cyan">{dbN}</b>
-                  <br />
-                  WORKS 作品 <b className="hud-c-pink">{worksN}</b>
-                  <br />
-                  FINANCE 财务 <b className="hud-c-yel">{finN}</b>
-                  <br />
-                  HEALTH 健康 <b className="hud-c-amb">STALE</b>
-                  <br />
-                  CALENDAR 日历 <b>{calN}</b>
+                  {(
+                    [
+                      { id: "skills", label: "SKILLS 技能", v: skillsN, cls: "hud-c-cyan" },
+                      { id: "database", label: "DATA 数据", v: dbN, cls: "hud-c-cyan" },
+                      { id: "works", label: "WORKS 作品", v: worksN, cls: "hud-c-pink" },
+                      { id: "finance", label: "FINANCE 财务", v: finN, cls: "hud-c-yel" },
+                      { id: "health", label: "HEALTH 健康", v: "STALE", cls: "hud-c-amb" },
+                      { id: "calendar", label: "CALENDAR 日历", v: calN, cls: "" },
+                    ] as const
+                  ).map((r) => (
+                    <div
+                      key={r.id}
+                      className={cn("hud-rs", sel === r.id && "hud-rs-on")}
+                    >
+                      {r.label} <b className={r.cls || undefined}>{r.v}</b>
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>
@@ -692,11 +842,14 @@ export function NeuralLanding({
         <div className="hud-console">
           <div className="hud-panel hud-cards">
             {modules.map((m) => (
-              <div
+              <button
                 key={m.id}
-                className="hud-card"
+                type="button"
+                className={cn("hud-card", sel === m.id && "hud-card-on")}
                 style={{ color: m.color }}
                 data-module={m.id}
+                aria-pressed={sel === m.id}
+                onClick={() => toggleSel(m.id)}
               >
                 <div className="hud-ic">{m.icon}</div>
                 <div className="hud-nm">{m.label}</div>
@@ -718,7 +871,7 @@ export function NeuralLanding({
                   </span>
                   <span className={`hud-led hud-led-${m.led}`} />
                 </div>
-              </div>
+              </button>
             ))}
           </div>
         </div>

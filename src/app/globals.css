@@ -3145,16 +3145,27 @@ div.studio-orb.studio-orb-bg,
   white-space: nowrap;
   flex: none;
 }
+/* Seamless ticker: track clips, inner carries two identical copies and
+ * slides -50%, so copy is inside the bar at every moment of the loop. */
+.hud-ticker .hud-track {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  display: flex;
+}
+.hud-ticker .hud-track-inner {
+  display: flex;
+  flex: none;
+  animation: hud-scroll 20s linear infinite;
+}
 .hud-ticker .hud-txt {
   font-size: 10px;
   letter-spacing: 0.22em;
   color: #cfe0ff;
   white-space: nowrap;
   text-shadow: 0 0 6px rgba(140, 180, 255, 0.5);
-  display: inline-block;
   flex: none;
-  padding-left: 100%;
-  animation: hud-scroll 22s linear infinite;
+  padding-right: 72px;
 }
 .hud-ticker .hud-txt i { font-style: normal; color: var(--hud-pink); text-shadow: 0 0 8px var(--hud-pink); }
 .hud-ticker .hud-txt u { text-decoration: none; color: var(--hud-cyan); text-shadow: 0 0 8px rgba(0, 255, 255, 0.7); }
@@ -3173,16 +3184,23 @@ div.studio-orb.studio-orb-bg,
   flex: none;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  /* Column scrolls internally when tree + log + foot exceed the main
+   * row height — nothing may be silently clipped by the viewport. */
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 255, 255, 0.35) transparent;
 }
+.hud-tree::-webkit-scrollbar { width: 4px; }
+.hud-tree::-webkit-scrollbar-thumb { background: rgba(0, 255, 255, 0.35); }
+.hud-tree::-webkit-scrollbar-track { background: transparent; }
 .hud-tree .hud-treebody {
   flex: none;
   padding: 4px 6px;
 }
 .hud-tree .hud-treebody svg { display: block; width: 100%; height: auto; }
 .hud-log {
-  flex: 1;
-  min-height: 56px;
+  flex: none;
   display: flex;
   flex-direction: column;
   border-top: 1px dashed rgba(0, 255, 255, 0.2);
@@ -3208,6 +3226,7 @@ div.studio-orb.studio-orb-bg,
   letter-spacing: 0.04em;
 }
 .hud-tree .hud-foot {
+  flex: none;
   padding: 6px 10px;
   border-top: 1px dashed rgba(140, 180, 255, 0.14);
   font-size: 9px;
@@ -3249,6 +3268,24 @@ div.studio-orb.studio-orb-bg,
   flex: 1;
   min-height: 0;
 }
+/* Breathing halo behind the sphere: slow swell + brighten, 7s. */
+.hud-sphere-glow {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: min(500px, 88%);
+  aspect-ratio: 1;
+  transform: translate(-50%, -52%);
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 190, 60, 0.2) 0%, rgba(178, 0, 255, 0.14) 45%, transparent 68%);
+  filter: blur(6px);
+  animation: hud-glowpulse 7s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes hud-glowpulse {
+  0%, 100% { opacity: 0.55; transform: translate(-50%, -52%) scale(1); }
+  50% { opacity: 0.9; transform: translate(-50%, -52%) scale(1.03); }
+}
 .hud-sphere {
   position: absolute;
   left: 50%;
@@ -3272,8 +3309,16 @@ div.studio-orb.studio-orb-bg,
   -webkit-mask-image: radial-gradient(circle, #000 58%, transparent 72%);
   mask-image: radial-gradient(circle, #000 58%, transparent 72%);
 }
-.hud-jelly-a { width: 116px; right: 10px; top: 40px; opacity: 0.88; }
-.hud-jelly-b { width: 96px; left: 20px; bottom: 2px; opacity: 0.8; }
+.hud-jelly-a { width: 116px; right: 10px; top: 40px; opacity: 0.88; animation: hud-float-a 6s ease-in-out infinite; }
+.hud-jelly-b { width: 96px; left: 20px; bottom: 2px; opacity: 0.8; animation: hud-float-b 7s ease-in-out -2.5s infinite; }
+@keyframes hud-float-a {
+  0%, 100% { transform: translateY(-6px) rotate(-1.2deg); }
+  50% { transform: translateY(6px) rotate(1.2deg); }
+}
+@keyframes hud-float-b {
+  0%, 100% { transform: translateY(6px) rotate(1deg); }
+  50% { transform: translateY(-6px) rotate(-1deg); }
+}
 .hud-stage .hud-tag {
   position: absolute;
   font-size: 9px;
@@ -3315,6 +3360,13 @@ div.studio-orb.studio-orb-bg,
   letter-spacing: 0.06em;
 }
 .hud-radar .hud-rstats b { float: right; font-size: 10px; }
+.hud-radar .hud-rs { padding: 0 4px; margin: 0 -4px; transition: all 0.25s; }
+.hud-radar .hud-rs-on {
+  color: #eef5ff;
+  background: rgba(0, 255, 255, 0.09);
+  box-shadow: inset 2px 0 0 var(--hud-cyan);
+  text-shadow: 0 0 6px rgba(160, 200, 255, 0.5);
+}
 .hud-radarsweep {
   position: absolute;
   left: 12px;
@@ -3400,8 +3452,15 @@ div.studio-orb.studio-orb-bg,
   flex-direction: column;
   font: inherit;
   text-align: left;
+  cursor: pointer;
   transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
 }
+.hud-card-on {
+  background: rgba(0, 255, 255, 0.1);
+  border-color: currentColor;
+  box-shadow: 0 0 16px rgba(0, 255, 255, 0.22), inset 0 0 20px rgba(0, 255, 255, 0.1);
+}
+.hud-card-on .hud-ic { box-shadow: 0 0 10px currentColor; }
 .hud-card:hover {
   background: rgba(0, 255, 255, 0.1);
   border-color: var(--hud-cyan);
@@ -3456,7 +3515,7 @@ div.studio-orb.studio-orb-bg,
 .hud-led-a { animation-duration: 0.8s; }
 @keyframes hud-scroll {
   0% { transform: translateX(0); }
-  100% { transform: translateX(-100%); }
+  100% { transform: translateX(-50%); }
 }
 @keyframes hud-spin {
   0% { transform: translate(-50%, -52%) rotate(0deg); }
@@ -3501,6 +3560,7 @@ div.studio-orb.studio-orb-bg,
   .hud-tree { width: auto; }
   .hud-center { min-height: 430px; }
   .hud-sphere { width: min(320px, 84vw); }
+  .hud-sphere-glow { width: min(300px, 80vw); }
   .hud-jelly-a { width: 74px; top: 16px; }
   .hud-jelly-b { width: 62px; }
   .hud-right { width: auto; }
