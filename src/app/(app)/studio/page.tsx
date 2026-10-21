@@ -542,6 +542,18 @@ function StepDots({
   );
 }
 
+/**
+ * Workspace offline (2026-10-21, direction E restructure): the site is
+ * login gate → HUD home only. The workspace window below (NeuralWorkspace,
+ * module views, window chrome) is disconnected at its single render gate
+ * — code and state stay in place so it can be reconnected deliberately
+ * later; neural-workspace.tsx is NOT deleted. The modal/toast blocks
+ * outside the gate are inert without the window (nothing on the home
+ * page can open them). Theme state likewise stays, but the home page
+ * renders only the silver-black HUD and exposes no theme switcher.
+ */
+const WORKSPACE_ENABLED = false;
+
 export default function StudioPage() {
   const [theme, setTheme] = React.useState<ThemeId>("silver");
   const [section, setSection] = React.useState<SectionId>("workspace");
@@ -2008,18 +2020,10 @@ export default function StudioPage() {
       {authed && landing !== "off" && (
         <NeuralLanding
           nodes={landingNodes}
-          themeLabel={currentTheme.label}
-          themeEn={currentTheme.en}
-          onCycleTheme={() => {
-            const i = THEMES.findIndex((t) => t.id === theme);
-            setTheme(THEMES[(i + 1) % THEMES.length].id);
-          }}
-          onEnter={enterFromLanding}
           leaving={landing === "leaving"}
           quick={introQuick}
           stats={landingStats}
           customCards={landingCustomCards}
-          onOpenCustom={openCustomFromLanding}
         />
       )}
       <div className="xuan-watermark" aria-hidden>
@@ -2028,6 +2032,7 @@ export default function StudioPage() {
         ))}
       </div>
 
+      {WORKSPACE_ENABLED && (
       <div
         className={cn(
           "xuan-window studio-root relative z-[1] flex h-[100dvh] max-h-[100dvh] w-full flex-col overflow-hidden rounded-none border-0 md:rounded-[12px] md:border",
@@ -3697,7 +3702,7 @@ export default function StudioPage() {
             )}
           </div>
         </div>
-      </div>
+      </div>)}
 
       {modal && (
         <div
