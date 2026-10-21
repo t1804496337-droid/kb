@@ -3575,3 +3575,254 @@ div.studio-orb.studio-orb-bg,
    The HUD's motion is the design itself; a system-level "animations off"
    setting froze the whole page on the owner's machine (bug report:
    "没有动态"). Do not re-add a blanket animation kill for .hud-root. */
+
+/* ══════════════════════════════════════════════════════════════════
+ * Module content views (2026-10-21, branch module-content).
+ * Clicking a module on the E home swaps the overview for its real
+ * content (hud-module-content.tsx). Same HUD language: black panels,
+ * cyan/magenta edges, mono small type. Only .hud-module-* selectors.
+ * ══════════════════════════════════════════════════════════════════ */
+.hud-module {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.hud-module-back {
+  font: inherit;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  color: var(--hud-cyan);
+  background: rgba(0, 255, 255, 0.06);
+  border: 1px solid rgba(0, 255, 255, 0.45);
+  padding: 3px 10px;
+  cursor: pointer;
+  white-space: nowrap;
+  text-shadow: 0 0 7px rgba(0, 255, 255, 0.7);
+}
+.hud-module-back:hover {
+  background: rgba(0, 255, 255, 0.14);
+  box-shadow: 0 0 12px rgba(0, 255, 255, 0.25);
+}
+.hud-module-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 12px 14px 16px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 255, 255, 0.35) transparent;
+}
+.hud-module-body::-webkit-scrollbar { width: 5px; }
+.hud-module-body::-webkit-scrollbar-thumb { background: rgba(0, 255, 255, 0.3); }
+.hud-module-sec {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 14px 0 8px;
+  padding-bottom: 5px;
+  border-bottom: 1px dashed rgba(140, 180, 255, 0.18);
+}
+.hud-module-sec:first-child { margin-top: 0; }
+.hud-module-sec-t {
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  color: #e8f4ff;
+  text-shadow: 0 0 8px rgba(0, 255, 255, 0.5);
+}
+.hud-module-sec-en {
+  font-size: 9px;
+  color: var(--hud-dim);
+  letter-spacing: 0.1em;
+}
+.hud-module-note {
+  font-size: 9.5px;
+  color: var(--hud-dim);
+  letter-spacing: 0.04em;
+  line-height: 1.6;
+}
+.hud-module-group { margin-bottom: 14px; }
+.hud-module-group-h {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0 6px;
+}
+.hud-module-group-n {
+  font-size: 12px;
+  color: #fff;
+  letter-spacing: 0.1em;
+  text-shadow: 0 0 8px rgba(178, 0, 255, 0.7);
+}
+.hud-module-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 10px;
+  margin-bottom: 6px;
+  border: 1px solid rgba(0, 255, 255, 0.14);
+  background: linear-gradient(180deg, rgba(13, 18, 34, 0.5), rgba(6, 8, 16, 0.6));
+}
+.hud-module-row-main { flex: 1; min-width: 0; }
+.hud-module-row-t {
+  font-size: 12px;
+  color: #e8f4ff;
+  line-height: 1.45;
+}
+.hud-module-row-en {
+  margin-left: 8px;
+  font-size: 10px;
+  color: var(--hud-dim);
+  letter-spacing: 0.04em;
+}
+.hud-module-row-sub {
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--hud-ink);
+  line-height: 1.55;
+}
+.hud-module-row-src {
+  margin-top: 2px;
+  font-size: 9.5px;
+  color: var(--hud-dim);
+  letter-spacing: 0.04em;
+  word-break: break-all;
+}
+.hud-module-amt {
+  font-size: 12px;
+  color: var(--hud-yellow);
+  white-space: nowrap;
+  text-shadow: 0 0 7px rgba(255, 234, 0, 0.5);
+}
+.hud-module-empty {
+  border: 1px dashed rgba(140, 180, 255, 0.3);
+  padding: 26px 14px;
+  text-align: center;
+  margin-bottom: 8px;
+}
+.hud-module-empty-t {
+  font-size: 12px;
+  color: #e8f4ff;
+  letter-spacing: 0.14em;
+}
+.hud-module-empty-s {
+  margin-top: 5px;
+  font-size: 10px;
+  color: var(--hud-dim);
+  line-height: 1.6;
+}
+.hud-module-kv {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 6px 2px;
+  border-bottom: 1px dashed rgba(140, 180, 255, 0.12);
+  font-size: 11px;
+}
+.hud-module-kv span { color: var(--hud-dim); letter-spacing: 0.08em; flex: none; }
+.hud-module-kv b { color: #e8f4ff; font-weight: 500; text-align: right; }
+.hud-module-bars { margin: 8px 0 4px; }
+.hud-module-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+  font-size: 10px;
+}
+.hud-module-bar-d { width: 38px; color: var(--hud-dim); flex: none; }
+.hud-module-bar {
+  flex: 1;
+  height: 6px;
+  background: #0d1226;
+  border: 1px solid rgba(0, 255, 255, 0.3);
+}
+.hud-module-bar i {
+  display: block;
+  height: 100%;
+  background: var(--hud-cyan);
+  box-shadow: 0 0 6px rgba(0, 255, 255, 0.7);
+}
+.hud-module-bar-v { width: 40px; text-align: right; color: #e8f4ff; flex: none; }
+.hud-module-text {
+  font-size: 11.5px;
+  color: var(--hud-ink);
+  line-height: 1.7;
+  margin: 6px 0;
+}
+.hud-module-text.dim { color: var(--hud-dim); font-size: 10.5px; }
+.hud-module-cal {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+  margin-bottom: 12px;
+}
+.hud-module-cal-h {
+  font-size: 9.5px;
+  color: var(--hud-dim);
+  text-align: center;
+  letter-spacing: 0.1em;
+  padding: 2px 0;
+}
+.hud-module-cal-d {
+  position: relative;
+  border: 1px solid rgba(0, 255, 255, 0.12);
+  background: rgba(13, 18, 34, 0.45);
+  font-size: 10.5px;
+  color: var(--hud-ink);
+  text-align: center;
+  padding: 6px 0;
+}
+.hud-module-cal-off { border-color: transparent; background: transparent; }
+.hud-module-cal-on {
+  border-color: rgba(255, 0, 127, 0.55);
+  color: #fff;
+  box-shadow: inset 0 0 10px rgba(255, 0, 127, 0.18);
+}
+.hud-module-cal-dot {
+  position: absolute;
+  left: 50%;
+  bottom: 2px;
+  width: 4px;
+  height: 4px;
+  margin-left: -2px;
+  border-radius: 50%;
+  background: var(--hud-pink);
+  box-shadow: 0 0 5px var(--hud-pink);
+}
+.hud-module-hub {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+.hud-module-hubcard {
+  font: inherit;
+  text-align: left;
+  border: 1px solid rgba(0, 255, 255, 0.25);
+  background: linear-gradient(180deg, rgba(13, 18, 34, 0.66), rgba(6, 8, 16, 0.78));
+  padding: 14px 12px;
+  cursor: pointer;
+  color: var(--hud-ink);
+}
+.hud-module-hubcard:hover:not(:disabled) {
+  border-color: rgba(0, 255, 255, 0.6);
+  box-shadow: 0 0 16px rgba(0, 255, 255, 0.18);
+}
+.hud-module-hubcard:disabled { cursor: default; opacity: 0.85; }
+.hud-module-hubcard-t {
+  font-size: 13px;
+  color: #e8f4ff;
+  letter-spacing: 0.08em;
+}
+.hud-module-hubcard-m {
+  margin-top: 10px;
+  font-size: 10.5px;
+  color: var(--hud-cyan);
+  letter-spacing: 0.08em;
+}
+@media (max-width: 760px) {
+  .hud-module-hub { grid-template-columns: 1fr; }
+  .hud-module-row { flex-wrap: wrap; }
+  .hud-module-body { padding: 10px 10px 14px; }
+}
