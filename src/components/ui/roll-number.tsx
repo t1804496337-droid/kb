@@ -31,7 +31,7 @@ const mountTurns = (fromRight: number) =>
 /** …and on a value change only the units column takes one extra turn. */
 const changeTurns = (fromRight: number) => (fromRight === 0 ? 1 : 0);
 /** Lower positions settle sooner (they also travel farthest = fastest). */
-const colDuration = (fromRight: number) => 560 + fromRight * 170;
+const colDuration = (fromRight: number) => 460 + fromRight * 130;
 
 export function RollNumber({
   value,

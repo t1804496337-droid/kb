@@ -132,14 +132,10 @@ export type LandingNode = {
   sub: string;
   /** Custom-module node: clicking opens the module view, not a section. */
   customId?: string;
-  /** Explicit jelly image src (custom nodes); built-ins use jelly-<key>.webp. */
-  img?: string;
   /** Beam color override (custom nodes). */
   beam?: string;
   /** Layout slot index for custom nodes (Layout.slots). */
   slot?: number;
-  /** Feather the cutout edges with a radial mask (custom nodes only). */
-  feather?: boolean;
 };
 
 type Pt = [number, number];
@@ -155,28 +151,32 @@ type Layout = {
   slots: NodeGeom[];
 };
 
-/** Desktop = plate geometry (frame 01, 1024x576 → 1600x900). */
+/** Desktop = plate geometry (frame 01, 1024x576 → 1600x900).
+ *  2026-10-21 top-band re-pack: the top jelly was clipped by the stage
+ *  top edge, the finance jelly grazed its card and the upper-left custom
+ *  jelly overlapped its own card; top + slots 0–3 were re-laid (each
+ *  jelly/card pair re-verified: no overlap, jelly fully on-stage). */
 const DESKTOP: Layout = {
   w: 1600,
   h: 900,
   core: [845, 445],
   orb: 719,
   nodes: {
-    top: { c: [903, 138], w: 188, anchor: [906, 160], card: [1010, 96], cardW: 150, bend: -0.05 },
+    top: { c: [903, 158], w: 188, anchor: [906, 180], card: [1010, 96], cardW: 150, bend: -0.05 },
     left: { c: [258, 450], w: 188, anchor: [322, 456], card: [205, 520], cardW: 150, bend: 0.04 },
     ll: { c: [425, 559], w: 156, anchor: [470, 548], card: [330, 650], cardW: 150, bend: 0.12 },
     right: { c: [1453, 425], w: 188, anchor: [1404, 430], card: [1390, 505], cardW: 150, bend: -0.03 },
     lr: { c: [1341, 602], w: 156, anchor: [1298, 588], card: [1290, 672], cardW: 150, bend: -0.12 },
   },
   slots: [
-    // 0 · upper-left (health's fixed home)
-    { c: [395, 205], w: 156, anchor: [433, 226], card: [240, 280], cardW: 150, bend: 0.1 },
-    // 1 · upper-right (finance's fixed home)
-    { c: [1445, 225], w: 156, anchor: [1404, 240], card: [1205, 205], cardW: 150, bend: -0.1 },
+    // 0 · upper-left (health's fixed home) — card centred under the jelly
+    { c: [400, 190], w: 156, anchor: [436, 214], card: [325, 278], cardW: 150, bend: 0.1 },
+    // 1 · upper-right (finance's fixed home) — jelly clears the card by ~52
+    { c: [1468, 232], w: 156, anchor: [1428, 244], card: [1188, 205], cardW: 150, bend: -0.1 },
     // 2 · top band, left of the core
-    { c: [600, 105], w: 140, anchor: [623, 137], card: [515, 195], cardW: 150, bend: 0.05 },
+    { c: [600, 132], w: 140, anchor: [622, 158], card: [520, 214], cardW: 150, bend: 0.05 },
     // 3 · top band, right of the core
-    { c: [1235, 130], w: 140, anchor: [1204, 155], card: [1310, 30], cardW: 150, bend: -0.05 },
+    { c: [1235, 138], w: 140, anchor: [1206, 163], card: [1322, 52], cardW: 150, bend: -0.05 },
     // 4 · lower-left corner
     { c: [168, 692], w: 140, anchor: [205, 679], card: [262, 758], cardW: 150, bend: -0.08 },
     // 5 · lower-right corner
@@ -385,6 +385,20 @@ export function NeuralLanding({
 }) {
   const rootRef = React.useRef<HTMLDivElement>(null);
   const cardTilt = useLpCardTilt();
+  // Load choreography (≤1.2s: orb → silk → nodes/cards → rolls) plays
+  // on every entry; a pointer-down anywhere inside the first moments
+  // skips straight to the settled state (CSS forces the entrance
+  // animations to their end, RollNumbers remount with no hold).
+  const [introSkip, setIntroSkip] = React.useState(false);
+  const mountAtRef = React.useRef(0);
+  React.useEffect(() => {
+    mountAtRef.current = performance.now();
+  }, []);
+  const skipIntro = () => {
+    if (!introSkip && performance.now() - mountAtRef.current < 1600) {
+      setIntroSkip(true);
+    }
+  };
   // Landing stats overrides: label/en copy + optional manual value, kept per
   // stat key in localStorage (studio_landing_stats_v1). A manual value wins
   // over the live value (marked with a dot); clear it to return to automatic.
@@ -556,10 +570,12 @@ export function NeuralLanding({
         "lp-root",
         leaving && "lp-leaving",
         quick && "lp-quick",
+        introSkip && "lp-intro-skip",
         customCards.length > 0 && "lp-has-custom",
       )}
       data-testid="studio-landing"
       data-quick={quick ? "1" : "0"}
+      onPointerDown={skipIntro}
     >
       <div className="lp-stage" data-testid="lp-stage">
         {/* In-stage backdrop: the stage's centring transform makes it a
@@ -624,16 +640,13 @@ export function NeuralLanding({
                   ...toVars("m", place(MOBILE, node)),
                   ...jellyMotion(node.customId ?? node.key),
                   "--jelly-glow": node.beam ?? BEAM[node.key] ?? "#DCE2F0",
-                  animationDelay: `${0.5 + i * 0.07}s`,
+                  animationDelay: `${0.42 + Math.min(i, 8) * 0.045}s`,
                 } as React.CSSProperties
               }
               onClick={openNode}
               aria-label={`进入${node.label}`}
             >
-              <JellyMedia
-                still={node.img ?? `/studio/landing/jelly-${node.key}.webp`}
-                stillClassName={node.feather ? "lp-feather" : undefined}
-              />
+              <JellyMedia />
             </button>
             <button
               type="button"
@@ -644,7 +657,7 @@ export function NeuralLanding({
                 {
                   ...toVars("d", cardPlace(DESKTOP, node)),
                   ...toVars("m", cardPlace(MOBILE, node)),
-                  animationDelay: `${0.95 + i * 0.07}s`,
+                  animationDelay: `${0.5 + Math.min(i, 8) * 0.04}s`,
                 } as React.CSSProperties
               }
               onClick={openNode}
@@ -659,7 +672,7 @@ export function NeuralLanding({
               <span className="lp-card-row">
                 <span className="lp-card-ico" aria-hidden />
                 <span className="lp-card-n">
-                  <RollNumber value={node.n} delay={950 + i * 70} />
+                  <RollNumber key={introSkip ? "done" : "play"} value={node.n} delay={introSkip ? 0 : 430 + Math.min(i, 5) * 35} />
                 </span>
               </span>
               {/* Module distinction lives in the type now: the Chinese
@@ -708,7 +721,7 @@ export function NeuralLanding({
               <span className="lp-card-row">
                 <span className="lp-card-ico" aria-hidden />
                 <span className="lp-card-n">
-                  <RollNumber value={p.count} delay={200} />
+                  <RollNumber key={introSkip ? "done" : "play"} value={p.count} delay={introSkip ? 0 : 430} />
                 </span>
               </span>
               <span
@@ -812,7 +825,7 @@ export function NeuralLanding({
                       {m.label} <em>{m.en}</em>
                     </small>
                     <b>
-                      <RollNumber value={m.value} delay={1750} />
+                      <RollNumber key={introSkip ? "done" : "play"} value={m.value} delay={introSkip ? 0 : 650} />
                       {m.isManual && (
                         <i
                           className="lp-manual-dot"

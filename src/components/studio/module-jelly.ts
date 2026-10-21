@@ -1,12 +1,14 @@
 /** Shared jelly assignment for user-created modules.
  *
- * Landing nodes (PR #16) and workspace-map hubs draw from the same pool:
- * health/finance have dedicated re-cut jellies; every other module picks a
- * pre-generated mirror+tint variant (public/studio/landing/jelly-var-*.webp)
- * plus a beam colour by a stable id hash — so a module always shows the
- * same jelly + beam wherever it appears. */
-
-export const CUSTOM_NODE_VARIANTS = 8;
+ * Visuals are unified site-wide (PR #31 follow-up): every module —
+ * built-in or custom — shows the ONE animated jelly (JELLY_ANIM_SRC)
+ * with the ONE poster frame it was generated from (JELLY_POSTER_SRC).
+ * The old per-module stills (dedicated re-cuts for health/finance,
+ * mirror+tint variants for the rest) looked like a different species
+ * next to the animated jelly and are no longer referenced by any
+ * display component; the files stay in public/ but nothing renders
+ * them. What still differs per module is only the beam colour (below)
+ * and the card title colour derived from it. */
 
 export const CUSTOM_NODE_BEAMS = [
   "#C8C0FF",
@@ -27,22 +29,20 @@ export function hashModuleId(id: string): number {
 
 /** The one animated jelly every node plays (PR #26): a ~5.2s seamless
  *  image-to-video loop generated from the upscaled jelly-left still,
- *  transcoded to display size (450×414, H.264, pure-black backing that the
- *  `.jelly-video` feather mask melts into the stage). All nodes share
- *  this single file, same direction, same colour — modules are told apart
- *  by their beam colour and card title colour only. The per-node stills
- *  (moduleJellyImg / jelly-<key>.webp) remain as the video's poster, its
- *  error fallback, and the reduced-motion rendering. */
+ *  transcoded to display size (450×414, H.264, pure-black backing). All
+ *  nodes share this single file, same direction, same colour — modules
+ *  are told apart by their beam colour and card title colour only. */
 export const JELLY_ANIM_SRC = "/studio/landing/jelly-anim.mp4";
 
-/** Jelly image for a custom module id (health/finance pinned, rest hashed). */
-export function moduleJellyImg(id: string): string {
-  if (id === "health") return "/studio/landing/jelly-health.webp";
-  if (id === "finance") return "/studio/landing/jelly-finance.webp";
-  return `/studio/landing/jelly-var-${(hashModuleId(id) % CUSTOM_NODE_VARIANTS) + 1}.webp`;
-}
+/** The still the shared clip was generated from (the "A" frame): the
+ *  universal poster, error fallback and reduced-motion rendering for
+ *  every JellyMedia instance on every surface — landing nodes,
+ *  workspace plate hubs, workspace map — so a module can never flash
+ *  a different-looking jelly before the video starts or when motion
+ *  is reduced. */
+export const JELLY_POSTER_SRC = "/studio/landing/jelly-left.webp";
 
-/** Beam colour for a custom module id — always paired with moduleJellyImg. */
+/** Beam colour for a custom module id. */
 export function moduleJellyBeam(id: string): string {
   if (id === "health") return "#8FE3B8";
   if (id === "finance") return "#E6CF98";

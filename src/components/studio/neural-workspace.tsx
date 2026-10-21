@@ -4,6 +4,7 @@ import * as React from "react";
 import { cn } from "@/lib/utils";
 import { jellyMotion } from "./module-jelly";
 import { JellyMedia } from "./jelly-media";
+import { NeuralOrb } from "./neural-orb";
 import { RollNumber } from "@/components/ui/roll-number";
 
 export type WsHub = {
@@ -17,26 +18,38 @@ export type WsHub = {
   rows: { id: string; title: string; a: string; b: string; c?: string }[];
   /** Set for user-created modules: section is the module id, not a section. */
   customId?: string;
-  /** Jelly image for custom-module hubs — shared assignment with the landing
-   *  (components/studio/module-jelly), so the same module shows the same
-   *  jellyfish in the map as on the landing. Built-ins use jelly-<key>.webp. */
-  img?: string;
-  /** Beam colour for custom-module hubs, from the same shared assignment. */
+  /** Beam colour for custom-module hubs, from the shared assignment. */
   beam?: string;
 };
+
+/** Editable workspace header copy (brand suffix / headline / EN line).
+ *  Owned + persisted by the studio page (localStorage studio_head_copy_v1);
+ *  the stats line under it stays data-derived and is NOT part of this. */
+export type WsHeadCopy = { brand: string; headline: string; en: string };
 
 /** Design space matches plate frames ~6.5s / 7.5s (1024x576 → 1600x820 content area). */
 const W = 1600;
 const H = 820;
-const ORB = { x: 150, y: 420, size: 270 };
-const JELLY_X = 300;
-const CARD_X = JELLY_X + 88;
-/** Dense fan list viewport (plate f750: ~20 rows packed on a soft arc, scrolls inside). */
-const LIST_X = 700;
-const LIST_TOP = 60;
-const LIST_H = 716;
-const ROW_GAP_MIN = 38;
-const ROW_GAP_MAX = 58;
+
+/* Two-column module map (2026-10-21 rebuild): the duplicated landing
+ * hub-graph on the left is gone. Left = one clean hub column (300 wide,
+ * one row per module, never compressed — it scrolls instead), crowned
+ * by the living core orb (the landing's NeuralOrb: video loop +
+ * breathing bloom, doubling as the single "return" affordance).
+ * Right = the selected hub's rows as solid cards in one aligned
+ * column, with the spider silk kept as the hero: one source point on
+ * the selected hub row's right edge, one thread per card, all threads
+ * sharing the same sweep, passing BEHIND the cards and ending in a
+ * bead on each card's left edge — silk connects cards, never crosses
+ * text. The plate is height-fitted and its design width follows the
+ * container, so the panel always runs to the right edge (no dead
+ * column on wide windows). */
+const COL_X = 40;
+const COL_W = 300;
+const HUB_H = 56;
+const HUB_GAP = 8;
+const PANEL_X = 452;
+const ORB_SIZE = 88;
 
 const BEAM: Record<string, string> = {
   top: "#EEF1FF",
@@ -49,65 +62,43 @@ const BEAM: Record<string, string> = {
 const CUSTOM_BEAM = "#C9D4E8";
 const beamOf = (h: WsHub) => h.beam ?? BEAM[h.key] ?? CUSTOM_BEAM;
 
-/** Hub jellyfish visual: every hub plays the one shared animation loop
- *  (JellyMedia); the hub's assigned still (built-ins: their plate jelly,
- *  custom modules: the shared-assignment image, same as their landing node)
- *  is the poster / fallback. The glass orb with the module's initial is
- *  kept only for when there is no still at all or the still itself fails. */
-function WsJellyVisual({ hub }: { hub: WsHub }) {
+/** Hub jellyfish visual: every hub — built-in or custom — plays the one
+ *  shared A animation loop with the A frame as poster (JellyMedia's
+ *  defaults). The glass orb with the module's initial is only the
+ *  fallback if the poster itself fails to load. */
+function WsJellyVisual() {
   const [failed, setFailed] = React.useState(false);
-  const src = hub.customId ? hub.img : `/studio/landing/jelly-${hub.key}.webp`;
-  if (!src || failed) {
+  if (failed) {
     return (
       <span className="ws-jelly-orb" aria-hidden>
-        <i>{hub.label.slice(0, 1)}</i>
+        <i>·</i>
       </span>
     );
   }
-  return (
-    <JellyMedia
-      still={src}
-      stillClassName={hub.customId ? "ws-feather" : undefined}
-      onStillError={() => setFailed(true)}
-    />
-  );
+  return <JellyMedia onStillError={() => setFailed(true)} />;
 }
 
-/**
- * Hub slot ys for N hubs, centred on the plate's 420 midline: with the
- * original five hubs this reproduces 200/310/420/530/640 exactly; extra
- * (custom) hubs compress the spacing instead of overflowing the plate.
- */
-function slotYs(n: number): number[] {
-  if (n <= 1) return [420];
-  const step = Math.min(110, 440 / (n - 1));
-  return Array.from({ length: n }, (_, i) => 420 + (i - (n - 1) / 2) * step);
-}
-
-/** Order with the selected hub in the middle slot, the rest in hub order. */
-function orderHubs(hubs: WsHub[], selKey: string): WsHub[] {
-  const s = hubs.find((h) => h.key === selKey) ?? hubs[0];
-  if (!s) return [];
-  const others = hubs.filter((h) => h.key !== s.key);
-  const at = Math.ceil(others.length / 2);
-  return [...others.slice(0, at), s, ...others.slice(at)];
-}
-
-function rowLayout(n: number, cardY: number) {
-  const gap = n <= 1 ? ROW_GAP_MAX : Math.max(ROW_GAP_MIN, Math.min(ROW_GAP_MAX, (LIST_H - 40) / (n - 1)));
-  const total = (n - 1) * gap;
-  // short lists sit centred on the card like the plate; long lists start at the top and scroll
-  const y0 = total + 40 >= LIST_H ? 20 : Math.max(20, Math.min(cardY - LIST_TOP - total / 2, LIST_H - 20 - total));
-  const rows = Array.from({ length: n }, (_, i) => {
-    const y = y0 + i * gap; // local y inside list viewport (unscrolled)
-    const t = Math.min(1, y / LIST_H);
-    return { x: 930 - Math.pow(t, 1.5) * 110, y };
-  });
-  return { rows, gap, content: y0 + total + 40 };
+/** Row geometry for n cards in a rowsH viewport: equal gaps, short
+ *  lists centred in the viewport, long lists top-aligned and scrolled.
+ *  13 rows (the densest hub) fit with no scroll at either head state. */
+function rowLayout(n: number, rowsH: number) {
+  const cardH = n >= 12 ? 30 : 38;
+  if (n <= 0) return { rows: [] as { y: number }[], cardH, content: 0 };
+  let gap = n > 1 ? (rowsH - n * cardH) / (n - 1) : 0;
+  gap = Math.max(6, Math.min(n <= 6 ? 18 : 14, gap));
+  const content = n * cardH + (n - 1) * gap;
+  const y0 = content < rowsH ? (rowsH - content) / 2 : 0;
+  const rows = Array.from({ length: n }, (_, i) => ({ y: y0 + i * (cardH + gap) }));
+  return { rows, cardH, content: Math.max(content, y0 + content) };
 }
 
 export function NeuralWorkspace({
   hubs,
+  headCopy,
+  editMode,
+  onHeadCopyChange,
+  themeId,
+  compact,
   themeLabel,
   themeEn,
   onCycleTheme,
@@ -120,6 +111,14 @@ export function NeuralWorkspace({
   stepCount,
 }: {
   hubs: WsHub[];
+  headCopy?: WsHeadCopy;
+  editMode?: boolean;
+  onHeadCopyChange?: (patch: Partial<WsHeadCopy>) => void;
+  /** Orb skin follows the site theme (same NeuralOrb as the landing). */
+  themeId?: "silver" | "warm" | "neu";
+  /** Page chrome collapsed: the plate head hides and the map takes the
+   *  full height (hub column + rows re-flow to the taller geometry). */
+  compact?: boolean;
   themeLabel: string;
   themeEn: string;
   onCycleTheme: () => void;
@@ -136,6 +135,7 @@ export function NeuralWorkspace({
   const wrapRef = React.useRef<HTMLDivElement | null>(null);
   const listRef = React.useRef<HTMLDivElement | null>(null);
   const [scale, setScale] = React.useState(0.85);
+  const [designW, setDesignW] = React.useState(W);
   const [sel, setSel] = React.useState<string>(defaultHub);
   const setSelNotify = (k: string) => {
     setSel(k);
@@ -159,7 +159,18 @@ export function NeuralWorkspace({
     if (!el) return;
     const fit = () => {
       const r = el.getBoundingClientRect();
-      setScale(Math.max(0.4, Math.min(r.width / W, r.height / H)));
+      // Height-driven fit; the design width then follows the container
+      // so the panel's right edge lands on the container's right edge.
+      let s = r.height / H;
+      let dw = r.width / s;
+      if (dw < 1180) {
+        // Tall-narrow window: fall back to a minimum design width and
+        // fit by width instead of clipping the panel.
+        dw = 1180;
+        s = r.width / dw;
+      }
+      setScale(Math.max(0.3, s));
+      setDesignW(dw);
     };
     fit();
     const ro = new ResizeObserver(fit);
@@ -173,22 +184,28 @@ export function NeuralWorkspace({
     setHot(null);
   }, [sel, replay]);
 
-  const slots = React.useMemo(() => slotYs(hubs.length), [hubs.length]);
-  const order = React.useMemo(() => orderHubs(hubs, sel), [hubs, sel]);
+  // Vertical geometry follows the head state: with the page chrome
+  // collapsed (compact) the orb + columns start near the top and the
+  // rows viewport grows by the head's height.
+  const ORB_TOP = compact ? 36 : 158;
+  const COL_TOP = ORB_TOP + ORB_SIZE + 12;
+  const PANEL_HEAD_Y = COL_TOP;
+  const ROWS_TOP = COL_TOP + 48;
+  const ROWS_H = H - ROWS_TOP - 36;
+  const PANEL_W = designW - PANEL_X - 40;
 
   const selHub = hubs.find((h) => h.key === sel) ?? hubs[0];
   const rows = selHub?.rows ?? [];
-  const selIdx = Math.max(0, order.findIndex((h) => h.key === selHub?.key));
-  const cardY = slots[selIdx] ?? 420;
-  const cardRight: [number, number] = [CARD_X + 200, cardY];
-  const lay = rowLayout(rows.length, cardY);
-  const scrollable = lay.content > LIST_H;
+  const selIdx = Math.max(0, hubs.findIndex((h) => h.key === selHub?.key));
+  const lay = rowLayout(rows.length, ROWS_H);
+  const scrollable = lay.content > ROWS_H + 1;
   const totalItems = hubs.reduce((s, h) => s + h.rows.length, 0);
-  // Header copy derives from data: module/step counts update automatically.
+  // Header stats derive from data: module/step counts update automatically.
   const moduleN = moduleCount ?? hubs.length + 1;
   const stepN = stepCount ?? hubs.find((h) => h.key === "top")?.n ?? 8;
-  const moduleWord =
-    ["Zero", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Eleven", "Twelve"][moduleN] ?? String(moduleN);
+  // Spider-silk source: the selected hub row's right edge.
+  const silkSrc: [number, number] = [COL_X + COL_W, COL_TOP + selIdx * (HUB_H + HUB_GAP) + HUB_H / 2];
+  const silkDstX = PANEL_X - 10;
   const rafRef = React.useRef(0);
   const onScroll = () => {
     cancelAnimationFrame(rafRef.current);
@@ -206,92 +223,70 @@ export function NeuralWorkspace({
     >
       <div
         className="ws-plate"
-        style={{ width: W, height: H, transform: `scale(${scale})` }}
+        style={{ width: designW, height: H, transform: `scale(${scale})` }}
         key={replay}
       >
-        <svg className="ws-svg" viewBox={`0 0 ${W} ${H}`} width={W} height={H} aria-hidden>
-          <defs>
-            <filter id="ws-glow" x="-20%" y="-20%" width="140%" height="140%">
-              <feGaussianBlur stdDeviation="2.4" result="b" />
-              <feMerge>
-                <feMergeNode in="b" />
-                <feMergeNode in="SourceGraphic" />
-              </feMerge>
-            </filter>
-            <clipPath id="ws-list-clip">
-              <rect x={cardRight[0]} y={LIST_TOP} width={W - cardRight[0]} height={LIST_H} />
-            </clipPath>
-          </defs>
-          <g filter="url(#ws-glow)">
-            {order.map((h, i) => {
-              const y = slots[i];
-              const d = `M ${ORB.x + 30} ${ORB.y} C ${ORB.x + 90} ${ORB.y}, ${JELLY_X - 90} ${y}, ${JELLY_X - 30} ${y}`;
-              const on = h.key === sel;
-              return (
-                <g key={h.key}>
-                  <path
-                    className={cn("ws-beam", on && "ws-beam-on")}
-                    d={d}
-                    stroke={on ? "#F2D49A" : beamOf(h)}
-                    strokeOpacity={on ? 0.95 : 0.5}
-                    strokeWidth={on ? 2.4 : 1.4}
-                    fill="none"
-                  />
-                  <circle r={2.6} className="ws-spark" opacity={0.85}>
-                    <animateMotion dur={`${2.6 + i * 0.35}s`} repeatCount="indefinite" path={d} />
-                  </circle>
-                </g>
-              );
-            })}
-          </g>
-          <g key={`${sel}-${replay}`} className="ws-fan" clipPath="url(#ws-list-clip)">
+        {/* Spider silk: one thread per row card, drawn from the selected
+            hub row. The svg sits below the HTML columns, so threads pass
+            behind the cards and only their ends (bead at each card's
+            left edge) touch the cards. */}
+        <svg className="ws-svg" viewBox={`0 0 ${designW} ${H}`} width={designW} height={H} aria-hidden>
+          <g key={`${sel}-${replay}`} className="ws-fan">
             {lay.rows.map((r, i) => {
-              const py = LIST_TOP + r.y - scrollTop;
-              if (py < LIST_TOP - 30 || py > LIST_TOP + LIST_H + 30) return null;
-              const px = r.x;
-              const d = `M ${cardRight[0]} ${cardRight[1]} C ${cardRight[0] + 150} ${cardRight[1]}, ${px - 220} ${py + 30}, ${px - 6} ${py}`;
-              const bead = (t: number) => {
-                const x0 = cardRight[0], y0 = cardRight[1];
-                return {
-                  x: (1 - t) ** 3 * x0 + 3 * (1 - t) ** 2 * t * (x0 + 150) + 3 * (1 - t) * t ** 2 * (px - 220) + t ** 3 * px,
-                  y: (1 - t) ** 3 * y0 + 3 * (1 - t) ** 2 * t * y0 + 3 * (1 - t) * t ** 2 * (py + 30) + t ** 3 * py,
-                };
-              };
+              const ty = ROWS_TOP + r.y - scrollTop + lay.cardH / 2;
+              if (ty < ROWS_TOP - 24 || ty > ROWS_TOP + ROWS_H + 24) return null;
+              const d = `M ${silkSrc[0]} ${silkSrc[1]} C ${silkSrc[0] + 64} ${silkSrc[1]}, ${silkDstX - 84} ${ty}, ${silkDstX} ${ty}`;
+              const mx = (silkSrc[0] + silkDstX) / 2;
+              const my = (silkSrc[1] + ty) / 2;
               return (
                 <g key={i} className={cn(hot === i && "ws-fan-hot")}>
                   <path className="ws-fan-line" d={d} style={{ animationDelay: `${Math.min(i, 14) * 0.035}s` }} />
-                  {i % 2 === 0 &&
-                    [0.38, 0.66].map((t) => {
-                      const b = bead(t);
-                      return <circle key={t} cx={b.x} cy={b.y} r={1.5} className="ws-bead" />;
-                    })}
+                  <circle cx={mx} cy={my} r={1.4} className="ws-bead" />
+                  <circle cx={silkDstX} cy={ty} r={2.2} className="ws-fan-dot" />
                 </g>
               );
             })}
           </g>
         </svg>
 
-        <button
-          type="button"
-          className="ws-orb ws-orb-btn"
-          style={{ left: ORB.x - ORB.size / 2, top: ORB.y - ORB.size / 2, width: ORB.size, height: ORB.size }}
-          data-testid="ws-orb-back"
-          aria-label="返回神经主体 · 登录页"
-          title="返回主体"
-          onClick={onReturnLanding}
-        >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/studio/landing/orb-plate.webp" alt="" draggable={false} />
-          <span className="pl-shimmer" />
-          <span className="ws-orb-hint">返回主体</span>
-        </button>
-
-        <div className="ws-head" data-testid="ws-head">
-          <p className="ws-kicker">
-            TANG · NEURAL STUDIO <span>网文拉新工作台</span>
-          </p>
-          <h2>{moduleN} 大模块，一条拉新流水线。</h2>
-          <p className="ws-head-en">{moduleWord} module{moduleN === 1 ? "" : "s"}, one growth pipeline.</p>
+        {!compact && (
+        <div className={cn("ws-head", editMode && "ws-head-edit")} data-testid="ws-head">
+          {editMode && headCopy && onHeadCopyChange ? (
+            <>
+              <p className="ws-kicker">
+                TANG · NEURAL STUDIO
+                <input
+                  className="ws-head-input ws-head-input-brand"
+                  aria-label="品牌行后缀"
+                  data-testid="ws-head-brand"
+                  value={headCopy.brand}
+                  onChange={(e) => onHeadCopyChange({ brand: e.target.value })}
+                />
+              </p>
+              <input
+                className="ws-head-input ws-head-input-h2"
+                aria-label="工作台主标题"
+                data-testid="ws-head-headline"
+                value={headCopy.headline}
+                onChange={(e) => onHeadCopyChange({ headline: e.target.value })}
+              />
+              <input
+                className="ws-head-input ws-head-input-en"
+                aria-label="工作台英文副标题"
+                data-testid="ws-head-en"
+                value={headCopy.en}
+                onChange={(e) => onHeadCopyChange({ en: e.target.value })}
+              />
+            </>
+          ) : (
+            <>
+              <p className="ws-kicker">
+                TANG · NEURAL STUDIO <span>{headCopy?.brand}</span>
+              </p>
+              <h2>{headCopy?.headline}</h2>
+              <p className="ws-head-en">{headCopy?.en}</p>
+            </>
+          )}
           <p className="ws-stats">
             <b><RollNumber value={moduleN} /></b> 个模块 <small>modules</small>
             <i>·</i>
@@ -302,94 +297,114 @@ export function NeuralWorkspace({
             <b><RollNumber value={hubs.find((h) => h.key === "ll")?.n ?? 0} /></b> Skill
           </p>
         </div>
+        )}
 
-        {order.map((h, i) => {
-          const y = slots[i];
-          const on = h.key === sel;
-          const js = on ? 118 : 86;
-          return (
-            <React.Fragment key={h.key}>
+        {/* The living core orb: same NeuralOrb as the landing (video
+            loop + breathing bloom), and the map's ONE return affordance
+            — caption sits under it, no centre label, no second button. */}
+        <button
+          type="button"
+          className="ws-orb-core"
+          style={{ left: COL_X + 8, top: ORB_TOP, width: ORB_SIZE, height: ORB_SIZE }}
+          data-testid="ws-orb-back"
+          onClick={onReturnLanding}
+          aria-label="返回神经主体 · 登录页"
+          title="返回主体"
+        >
+          <NeuralOrb theme={themeId ?? "silver"} />
+          <span className="ws-orb-core-cap">返回主体</span>
+        </button>
+
+        {/* Hub column: one row per module, fixed height, never compressed. */}
+        <div
+          className="ws-hubcol"
+          style={{ left: COL_X, top: COL_TOP, width: COL_W, maxHeight: H - COL_TOP - 36 }}
+        >
+          {hubs.map((h, i) => {
+            const on = h.key === sel;
+            return (
               <button
+                key={h.key}
                 type="button"
-                className={cn("ws-jelly", on && "ws-jelly-on")}
-                style={
-                  {
-                    left: JELLY_X - js / 2 + 10,
-                    top: y - js * 0.46,
-                    width: js,
-                    ...jellyMotion(h.customId ?? h.key),
-                    "--jelly-glow": beamOf(h),
-                  } as React.CSSProperties
-                }
-                data-hub={h.section}
-                data-key={h.key}
-                aria-label={`选中${h.label}`}
-                onClick={() => (on ? onOpenSection(h.section) : setSelNotify(h.key))}
-              >
-                <WsJellyVisual hub={h} />
-              </button>
-              <button
-                type="button"
-                className={cn("ws-card", on && "ws-card-on")}
-                style={{ left: CARD_X, top: y - (on ? 46 : 38), width: on ? 200 : 168 }}
+                className={cn("ws-hubrow", on && "ws-hubrow-on")}
+                style={{ "--hub-beam": beamOf(h), animationDelay: `${0.05 + i * 0.04}s` } as React.CSSProperties}
                 data-hub={h.section}
                 data-card={h.key}
                 onClick={() => (on ? onOpenSection(h.section) : setSelNotify(h.key))}
                 aria-label={on ? `打开${h.label}` : `选中${h.label}`}
               >
-                <span className="ws-card-top">
-                  <span className="ws-card-ico" aria-hidden />
-                  <b><RollNumber value={h.n} /></b>
+                <span className="ws-hubrow-jelly" style={jellyMotion(h.customId ?? h.key)} aria-hidden>
+                  <WsJellyVisual />
                 </span>
-                <span className="ws-card-zh" style={{ color: beamOf(h) }}>
-                  {h.label}
+                <span className="ws-hubrow-names">
+                  <b style={{ color: beamOf(h) }}>{h.label}</b>
                   <em>{h.en}</em>
                 </span>
-                <span className="ws-card-sub">{on ? "再点一次进入分区 →" : h.sub}</span>
+                <span className="ws-hubrow-n"><RollNumber value={h.n} /></span>
               </button>
-            </React.Fragment>
-          );
-        })}
+            );
+          })}
+        </div>
 
-        <div
-          ref={listRef}
-          className={cn("ws-list", scrollable && "ws-list-scroll")}
-          style={{ left: LIST_X, top: LIST_TOP, width: W - LIST_X - 20, height: LIST_H }}
-          onScroll={onScroll}
-          data-testid="ws-list"
-          key={`list-${sel}-${replay}`}
-        >
-          <ul className="ws-rows ws-rows-d" style={{ height: lay.content }}>
-            {rows.map((r, i) => (
-              <li
-                key={r.id}
-                style={{ left: lay.rows[i].x - LIST_X + 12, top: lay.rows[i].y - 11, animationDelay: `${0.15 + Math.min(i, 14) * 0.055}s` }}
-                onMouseEnter={() => setHot(i)}
-                onMouseLeave={() => setHot((v) => (v === i ? null : v))}
-              >
-                <span className="ws-row-dot" aria-hidden />
-                <button type="button" onClick={() => onPickRow(r, selHub)} data-row={r.id} data-section={selHub.section}>
-                  <span className="ws-row-t">{r.title}</span>
-                  <span className="ws-row-m">
-                    <i>{r.a}</i>
-                    <i>{r.b}</i>
-                    {r.c ? <i className="ws-row-chip">{r.c}</i> : null}
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
-          {rows.length === 0 && selHub && (
-            <div className="ws-empty" data-testid="ws-empty">
-              <b>{selHub.label}还没有条目</b>
-              <span>点右上角「新建任务」，目标选「{selHub.label}」就能加第一条。</span>
-            </div>
-          )}
+        {/* Content panel: header + the selected hub's row cards. */}
+        <div className="ws-panel" style={{ left: PANEL_X, top: PANEL_HEAD_Y, width: PANEL_W }}>
+          <div className="ws-panel-head">
+            <b>{selHub?.label}</b>
+            <span className="ws-panel-count">{rows.length} 条 · {selHub?.en}</span>
+            <span className="ws-panel-sub">{selHub?.sub}</span>
+            <button
+              type="button"
+              className="ws-panel-open"
+              onClick={() => selHub && onOpenSection(selHub.section)}
+            >
+              进入分区 →
+            </button>
+          </div>
+          <div
+            ref={listRef}
+            className={cn("ws-list", scrollable && "ws-list-scroll")}
+            style={{ left: 0, top: 36, width: PANEL_W, height: ROWS_H, marginTop: 12 }}
+            onScroll={onScroll}
+            data-testid="ws-list"
+            key={`list-${sel}-${replay}`}
+          >
+            <ul className="ws-rows ws-rows-d" style={{ height: lay.content }}>
+              {rows.map((r, i) => (
+                <li
+                  key={r.id}
+                  style={{ left: 0, top: lay.rows[i].y, width: "100%", height: lay.cardH, animationDelay: `${0.15 + Math.min(i, 14) * 0.055}s` }}
+                  onMouseEnter={() => setHot(i)}
+                  onMouseLeave={() => setHot((v) => (v === i ? null : v))}
+                >
+                  <button
+                    type="button"
+                    className={cn("ws-rowcard", hot === i && "ws-rowcard-hot")}
+                    onClick={() => selHub && onPickRow(r, selHub)}
+                    data-row={r.id}
+                    data-section={selHub?.section}
+                  >
+                    <span className="ws-row-t">{r.title}</span>
+                    <span className="ws-row-m">
+                      <i>{r.a}</i>
+                      <i>{r.b}</i>
+                      {r.c ? <i className="ws-row-chip">{r.c}</i> : null}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+            {rows.length === 0 && selHub && (
+              <div className="ws-empty" data-testid="ws-empty">
+                <b>{selHub.label}还没有条目</b>
+                <span>点右上角「新建任务」，目标选「{selHub.label}」就能加第一条。</span>
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="ws-tools">
           <span className="ws-crumb">
-            创作空间 <small>Core</small> / 工作台 / <b>{selHub.label}</b>
+            创作空间 <small>Core</small> / 工作台 / <b>{selHub?.label}</b>
             <small className="ws-crumb-n"> · {rows.length} 条</small>
           </span>
           <span className="ws-actions">
@@ -400,7 +415,9 @@ export function NeuralWorkspace({
         </div>
       </div>
 
-      <div className="ws-hint">选择一个节点查看全部条目 · Select a hub to see its items</div>
+      {lay.content < ROWS_H - 40 && (
+        <div className="ws-hint">选择一个节点查看全部条目 · Select a hub to see its items</div>
+      )}
       <div className="lp-brand ws-brand" aria-hidden>
         <span>TANG</span>
         <span>NEURAL</span>
@@ -419,38 +436,21 @@ export function NeuralWorkspace({
   );
 }
 
-/* ───────────── Mobile portrait adaptation (batch6 → batch7 compressed) ───────────── */
+/* ───────────── Mobile portrait: stacked, never compressed ─────────────
+ * Hubs become a horizontal swipe strip on top; below it the selected
+ * hub's cards in a single column. The silk survives as a slim trunk in
+ * the left gutter with a short stub + bead to each card's left edge —
+ * same language as the desktop fan, geometry kept regular. */
 const MW = 400;
-const M_ORB = { x: 200, y: 80, size: 150 };
-/** The original five hub slots on the orb arc; other counts sample this arc. */
-const M_ARC: { x: number; y: number }[] = [
-  { x: 44, y: 122 },
-  { x: 122, y: 166 },
-  { x: 200, y: 200 },
-  { x: 278, y: 166 },
-  { x: 356, y: 122 },
-];
-function mSlots(n: number): { x: number; y: number }[] {
-  if (n <= 1) return [M_ARC[2]];
-  return Array.from({ length: n }, (_, i) => {
-    const u = (i / (n - 1)) * (M_ARC.length - 1);
-    const lo = Math.floor(u);
-    const hi = Math.min(M_ARC.length - 1, lo + 1);
-    const f = u - lo;
-    return {
-      x: M_ARC[lo].x + (M_ARC[hi].x - M_ARC[lo].x) * f,
-      y: M_ARC[lo].y + (M_ARC[hi].y - M_ARC[lo].y) * f,
-    };
-  });
-}
-const M_CARD_TOP = 252;
-const M_CARD_H = 64;
-const M_ROW0 = M_CARD_TOP + M_CARD_H + 44;
-const M_ROW_GAP = 50;
-/** Fan lines live in a left gutter (x ≤ M_GUTTER) — row text starts at M_TEXT_X. */
-const M_DOT_X = 30;
-const M_TEXT_X = M_DOT_X + 14;
-const M_GUTTER = 24;
+const M_STRIP_TOP = 12;
+const M_STRIP_H = 48;
+const M_HEAD_Y = M_STRIP_TOP + M_STRIP_H + 14;
+const M_ROWS_TOP = M_HEAD_Y + 40;
+const M_CARD_H = 54;
+const M_GAP = 8;
+const M_GUTTER_X = 16;
+const M_CARD_X = 44;
+const M_CARD_W = MW - M_CARD_X - 14;
 
 export function NeuralWorkspaceMobile({
   hubs,
@@ -490,156 +490,95 @@ export function NeuralWorkspaceMobile({
     return () => ro.disconnect();
   }, []);
 
-  const slots = React.useMemo(() => mSlots(hubs.length), [hubs.length]);
-  const order = React.useMemo(() => orderHubs(hubs, sel), [hubs, sel]);
   const selHub = hubs.find((h) => h.key === sel) ?? hubs[0];
-  const selSlot = slots[Math.max(0, order.findIndex((h) => h.key === selHub?.key))] ?? M_ARC[2];
   const allRows = selHub?.rows ?? [];
-  const rows = allRows.slice(0, 9);
-  const extra = allRows.length - rows.length;
-  const n = Math.max(1, rows.length + (extra > 0 ? 1 : 0));
-  const H = M_ROW0 + (n - 1) * M_ROW_GAP + 40;
-  const cardBottom = M_CARD_TOP + M_CARD_H;
-  const J: [number, number] = [M_GUTTER - 4, cardBottom + 18];
-  const dots = Array.from({ length: n }, (_, i) => ({ x: M_DOT_X, y: M_ROW0 + i * M_ROW_GAP }));
+  const shown = allRows.slice(0, 9);
+  const extra = allRows.length - shown.length;
+  const n = Math.max(1, shown.length + (extra > 0 ? 1 : 0));
+  const H = M_ROWS_TOP + n * M_CARD_H + (n - 1) * M_GAP + 18;
+  const rowY = (i: number) => M_ROWS_TOP + i * (M_CARD_H + M_GAP);
+  const lastCy = rowY(n - 1) + M_CARD_H / 2;
   const tap = (h: WsHub) => (h.key === sel ? onOpenSection(h.section) : setSelNotify(h.key));
-  const orbR = M_ORB.size / 2;
 
   return (
     <div ref={wrapRef} className="wsm-wrap" data-testid="ws-mobile" data-selected={sel} style={{ height: H * scale }}>
       <div className="wsm-plate" style={{ width: MW, height: H, transform: `scale(${scale})` }}>
         <svg className="ws-svg" viewBox={`0 0 ${MW} ${H}`} width={MW} height={H} aria-hidden>
-          <defs>
-            <filter id="wsm-glow" x="-20%" y="-20%" width="140%" height="140%">
-              <feGaussianBlur stdDeviation="1.8" result="b" />
-              <feMerge>
-                <feMergeNode in="b" />
-                <feMergeNode in="SourceGraphic" />
-              </feMerge>
-            </filter>
-          </defs>
-          <g filter="url(#wsm-glow)">
-            {order.map((h, i) => {
-              const s = slots[i];
-              const ang = Math.atan2(s.y - M_ORB.y, s.x - M_ORB.x);
-              const sx = M_ORB.x + Math.cos(ang) * orbR * 0.55;
-              const sy = M_ORB.y + Math.sin(ang) * orbR * 0.55;
-              const d = `M ${sx.toFixed(1)} ${sy.toFixed(1)} C ${(sx + Math.cos(ang) * 50).toFixed(1)} ${(sy + Math.sin(ang) * 50).toFixed(1)}, ${s.x} ${s.y - 50}, ${s.x} ${s.y - 20}`;
-              const on = h.key === sel;
-              return (
-                <g key={h.key}>
-                  <path className={cn("ws-beam", on && "ws-beam-on")} d={d} fill="none" stroke={on ? "#F2D49A" : beamOf(h)} strokeOpacity={on ? 0.95 : 0.5} strokeWidth={on ? 2 : 1.2} />
-                  <circle r={2} className="ws-spark" opacity={0.85}>
-                    <animateMotion dur={`${2.4 + i * 0.3}s`} repeatCount="indefinite" path={d} />
-                  </circle>
-                </g>
-              );
-            })}
-            <path
-              className="ws-beam ws-beam-on"
-              d={`M ${selSlot.x} ${selSlot.y + 30} C ${selSlot.x} ${selSlot.y + 62}, 200 ${M_CARD_TOP - 42}, 200 ${M_CARD_TOP}`}
-              stroke="#F2D49A"
-              strokeOpacity={0.8}
-              strokeWidth={1.4}
-              fill="none"
-            />
-          </g>
           <g key={sel} className="wsm-fan">
-            {/* trunk: card bottom-left → gutter junction */}
-            <path className="ws-fan-line" d={`M 86 ${cardBottom} C 60 ${cardBottom + 4}, ${J[0] + 6} ${J[1] - 14}, ${J[0]} ${J[1]}`} />
-            {dots.map((p, i) => {
-              const d = `M ${J[0]} ${J[1]} C ${J[0] - 10} ${J[1] + 22}, ${J[0] - 10} ${p.y - 20}, ${p.x - 4} ${p.y}`;
+            <path
+              className="ws-fan-line"
+              d={`M ${M_GUTTER_X} ${M_ROWS_TOP - 8} L ${M_GUTTER_X} ${lastCy}`}
+            />
+            {Array.from({ length: n }, (_, i) => {
+              const cy = rowY(i) + M_CARD_H / 2;
+              const d = `M ${M_GUTTER_X} ${cy} C ${M_GUTTER_X + 10} ${cy}, ${M_CARD_X - 12} ${cy}, ${M_CARD_X - 4} ${cy}`;
               return (
                 <g key={i}>
                   <path className="ws-fan-line" d={d} style={{ animationDelay: `${0.1 + i * 0.05}s` }} data-fan={i} />
-                  <circle cx={p.x} cy={p.y} r={3} className="ws-fan-dot" />
+                  <circle cx={M_CARD_X - 4} cy={cy} r={2} className="ws-fan-dot" />
                 </g>
               );
             })}
           </g>
         </svg>
 
-        <button
-          type="button"
-          className="ws-orb ws-orb-btn"
-          style={{ left: M_ORB.x - M_ORB.size / 2, top: M_ORB.y - M_ORB.size / 2, width: M_ORB.size, height: M_ORB.size }}
-          data-testid="ws-orb-back"
-          aria-label="返回神经主体 · 登录页"
-          title="返回主体"
-          onClick={onReturnLanding}
-        >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/studio/landing/orb-plate.webp" alt="" draggable={false} />
-          <span className="pl-shimmer" />
-          <span className="ws-orb-hint">返回主体</span>
-        </button>
-
-        {order.map((h, i) => {
-          const s = slots[i];
-          const on = h.key === sel;
-          const js = on ? 64 : 54;
-          return (
-            <React.Fragment key={h.key}>
+        {/* Hub selector strip: swipe horizontally, one tap selects. */}
+        <div className="wsm-strip" style={{ top: M_STRIP_TOP, height: M_STRIP_H }}>
+          <button
+            type="button"
+            className="wsm-hubchip wsm-backchip"
+            data-testid="ws-orb-back"
+            onClick={onReturnLanding}
+            aria-label="返回神经主体 · 登录页"
+          >
+            ← 主体
+          </button>
+          {hubs.map((h) => {
+            const on = h.key === sel;
+            return (
               <button
+                key={h.key}
                 type="button"
-                className={cn("ws-jelly wsm-jelly", on && "ws-jelly-on")}
-                style={
-                  {
-                    left: s.x - js / 2,
-                    top: s.y - js * 0.46,
-                    width: js,
-                    ...jellyMotion(h.customId ?? h.key),
-                    "--jelly-glow": beamOf(h),
-                  } as React.CSSProperties
-                }
+                className={cn("wsm-hubchip", on && "wsm-hubchip-on")}
+                style={{ "--hub-beam": beamOf(h) } as React.CSSProperties}
+                data-chip={h.key}
                 data-hub={h.section}
-                data-key={h.key}
-                aria-label={on ? `打开${h.label}` : `选中${h.label}`}
                 onClick={() => tap(h)}
+                aria-label={on ? `打开${h.label}` : `选中${h.label}`}
               >
-                <WsJellyVisual hub={h} />
+                <span className="wsm-hubchip-jelly" aria-hidden>
+                  <WsJellyVisual />
+                </span>
+                <span className="wsm-hubchip-label">{h.label}</span>
+                <b className="wsm-hubchip-n"><RollNumber value={h.n} /></b>
               </button>
-              {!on && (
-                <button
-                  type="button"
-                  className="wsm-chip"
-                  style={{ left: s.x - 36, top: s.y + 28 }}
-                  data-chip={h.key}
-                  onClick={() => tap(h)}
-                  aria-label={`选中${h.label}`}
-                >
-                  <b><RollNumber value={h.n} /></b>
-                  <span style={{ color: beamOf(h) }}>{h.label}</span>
-                </button>
-              )}
-            </React.Fragment>
-          );
-        })}
+            );
+          })}
+        </div>
 
-        <button
-          type="button"
-          className="ws-card ws-card-on wsm-card"
-          style={{ left: 70, top: M_CARD_TOP, width: 260, height: M_CARD_H }}
-          data-card={selHub.key}
-          data-hub={selHub.section}
-          onClick={() => onOpenSection(selHub.section)}
-          aria-label={`打开${selHub.label}`}
-        >
-          <span className="ws-card-top">
-            <span className="ws-card-ico" aria-hidden />
-            <b><RollNumber value={selHub.n} /></b>
-            <span className="ws-card-zh" style={{ color: beamOf(selHub) }}>
-              {selHub.label}
-              <em>{selHub.en}</em>
-            </span>
-          </span>
-          <span className="ws-card-sub">{selHub.sub} · 再点进入分区 →</span>
-        </button>
+        <div className="wsm-panel-head" style={{ top: M_HEAD_Y }}>
+          <b>{selHub?.label}</b>
+          <span>{allRows.length} 条</span>
+          <button
+            type="button"
+            className="ws-panel-open"
+            data-card={selHub?.key}
+            onClick={() => selHub && onOpenSection(selHub.section)}
+          >
+            进入分区 →
+          </button>
+        </div>
 
         <ul className="ws-rows" key={`m-${sel}`}>
-          {rows.map((r, i) => (
-            <li key={r.id} style={{ left: M_TEXT_X, top: dots[i].y - 25, animationDelay: `${0.15 + i * 0.055}s` }}>
-              <button type="button" onClick={() => onPickRow(r, selHub)} data-row={r.id} data-section={selHub.section}>
+          {shown.map((r, i) => (
+            <li key={r.id} style={{ left: M_CARD_X, top: rowY(i), width: M_CARD_W, height: M_CARD_H, animationDelay: `${0.15 + i * 0.055}s` }}>
+              <button
+                type="button"
+                className="ws-rowcard wsm-rowcard"
+                onClick={() => selHub && onPickRow(r, selHub)}
+                data-row={r.id}
+                data-section={selHub?.section}
+              >
                 <span className="ws-row-t wsm-row-t">{r.title}</span>
                 <span className="ws-row-m">
                   <i>{r.a}</i>
@@ -650,16 +589,16 @@ export function NeuralWorkspaceMobile({
             </li>
           ))}
           {extra > 0 && (
-            <li style={{ left: M_TEXT_X, top: dots[rows.length].y - 25 }}>
-              <button type="button" onClick={() => onOpenSection(selHub.section)}>
-                <span className="ws-row-t ws-row-more">+{extra} 更多 · 进入{selHub.label}</span>
+            <li style={{ left: M_CARD_X, top: rowY(shown.length), width: M_CARD_W, height: M_CARD_H }}>
+              <button type="button" className="ws-rowcard wsm-rowcard" onClick={() => selHub && onOpenSection(selHub.section)}>
+                <span className="ws-row-t ws-row-more">+{extra} 更多 · 进入{selHub?.label}</span>
               </button>
             </li>
           )}
           {allRows.length === 0 && (
-            <li style={{ left: M_TEXT_X, top: dots[0].y - 25 }} data-testid="wsm-empty">
-              <span className="ws-row-t wsm-empty-t">
-                {selHub.label}还没有条目 · 在「新建任务」里给它加第一条
+            <li style={{ left: M_CARD_X, top: rowY(0), width: M_CARD_W, height: M_CARD_H }} data-testid="wsm-empty">
+              <span className="wsm-empty-t">
+                {selHub?.label}还没有条目 · 在「新建任务」里给它加第一条
               </span>
             </li>
           )}

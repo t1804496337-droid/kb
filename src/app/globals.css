@@ -1358,7 +1358,7 @@ div.studio-orb.studio-orb-bg,
   top: var(--d-top);
   width: var(--d-width);
 }
-.lp-orb { aspect-ratio: 1; z-index: 1; animation: lp-orb-in 1.4s cubic-bezier(.2,.8,.2,1) both; }
+.lp-orb { aspect-ratio: 1; z-index: 1; animation: lp-orb-in .55s cubic-bezier(.2,.8,.2,1) both; }
 .lp-orb-plate {
   position: absolute; inset: 0; width: 100%; height: 100%;
   animation: lp-breathe 6s ease-in-out infinite;
@@ -1383,7 +1383,7 @@ div.studio-orb.studio-orb-bg,
   pointer-events: none;
 }
 .lp-web { z-index: 0; }
-.lp-beam { stroke-dasharray: 1400; stroke-dashoffset: 1400; animation: lp-draw 1.2s 0.7s ease-out forwards; opacity: .85; }
+.lp-beam { stroke-dasharray: 1400; stroke-dashoffset: 1400; animation: lp-draw .5s .22s ease-out forwards; opacity: .85; }
 .lp-dot { animation: lp-twinkle 4.2s ease-in-out infinite; }
 .lp-plexus { animation: lp-fade 1.2s 0.6s both; }
 .lp-node {
@@ -1401,7 +1401,7 @@ div.studio-orb.studio-orb-bg,
      backing against the real painted backdrop (root gradient, beams,
      orb glow) at every point, in every engine. The animation lives on
      this same element, so the blend is never trapped inside it. */
-  animation: lp-node-spring 0.85s cubic-bezier(.2,.8,.2,1) backwards;
+  animation: lp-node-spring .45s cubic-bezier(.2,.8,.2,1) backwards;
   mix-blend-mode: screen;
   -webkit-tap-highlight-color: transparent;
 }
@@ -1441,7 +1441,7 @@ div.studio-orb.studio-orb-bg,
   /* fill backwards (not both): the finished entrance must not pin
      `transform: none` over the batch-2 tilt's inline transform. The end
      keyframe equals the natural state, so nothing changes visually. */
-  animation: lp-card-spring .7s ease-out backwards;
+  animation: lp-card-spring .4s ease-out backwards;
   transition: border-color .2s ease, background .2s ease;
   overflow: hidden;
 }
@@ -2718,4 +2718,285 @@ div.studio-orb.studio-orb-bg,
   .spring-in-item {
     animation: none;
   }
+}
+
+/* ═══ PR #31 follow-ups: light themes drop the orb backdrop (problem 8) ═══
+ * Warm / Soft used to grade the dark orb loop with multiply at low
+ * opacity — on a light ground that reads as one grey smudge in the
+ * middle of the page. Both themes now hide the orb's inner layers and
+ * paint a clean light gradient on the backdrop element instead: a soft
+ * white sheen top-left and a whisper of the theme accent at the far
+ * corner, nothing else. Silver keeps the orb untouched. (The landing's
+ * hero orb is a different mechanism — lp-orb, not studio-orb-bg — and
+ * is not affected.) */
+.studio-root.theme-warm .studio-orb-bg,
+.xuan-window.theme-warm .studio-orb-bg,
+.xuan-stage.theme-warm .studio-orb-bg {
+  opacity: 1 !important;
+  -webkit-mask-image: none !important;
+  mask-image: none !important;
+  background:
+    radial-gradient(90% 70% at 88% 100%, rgba(122, 139, 107, 0.1), transparent 60%),
+    radial-gradient(120% 90% at 18% 0%, rgba(255, 255, 255, 0.55), transparent 55%),
+    linear-gradient(160deg, #efeeea 0%, #e5e6e4 46%, #dbdcd6 100%);
+}
+.studio-root.theme-neu .studio-orb-bg,
+.xuan-window.theme-neu .studio-orb-bg,
+.xuan-stage.theme-neu .studio-orb-bg {
+  opacity: 1 !important;
+  -webkit-mask-image: none !important;
+  mask-image: none !important;
+  background:
+    radial-gradient(90% 70% at 88% 100%, rgba(196, 92, 74, 0.07), transparent 60%),
+    radial-gradient(120% 90% at 18% 0%, rgba(255, 255, 255, 0.6), transparent 55%),
+    linear-gradient(160deg, #f0f0f2 0%, #e6e6e9 48%, #dbdce1 100%);
+}
+.studio-root:is(.theme-warm, .theme-neu) .studio-orb-bg > *,
+.xuan-window:is(.theme-warm, .theme-neu) .studio-orb-bg > *,
+.xuan-stage:is(.theme-warm, .theme-neu) .studio-orb-bg > * {
+  display: none !important;
+}
+
+/* ═══ PR #31 follow-ups: module map two-column rebuild (problem 9) ═══
+ * Hub column rows + row cards share the plate card language (tokens),
+ * an independent `scale` press (never fights the li spring transform),
+ * and beam-coloured selection. Silk rules stay as they were (.ws-fan-*
+ * above); the geometry discipline lives in neural-workspace.tsx. */
+.ws-head-edit { pointer-events: auto; }
+.ws-head-input {
+  background: rgba(127, 127, 127, 0.1);
+  border: 1px dashed var(--pl-card-bd);
+  border-radius: 6px;
+  color: var(--pl-text);
+  padding: 1px 6px;
+}
+.ws-head-input-brand { margin-left: 8px; width: 10em; font-size: 10.5px; letter-spacing: 0.08em; }
+.ws-head-input-h2 { display: block; margin-top: 7px; width: 430px; font-size: 22px; line-height: 1.25; font-weight: 650; }
+.ws-head-input-en { display: block; margin-top: 3px; width: 320px; font-size: 11px; }
+
+.ws-hubcol {
+  position: absolute; display: flex; flex-direction: column; gap: 8px;
+  overflow-y: auto; overflow-x: hidden; scrollbar-width: thin; padding: 2px 4px 2px 0;
+}
+.ws-hubrow {
+  position: relative; display: flex; align-items: center; gap: 10px;
+  height: 56px; flex: none; padding: 6px 12px 6px 10px; border-radius: 12px;
+  border: 1px solid var(--pl-card-bd); background: var(--pl-card);
+  color: var(--pl-text); box-shadow: var(--pl-card-shadow);
+  cursor: pointer; text-align: left;
+  transition: border-color 0.2s, background 0.2s, scale 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
+  animation: lp-fade-up 0.5s both;
+  -webkit-tap-highlight-color: transparent;
+}
+.ws-hubrow::before {
+  content: ""; position: absolute; left: 0; top: 10px; bottom: 10px; width: 3px;
+  border-radius: 2px; background: var(--hub-beam, transparent); opacity: 0;
+}
+.ws-hubrow:hover { border-color: var(--pl-card-on-bd); }
+.ws-hubrow-on { background: var(--pl-card-on); border-color: var(--pl-card-on-bd); box-shadow: var(--pl-card-on-shadow); }
+.ws-hubrow-on::before { opacity: 1; }
+.ws-hubrow-jelly { position: relative; width: 44px; height: 40px; flex: none; }
+.ws-hubrow-jelly .ws-jelly-orb i { font-size: 15px; }
+.ws-hubrow-names { display: flex; flex-direction: column; gap: 1px; flex: 1; min-width: 0; }
+.ws-hubrow-names b { font-size: 13.5px; font-weight: 600; white-space: nowrap; }
+.ws-hubrow-names em { font-style: normal; font-size: 10.5px; color: var(--pl-dim); white-space: nowrap; }
+.ws-hubrow-n { font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--pl-muted); }
+.ws-hubrow-on .ws-hubrow-n { color: var(--pl-accent); }
+
+.ws-panel { position: absolute; }
+.ws-panel-head { display: flex; align-items: baseline; gap: 10px; height: 36px; animation: lp-fade 0.5s both; }
+.ws-panel-head b { font-size: 16px; font-weight: 650; color: var(--pl-text); }
+.ws-panel-count, .ws-panel-sub { font-size: 11.5px; color: var(--pl-dim); white-space: nowrap; }
+.ws-panel-open {
+  margin-left: auto; padding: 5px 12px; border-radius: 999px; font-size: 12px;
+  border: 1px solid var(--pl-card-bd); background: var(--pl-pill); color: var(--pl-text);
+  cursor: pointer; transition: border-color 0.2s, scale 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
+  -webkit-tap-highlight-color: transparent;
+}
+.ws-panel-open:hover { border-color: var(--pl-card-on-bd); }
+.ws-panel .ws-list { position: absolute; }
+.ws-empty { left: 24px; }
+
+.ws-rows button.ws-rowcard {
+  display: flex; flex-direction: row; align-items: center; gap: 12px; width: 100%; height: 100%;
+  padding: 0 14px; border-radius: 10px; text-align: left;
+  background: var(--pl-card); border: 1px solid var(--pl-card-bd);
+  box-shadow: var(--pl-card-shadow); color: var(--pl-text); cursor: pointer;
+  transition: border-color 0.2s, background 0.2s, scale 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
+  -webkit-tap-highlight-color: transparent;
+}
+.ws-rows button.ws-rowcard:hover { border-color: var(--pl-card-on-bd); }
+.ws-rows button.ws-rowcard-hot { border-color: var(--pl-fan-hot); }
+.ws-rowcard .ws-row-t { flex: 1; min-width: 0; max-width: none; }
+.ws-rowcard .ws-row-m { margin-left: auto; flex: none; }
+.ws-hubrow:active, .ws-rows button.ws-rowcard:active, .ws-panel-open:active, .wsm-hubchip:active { scale: 0.97; }
+
+.ws-tools-left { display: flex; gap: 8px; align-items: center; }
+.ws-back {
+  padding: 6px 14px; border-radius: 999px; font-size: 12px;
+  border: 1px solid var(--pl-card-bd); background: var(--pl-pill); color: var(--pl-muted);
+  box-shadow: var(--pl-card-shadow); cursor: pointer; transition: color 0.2s, scale 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
+  -webkit-tap-highlight-color: transparent;
+}
+.ws-back:hover { color: var(--pl-text); }
+.ws-back:active { scale: 0.96; }
+
+/* Mobile: hub strip + single-column cards. */
+.wsm-strip {
+  position: absolute; left: 0; right: 0; display: flex; gap: 8px; align-items: center;
+  overflow-x: auto; overflow-y: hidden; padding: 1px 14px 6px;
+  scrollbar-width: none; -webkit-overflow-scrolling: touch;
+}
+.wsm-strip::-webkit-scrollbar { display: none; }
+.wsm-hubchip {
+  display: flex; align-items: center; gap: 7px; flex: none; height: 46px;
+  padding: 4px 12px 4px 6px; border-radius: 999px;
+  border: 1px solid var(--pl-card-bd); background: var(--pl-card);
+  color: var(--pl-text); box-shadow: var(--pl-card-shadow); cursor: pointer;
+  transition: border-color 0.2s, background 0.2s, scale 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
+  -webkit-tap-highlight-color: transparent;
+}
+.wsm-hubchip-on { background: var(--pl-card-on); border-color: var(--hub-beam, var(--pl-card-on-bd)); }
+.wsm-hubchip-jelly { position: relative; width: 30px; height: 27px; flex: none; }
+.wsm-hubchip-jelly .ws-jelly-orb i { font-size: 11px; }
+.wsm-hubchip-label { font-size: 12.5px; font-weight: 600; white-space: nowrap; }
+.wsm-hubchip-n { font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--pl-muted); }
+.wsm-hubchip-on .wsm-hubchip-n { color: var(--pl-accent); }
+.wsm-backchip { padding: 4px 12px; font-size: 12.5px; font-weight: 600; }
+.wsm-panel-head { position: absolute; left: 14px; right: 14px; display: flex; align-items: baseline; gap: 8px; }
+.wsm-panel-head b { font-size: 15px; font-weight: 650; color: var(--pl-text); }
+.wsm-panel-head span { font-size: 11.5px; color: var(--pl-dim); }
+.ws-rows button.wsm-rowcard { flex-direction: column; align-items: flex-start; justify-content: center; gap: 2px; padding: 6px 12px; }
+.wsm-rowcard .ws-row-m { margin-left: 0; }
+
+@media (prefers-reduced-motion: reduce) {
+  .ws-hubrow, .ws-panel-head { animation: none; }
+  .ws-hubrow, .ws-rowcard, .ws-panel-open, .wsm-hubchip, .ws-back { transition: none; }
+}
+
+/* ═══ PR #31 follow-ups: collapsible workspace chrome (problem 11) ═══
+ * On the module map the whole window header folds away (grid-rows
+ * 1fr → 0fr, so the main area reclaims the height and the plate
+ * re-fits); a slim handle with a grip stays visible as the always-
+ * reachable expand affordance. Hover opens, mouse-leave / handle tap /
+ * empty-main tap closes (wiring in the studio page). */
+.studio-chrome-body {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition: grid-template-rows 0.3s ease, opacity 0.22s ease;
+}
+.studio-chrome-body > * { overflow: hidden; min-height: 0; }
+.studio-chrome-collapsed .studio-chrome-body {
+  grid-template-rows: 0fr;
+  opacity: 0;
+  pointer-events: none;
+}
+.studio-chrome-handle {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  width: 100%; height: 18px; margin: 0 auto; padding: 0;
+  background: none; border: 0; cursor: pointer;
+  color: var(--studio-muted); font-size: 10px; letter-spacing: 0.14em;
+  -webkit-tap-highlight-color: transparent;
+}
+.studio-chrome-grip {
+  width: 46px; height: 3px; border-radius: 2px;
+  background: currentColor; opacity: 0.45; flex: none;
+}
+.studio-chrome-handle:hover { color: var(--studio-text); }
+@media (prefers-reduced-motion: reduce) {
+  .studio-chrome-body { transition: none; }
+}
+
+/* The map's living core orb (problem 12): the landing's NeuralOrb at
+ * column-crown size; its caption sits UNDER the orb — the old design's
+ * centre box label plus a second capsule return button duplicated the
+ * same affordance, so the tools-bar return pill is gone and this orb
+ * button is the single way back. */
+.ws-orb-core {
+  position: absolute; border: 0; padding: 0; background: none;
+  border-radius: 50%; cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.ws-orb-core:focus-visible { outline: 2px solid var(--pl-accent); outline-offset: 3px; }
+.ws-orb-core-cap {
+  position: absolute; left: 50%; top: calc(100% + 1px);
+  transform: translateX(-50%);
+  font-size: 10px; letter-spacing: 0.1em; color: var(--pl-dim);
+  white-space: nowrap; pointer-events: none;
+}
+
+/* ═══ PR #31 follow-ups: entry choreography (problem 13) ═══
+ * Landing load sequence retimed to ≤1.2s — orb lights (.55s), silk
+ * draws (.22s→.72s), nodes/cards spring staggered, rolls land last.
+ * A pointer-down inside the first moments adds .lp-intro-skip: every
+ * ENTRANCE animation (never the infinite loops) is forced to its end
+ * state at once. */
+.lp-intro-skip :is(.lp-orb, .lp-beam, .lp-node, .lp-card, .lp-plexus, .lp-fade-up) {
+  animation-delay: 0s !important;
+  animation-duration: 0.01s !important;
+}
+
+/* Login page: the orb and its glow lean toward the pointer (vars set
+ * on the page root from a pointermove handler; transform/opacity
+ * only), inputs get a flowing conic border on focus (the site's
+ * 流光 language), the submit keeps the shared press rebound. */
+.studio-login-orb {
+  transform: translate(calc(var(--px, 0) * 12px), calc(var(--py, 0) * 10px));
+  transition: transform 0.35s ease-out;
+}
+.studio-login-glow {
+  transform: translate(calc(var(--px, 0) * 46px), calc(var(--py, 0) * 34px));
+  transition: transform 0.5s ease-out;
+}
+@property --login-angle { syntax: "<angle>"; initial-value: 0deg; inherits: false; }
+.studio-login-field input:focus {
+  border-color: transparent;
+  background:
+    linear-gradient(rgba(13, 14, 14, 0.94), rgba(13, 14, 14, 0.94)) padding-box,
+    conic-gradient(from var(--login-angle, 0deg), rgba(230, 207, 152, 0.8), rgba(200, 205, 255, 0.3), rgba(147, 226, 210, 0.4), rgba(230, 207, 152, 0.8)) border-box;
+  box-shadow: 0 0 0 3px rgba(230, 207, 152, 0.1), 0 0 18px rgba(230, 207, 152, 0.12);
+  animation: login-border-spin 2.6s linear infinite;
+}
+@keyframes login-border-spin { to { --login-angle: 360deg; } }
+.studio-login-submit {
+  transition: scale 0.18s cubic-bezier(0.34, 1.56, 0.64, 1), border-color 0.2s, box-shadow 0.2s;
+  -webkit-tap-highlight-color: transparent;
+}
+.studio-login-submit:active { scale: 0.96; }
+.studio-login-page[data-leaving="1"] .studio-login-card {
+  opacity: 0; translate: 0 8px; transition: opacity 0.3s ease, translate 0.3s ease;
+}
+
+/* Success transition (0.8s): the card dissolves, the orb gathers and
+ * brightens in place, silk rays radiate — then the route changes and
+ * the landing's own orb catches at the same centre. Auth completes
+ * BEFORE this plays; the animation never gates the data. */
+.login-transition {
+  position: fixed; inset: 0; z-index: 200; overflow: hidden;
+  background: radial-gradient(ellipse 60% 62% at 50% 42%, #1b1c1c 0%, #121313 48%, #0d0e0e 100%);
+  animation: login-trans-in 0.25s ease both;
+}
+@keyframes login-trans-in { from { opacity: 0; } to { opacity: 1; } }
+.login-transition-orb {
+  position: absolute; left: 50%; top: 50%;
+  width: 118vmin; height: 118vmin;
+  translate: -50% -50%;
+  animation: login-trans-orb 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+@keyframes login-trans-orb {
+  0% { transform: scale(1); filter: brightness(1); }
+  55% { filter: brightness(2); }
+  100% { transform: scale(1.07); filter: brightness(1.3); }
+}
+.login-transition-silk { position: absolute; inset: 0; width: 100%; height: 100%; }
+.login-transition-silk line {
+  stroke: rgba(220, 225, 255, 0.5); stroke-width: 1.1;
+  stroke-dasharray: 420; stroke-dashoffset: 420;
+  animation: lp-draw 0.55s 0.15s ease-out forwards;
+}
+@media (prefers-reduced-motion: reduce) {
+  .studio-login-orb, .studio-login-glow { transition: none; transform: none; }
+  .studio-login-field input:focus { animation: none; }
+  .login-transition-orb, .login-transition { animation: none; }
+  .login-transition-silk line { animation: none; stroke-dashoffset: 0; }
 }
