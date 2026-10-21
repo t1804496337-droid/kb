@@ -3287,21 +3287,49 @@ div.studio-orb.studio-orb-bg,
   0%, 100% { opacity: 0.55; transform: translate(-50%, -52%) scale(1); }
   50% { opacity: 0.9; transform: translate(-50%, -52%) scale(1.03); }
 }
-.hud-sphere {
+/* Orb core (2026-10-21): wrapper takes the retired .hud-sphere box
+ * exactly, so the stage layout is unchanged. Inside: the plate still
+ * (full box, screen blend, radial mask melts its square edges — the
+ * treatment validated on workbench-g) and the orb clip registered on
+ * the plate's core. The old 120s CSS spin is gone: the clip is a full
+ * scene, not a symmetric ball, and it brings its own motion. NO
+ * reduced-motion pause/freeze here either (PR #34 rule): the clip
+ * must keep playing on the owner's machine. */
+.hud-orb {
   position: absolute;
   left: 50%;
   top: 50%;
   width: min(520px, 92%);
   aspect-ratio: 1;
   transform: translate(-50%, -52%);
+  pointer-events: none;
+}
+.hud-orb-plate {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
   mix-blend-mode: screen;
-  opacity: 0.97;
-  /* Square black-backed plate: radial mask melts the corners away so
-   * no square edge can ever show (validated on workbench-g). */
+  opacity: 0.95;
   -webkit-mask-image: radial-gradient(circle, #000 55%, transparent 70%);
   mask-image: radial-gradient(circle, #000 55%, transparent 70%);
-  animation: hud-spin 120s linear infinite;
-  pointer-events: none;
+  user-select: none;
+}
+/* The clip's orb core sits at ~(30%, 55%) of its frame (mesh body on
+ * the left, baked-in player icon at the right edge): the element is
+ * offset so that core lands on the plate's core, and the mask keeps
+ * only the core disc — the icon and frame edges never render. */
+.hud-orb-video {
+  position: absolute;
+  left: 28%;
+  top: 15%;
+  width: 62%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  mix-blend-mode: screen;
+  opacity: 0.9;
+  -webkit-mask-image: radial-gradient(circle at 30% 55%, #000 0%, rgba(0, 0, 0, 0.85) 34%, transparent 52%);
+  mask-image: radial-gradient(circle at 30% 55%, #000 0%, rgba(0, 0, 0, 0.85) 34%, transparent 52%);
 }
 .hud-jelly {
   position: absolute;
@@ -3532,10 +3560,6 @@ div.studio-orb.studio-orb-bg,
   0% { transform: translateX(0); }
   100% { transform: translateX(-50%); }
 }
-@keyframes hud-spin {
-  0% { transform: translate(-50%, -52%) rotate(0deg); }
-  100% { transform: translate(-50%, -52%) rotate(360deg); }
-}
 @keyframes hud-boot {
   0% { opacity: 0; transform: scale(0.98) translateY(10px); filter: blur(5px); }
   100% { opacity: 1; transform: scale(1) translateY(0); filter: blur(0); }
@@ -3578,7 +3602,7 @@ div.studio-orb.studio-orb-bg,
   .hud-main { flex-direction: column; }
   .hud-tree { width: auto; }
   .hud-center { min-height: 430px; }
-  .hud-sphere { width: min(320px, 84vw); }
+  .hud-orb { width: min(320px, 84vw); }
   .hud-sphere-glow { width: min(300px, 80vw); }
   .hud-jelly-a { width: 74px; top: 16px; }
   .hud-jelly-b { width: 62px; }

@@ -377,9 +377,9 @@ export function NeuralLanding({
       data-testid="studio-landing"
       data-quick={quick ? "1" : "0"}
     >
-      <div className="hud-wrap">
+      <main className="hud-wrap">
         {/* ══ TOP STATUS BAR ══ */}
-        <div className="hud-panel hud-topbar">
+        <header className="hud-panel hud-topbar">
           <div className="hud-logo">
             ◉ SECOND BRAIN <b>OS</b> · STUDIO
           </div>
@@ -435,7 +435,7 @@ export function NeuralLanding({
               {clock}
             </div>
           </div>
-        </div>
+        </header>
 
         {/* ══ TICKER ══ */}
         <div className="hud-panel hud-ticker">
@@ -680,13 +680,36 @@ export function NeuralLanding({
             </div>
             <div className="hud-stage">
               <div className="hud-sphere-glow" aria-hidden />
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                className="hud-sphere"
-                src="/studio/hud/core-sphere.webp"
-                alt=""
-                draggable={false}
-              />
+              {/* Orb core (2026-10-21, per the Gemini hero draft's
+                  plate + video + screen-blend composition, same as the
+                  login page): the plate still is the base, the orb clip
+                  is the living core. The clip's orb sits off-centre in
+                  its frame with a baked-in player icon at the right
+                  edge, so the video is masked to the core disc inside
+                  .hud-orb (see globals.css) — never shown full-frame.
+                  The static gold/violet sphere survives as the poster
+                  fallback until the clip can play. */}
+              <div className="hud-orb" aria-hidden>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  className="hud-orb-plate"
+                  src="/studio/landing/orb-plate.webp"
+                  alt=""
+                  draggable={false}
+                />
+                <video
+                  className="hud-orb-video"
+                  autoPlay
+                  loop
+                  muted
+                  playsInline
+                  preload="auto"
+                  poster="/studio/hud/core-sphere.webp"
+                >
+                  <source src="/studio/neural-orb.webm" type="video/webm" />
+                  <source src="/studio/neural-orb.mp4" type="video/mp4" />
+                </video>
+              </div>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 className="hud-jelly hud-jelly-a"
@@ -919,7 +942,7 @@ export function NeuralLanding({
         </div>
           </>
         )}
-      </div>
+      </main>
     </div>
   );
 }
