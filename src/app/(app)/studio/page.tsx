@@ -35,7 +35,7 @@ import {
 } from "@/components/studio/finance-module";
 import { HealthModuleView } from "@/components/studio/health-module";
 import { OntologyModuleView } from "@/components/studio/ontology-module";
-import { moduleJellyBeam, moduleJellyImg } from "@/components/studio/module-jelly";
+import { moduleJellyBeam } from "@/components/studio/module-jelly";
 import { FluidPillGroup } from "@/components/ui/fluid-pill";
 import { InlineConfirmButton } from "@/components/ui/inline-confirm";
 import { RollNumber } from "@/components/ui/roll-number";
@@ -673,6 +673,11 @@ export default function StudioPage() {
   const [newModuleEn, setNewModuleEn] = React.useState("");
   const [profileOpen, setProfileOpen] = React.useState(false);
   const [editMode, setEditMode] = React.useState(false);
+  // Workspace header chrome: collapsed by default on the module map
+  // (only a slim handle shows); hovering the top zone or tapping the
+  // handle expands it, leaving / tapping the main area collapses it.
+  const [chromeOpen, setChromeOpen] = React.useState(false);
+  const chromeHandleTs = React.useRef(0);
   const [landing, setLanding] = React.useState<"on" | "leaving" | "off">("on");
   const [minimized, setMinimized] = React.useState(false);
   const [isFullscreen, setIsFullscreen] = React.useState(false);
@@ -692,6 +697,25 @@ export default function StudioPage() {
   const [winTitle, setWinTitle] = React.useState(TITLE_DEFAULT);
   const [editingTitle, setEditingTitle] = React.useState(false);
   const titleInputRef = React.useRef<HTMLInputElement | null>(null);
+  // Workspace header copy (brand suffix / headline / EN line): editable in
+  // edit mode, persisted like the window title. A stored user value always
+  // wins; the defaults below only apply when nothing was ever saved.
+  const HEAD_COPY_KEY = "studio_head_copy_v1";
+  const HEAD_COPY_DEFAULT = {
+    brand: "个人第二大脑",
+    headline: "九大模块，一个第二大脑。",
+    en: "Nine modules, one second brain.",
+  };
+  const [headCopy, setHeadCopy] = React.useState(HEAD_COPY_DEFAULT);
+  const commitHeadCopy = (patch: Partial<typeof HEAD_COPY_DEFAULT>) => {
+    const next = { ...headCopy, ...patch };
+    setHeadCopy(next);
+    try {
+      window.localStorage.setItem(HEAD_COPY_KEY, JSON.stringify(next));
+    } catch {
+      /* ignore */
+    }
+  };
   React.useEffect(() => {
     try {
       const raw = window.localStorage.getItem("studio_hub_rows_v1");
@@ -1402,6 +1426,22 @@ export default function StudioPage() {
     }
   }, []);
   React.useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(HEAD_COPY_KEY);
+      if (raw) {
+        const saved = JSON.parse(raw) as Partial<typeof HEAD_COPY_DEFAULT>;
+        setHeadCopy({
+          brand: saved.brand?.trim() || HEAD_COPY_DEFAULT.brand,
+          headline: saved.headline?.trim() || HEAD_COPY_DEFAULT.headline,
+          en: saved.en?.trim() || HEAD_COPY_DEFAULT.en,
+        });
+      }
+    } catch {
+      /* ignore */
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  React.useEffect(() => {
     if (editingTitle) titleInputRef.current?.focus();
   }, [editingTitle]);
   React.useEffect(() => {
@@ -1574,6 +1614,9 @@ export default function StudioPage() {
   const currentTheme = THEMES.find((t) => t.id === theme) ?? THEMES[0];
   const activeCustomModule =
     customModules.find((m) => m.id === activeCustom) ?? null;
+  const inWsMap = section === "workspace" && !activeCustomModule;
+  const chromeCollapsed =
+    inWsMap && landing === "off" && !chromeOpen && !editMode;
   const navItems: { id: string; label: string; en: string; custom?: boolean }[] = [
     ...PILL_NAV.map((p) => ({ id: p.id as string, label: p.label, en: p.en })),
     ...customModules.map((m) => ({ id: m.id, label: m.label, en: m.en, custom: true })),
@@ -1653,9 +1696,7 @@ export default function StudioPage() {
       label: m.label,
       en: m.en,
       sub: "自定义模块",
-      img: moduleJellyImg(m.id),
       beam: moduleJellyBeam(m.id),
-      feather: true,
     };
   });
   const landingNodes: LandingNode[] = [
@@ -1686,7 +1727,6 @@ export default function StudioPage() {
         sub: "自定义模块",
         rows: customRows[m.id] ?? [],
         customId: m.id,
-        img: moduleJellyImg(m.id),
         beam: moduleJellyBeam(m.id),
       })),
     ],
@@ -2100,6 +2140,22 @@ export default function StudioPage() {
         </div>
 
         <div className="relative z-[2] flex min-h-0 flex-1 flex-col px-4 pt-2 md:px-5">
+          <div
+            className={cn("studio-chrome", chromeCollapsed && "studio-chrome-collapsed")}
+            onMouseEnter={() => {
+              if (inWsMap) setChromeOpen(true);
+            }}
+            onMouseLeave={() => {
+              // Touch devices fire a synthetic mouseleave right after
+              // a tap — treating it as "pointer left" would slam the
+              // chrome shut the moment a tap opens it. On hover-less
+              // devices the chrome closes via the handle / main-area
+              // taps instead.
+              if (window.matchMedia("(hover: none)").matches) return;
+              if (inWsMap) setChromeOpen(false);
+            }}
+          >
+            <div className="studio-chrome-body">
           <div className="studio-head mb-2 flex shrink-0 flex-row flex-wrap items-center gap-x-2 gap-y-2 lg:mb-3 lg:flex-nowrap lg:justify-between lg:gap-3">
             <div className="order-1 min-w-0 flex-1 basis-0 lg:flex-none lg:basis-auto lg:shrink-0">
               <p className="studio-brand whitespace-nowrap text-[13px] font-semibold tracking-[0.14em]">
@@ -2171,11 +2227,12 @@ export default function StudioPage() {
                 data-testid="hdr-edit"
                 aria-pressed={editMode || editingTitle}
                 onClick={() => {
-                  if (section === "workspace" || landing !== "off") {
-                    setEditingTitle(true);
-                    showToast("编辑窗口标题");
-                    return;
-                  }
+                  // One behaviour everywhere: 编辑 toggles the site's
+                  // edit mode (the head copy rides the same mode). This
+                  // used to special-case the workspace into window-title
+                  // editing, which left the workspace with NO path into
+                  // edit mode at all — the title keeps its own inline
+                  // click-to-edit affordance in the window bar.
                   setEditMode((v) => !v);
                   setModal("edit");
                 }}
@@ -2268,12 +2325,60 @@ export default function StudioPage() {
               </div>
             </div>
           </div>
+            </div>
+            {inWsMap && landing === "off" && (
+              <button
+                type="button"
+                className="studio-chrome-handle"
+                data-testid="chrome-handle"
+                aria-expanded={!chromeCollapsed}
+                onPointerDown={() => {
+                  // Toggle on pointerdown, not click: a touch tap ALSO
+                  // fires a compatibility mouseenter (which opens the
+                  // chrome) before its click — click-toggling would
+                  // immediately undo the tap. The click handler below
+                  // only serves keyboard activation (no pointerdown).
+                  chromeHandleTs.current = Date.now();
+                  setChromeOpen((v) => !v);
+                }}
+                onClick={() => {
+                  if (Date.now() - chromeHandleTs.current > 500) {
+                    setChromeOpen((v) => !v);
+                  }
+                }}
+              >
+                <span className="studio-chrome-grip" aria-hidden />
+                <span>{chromeCollapsed ? "展开头部" : "收起"}</span>
+              </button>
+            )}
+          </div>
 
-          <div className="studio-scroll min-h-0 flex-1 overflow-y-auto pb-2">
+          <div
+            className="studio-scroll min-h-0 flex-1 overflow-y-auto pb-2"
+            onClickCapture={(e) => {
+              // Touch path for the collapsible chrome: tapping empty
+              // main-area space folds the header back up; taps on real
+              // controls keep it open.
+              if (
+                chromeOpen &&
+                inWsMap &&
+                !(e.target as HTMLElement).closest(
+                  "button, a, input, textarea, select",
+                )
+              ) {
+                setChromeOpen(false);
+              }
+            }}
+          >
             {section === "workspace" && !activeCustomModule && (
               <div className="ws-desktop-layer">
                 <NeuralWorkspace
                   hubs={wsHubs}
+                  headCopy={headCopy}
+                  editMode={editMode}
+                  onHeadCopyChange={commitHeadCopy}
+                  themeId={theme}
+                  compact={chromeCollapsed}
                   moduleCount={NEURAL_MODULES.length + customModules.length}
                   stepCount={flowCount}
                   themeLabel={currentTheme.label}
@@ -2324,6 +2429,7 @@ export default function StudioPage() {
               <div className="ws-mobile-layer">
                 <NeuralWorkspaceMobile
                   hubs={wsHubs}
+                  themeId={theme}
                   onSelectHub={(k) =>
                     setActiveHubKey(k.startsWith("custom:") ? k.slice(7) : k)
                   }
@@ -3047,7 +3153,14 @@ export default function StudioPage() {
                           </ul>
                         )}
                       </div>
-                      <ul className="mt-4 space-y-2 border-t border-[color:var(--studio-border)] pt-3">
+                      <div
+                        className="mt-4 border-t border-[color:var(--studio-border)] pt-3"
+                        data-testid="cal-tickets"
+                      >
+                        <p className="mb-2 text-[11px] text-[color:var(--studio-muted)]">
+                          待办票 · 共 {tickets.length} 条 · 全站待办，不挂具体日期
+                        </p>
+                        <ul className="space-y-2">
                         {tickets.map((t) => (
                           <li key={t.id}>
                             <button
@@ -3070,7 +3183,8 @@ export default function StudioPage() {
                             </button>
                           </li>
                         ))}
-                      </ul>
+                        </ul>
+                      </div>
                     </div>
                   </SectionPane>
                 )}

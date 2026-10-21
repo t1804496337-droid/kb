@@ -1340,6 +1340,16 @@ div.studio-orb.studio-orb-bg,
   container-type: inline-size;
 }
 .lp-only-m { display: none; }
+/* In-stage copy of the root's radial wash (see neural-landing.tsx).
+   Geometry = the root gradient mapped into stage coordinates for a
+   16:9 stage in a 16:9-ish viewport, so the seam between this layer
+   and the root's own painting is negligible; the portrait block below
+   re-maps it for the 1000:1560 stage (full viewport width, top at
+   46%: centre 53%/55.6%, ry 62%/0.72 ≈ 86%). */
+.lp-backdrop {
+  position: absolute; inset: 0; z-index: 0; pointer-events: none;
+  background: radial-gradient(ellipse 60% 69% at 53% 50%, #1b1e1d 0%, #121514 45%, #0a0b0b 80%, #050606 100%);
+}
 .lp-orb,
 .lp-node,
 .lp-card {
@@ -1348,7 +1358,7 @@ div.studio-orb.studio-orb-bg,
   top: var(--d-top);
   width: var(--d-width);
 }
-.lp-orb { aspect-ratio: 1; z-index: 1; animation: lp-orb-in 1.4s cubic-bezier(.2,.8,.2,1) both; }
+.lp-orb { aspect-ratio: 1; z-index: 1; animation: lp-orb-in .55s cubic-bezier(.2,.8,.2,1) both; }
 .lp-orb-plate {
   position: absolute; inset: 0; width: 100%; height: 100%;
   animation: lp-breathe 6s ease-in-out infinite;
@@ -1373,7 +1383,7 @@ div.studio-orb.studio-orb-bg,
   pointer-events: none;
 }
 .lp-web { z-index: 0; }
-.lp-beam { stroke-dasharray: 1400; stroke-dashoffset: 1400; animation: lp-draw 1.2s 0.7s ease-out forwards; opacity: .85; }
+.lp-beam { stroke-dasharray: 1400; stroke-dashoffset: 1400; animation: lp-draw .5s .22s ease-out forwards; opacity: .85; }
 .lp-dot { animation: lp-twinkle 4.2s ease-in-out infinite; }
 .lp-plexus { animation: lp-fade 1.2s 0.6s both; }
 .lp-node {
@@ -1381,7 +1391,18 @@ div.studio-orb.studio-orb-bg,
   aspect-ratio: 1 / 0.92;
   background: none; border: 0; padding: 0; cursor: pointer;
   border-radius: 50%;
-  animation: lp-node-in 0.9s cubic-bezier(.2,.8,.2,1) both;
+  /* Spring entrance (standalone `scale`, fill backwards): a finished
+     entrance leaves no applied transform behind, so the button never
+     becomes a permanent stacking context. That matters for the blend
+     below — and iOS Safari ignores CSS masks on <video> elements
+     entirely (the black-tile bug), while the old ellipse mask only ever
+     melted the corners anyway: at the box-edge midpoints it was still
+     ~93% opaque. A screen blend on the button melts the clip's black
+     backing against the real painted backdrop (root gradient, beams,
+     orb glow) at every point, in every engine. The animation lives on
+     this same element, so the blend is never trapped inside it. */
+  animation: lp-node-spring .45s cubic-bezier(.2,.8,.2,1) backwards;
+  mix-blend-mode: screen;
   -webkit-tap-highlight-color: transparent;
 }
 .lp-node img {
@@ -1420,7 +1441,7 @@ div.studio-orb.studio-orb-bg,
   /* fill backwards (not both): the finished entrance must not pin
      `transform: none` over the batch-2 tilt's inline transform. The end
      keyframe equals the natural state, so nothing changes visually. */
-  animation: lp-fade-up .7s ease-out backwards;
+  animation: lp-card-spring .4s ease-out backwards;
   transition: border-color .2s ease, background .2s ease;
   overflow: hidden;
 }
@@ -1471,6 +1492,19 @@ div.studio-orb.studio-orb-bg,
 .lp-theme-text b { font-size: 15px; font-weight: 700; }
 .lp-theme-text small { font-size: 7.5px; letter-spacing: .14em; color: #8fd3e8; font-weight: 600; }
 
+/* Touch press feedback (JS-driven twin of the batch-1 :active rule):
+   iOS Safari does not reliably paint :active on tap, so neural-landing
+   toggles .lp-pressing from pointer events on the landing root. Same
+   numbers as batch 1 — standalone `scale` with the spring transition
+   every button already carries; jelly buttons skip the inset shadow
+   (their box is the feathered cutout itself). */
+.lp-root .lp-pressing { scale: .96; }
+.lp-root .lp-pressing:not(.lp-node) {
+  box-shadow:
+    inset 0 2px 8px rgba(0, 0, 0, 0.38),
+    inset 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+
 /* Portrait phones: switch to the 2:3 re-packed stage (proportional, never stacked) */
 @media (max-aspect-ratio: 4/5) {
   .lp-stage {
@@ -1480,6 +1514,9 @@ div.studio-orb.studio-orb-bg,
   }
   .lp-only-d { display: none; }
   .lp-only-m { display: block; }
+  .lp-backdrop {
+    background: radial-gradient(ellipse 60% 86% at 53% 55.6%, #1b1e1d 0%, #121514 45%, #0a0b0b 80%, #050606 100%);
+  }
   .lp-orb, .lp-node, .lp-card { left: var(--m-left); top: var(--m-top); width: var(--m-width); }
   .lp-card { font-size: max(9px, 2.05cqw); }
   .lp-card-zh em { display: none; }
@@ -1494,6 +1531,12 @@ div.studio-orb.studio-orb-bg,
 @keyframes lp-float { 0%, 100% { transform: translate(0, 0); } 33% { transform: translate(1.5%, -2.5%); } 66% { transform: translate(-1.5%, 1.8%); } }
 @keyframes lp-node-in { from { opacity: 0; transform: scale(.6); } to { opacity: 1; transform: scale(1); } }
 @keyframes lp-fade-up { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+/* Landing-only spring entrances (the shared lp-node-in / lp-fade-up stay
+   untouched for the workspace). Overshoot lives in the keyframes; the
+   standalone `scale` property keeps node entrances composable with the
+   batch-1 press scale. */
+@keyframes lp-node-spring { 0% { opacity: 0; scale: .5; } 55% { opacity: 1; scale: 1.045; } 76% { scale: .988; } 100% { opacity: 1; scale: 1; } }
+@keyframes lp-card-spring { 0% { opacity: 0; transform: translateY(10px); } 60% { opacity: 1; transform: translateY(-2px); } 100% { opacity: 1; transform: none; } }
 @keyframes lp-fade { from { opacity: 0; } to { opacity: 1; } }
 @keyframes lp-draw { to { stroke-dashoffset: 0; } }
 @keyframes lp-twinkle { 0%, 100% { opacity: .35; } 50% { opacity: 1; } }
@@ -2675,4 +2718,201 @@ div.studio-orb.studio-orb-bg,
   .spring-in-item {
     animation: none;
   }
+}
+
+/* ═══ PR #31 follow-ups: light themes drop the orb backdrop (problem 8) ═══
+ * Warm / Soft used to grade the dark orb loop with multiply at low
+ * opacity — on a light ground that reads as one grey smudge in the
+ * middle of the page. Both themes now hide the orb's inner layers and
+ * paint a clean light gradient on the backdrop element instead: a soft
+ * white sheen top-left and a whisper of the theme accent at the far
+ * corner, nothing else. Silver keeps the orb untouched. (The landing's
+ * hero orb is a different mechanism — lp-orb, not studio-orb-bg — and
+ * is not affected.) */
+.studio-root.theme-warm .studio-orb-bg,
+.xuan-window.theme-warm .studio-orb-bg,
+.xuan-stage.theme-warm .studio-orb-bg {
+  opacity: 1 !important;
+  -webkit-mask-image: none !important;
+  mask-image: none !important;
+  background:
+    radial-gradient(90% 70% at 88% 100%, rgba(122, 139, 107, 0.1), transparent 60%),
+    radial-gradient(120% 90% at 18% 0%, rgba(255, 255, 255, 0.55), transparent 55%),
+    linear-gradient(160deg, #efeeea 0%, #e5e6e4 46%, #dbdcd6 100%);
+}
+.studio-root.theme-neu .studio-orb-bg,
+.xuan-window.theme-neu .studio-orb-bg,
+.xuan-stage.theme-neu .studio-orb-bg {
+  opacity: 1 !important;
+  -webkit-mask-image: none !important;
+  mask-image: none !important;
+  background:
+    radial-gradient(90% 70% at 88% 100%, rgba(196, 92, 74, 0.07), transparent 60%),
+    radial-gradient(120% 90% at 18% 0%, rgba(255, 255, 255, 0.6), transparent 55%),
+    linear-gradient(160deg, #f0f0f2 0%, #e6e6e9 48%, #dbdce1 100%);
+}
+.studio-root:is(.theme-warm, .theme-neu) .studio-orb-bg > *,
+.xuan-window:is(.theme-warm, .theme-neu) .studio-orb-bg > *,
+.xuan-stage:is(.theme-warm, .theme-neu) .studio-orb-bg > * {
+  display: none !important;
+}
+
+/* ═══ PR #31 follow-ups: editable workspace head copy (problem 10) ═══
+ * The map rebuilds that once shared this block (two-column, then the
+ * framework redraw) are retired — the module map is restored to main's
+ * original composition. Only the head-copy input styling survives: it
+ * belongs to the page-owned editable header copy, not to any map
+ * layout. */
+.ws-head-edit { pointer-events: auto; }
+.ws-head-input {
+  background: rgba(127, 127, 127, 0.1);
+  border: 1px dashed var(--pl-card-bd);
+  border-radius: 6px;
+  color: var(--pl-text);
+  padding: 1px 6px;
+}
+.ws-head-input-brand { margin-left: 8px; width: 10em; font-size: 10.5px; letter-spacing: 0.08em; }
+.ws-head-input-h2 { display: block; margin-top: 7px; width: 430px; font-size: 22px; line-height: 1.25; font-weight: 650; }
+.ws-head-input-en { display: block; margin-top: 3px; width: 320px; font-size: 11px; }
+
+/* ═══ PR #31 follow-ups: collapsible workspace chrome (problem 11) ═══
+ * On the module map the whole window header folds away (grid-rows
+ * 1fr → 0fr, so the main area reclaims the height and the plate
+ * re-fits); a slim handle with a grip stays visible as the always-
+ * reachable expand affordance. Hover opens, mouse-leave / handle tap /
+ * empty-main tap closes (wiring in the studio page). */
+.studio-chrome-body {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition: grid-template-rows 0.3s ease, opacity 0.22s ease;
+}
+.studio-chrome-body > * { overflow: hidden; min-height: 0; }
+.studio-chrome-collapsed .studio-chrome-body {
+  grid-template-rows: 0fr;
+  opacity: 0;
+  pointer-events: none;
+}
+.studio-chrome-handle {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  width: 100%; height: 18px; margin: 0 auto; padding: 0;
+  background: none; border: 0; cursor: pointer;
+  color: var(--studio-muted); font-size: 10px; letter-spacing: 0.14em;
+  -webkit-tap-highlight-color: transparent;
+}
+.studio-chrome-grip {
+  width: 46px; height: 3px; border-radius: 2px;
+  background: currentColor; opacity: 0.45; flex: none;
+}
+.studio-chrome-handle:hover { color: var(--studio-text); }
+@media (prefers-reduced-motion: reduce) {
+  .studio-chrome-body { transition: none; }
+}
+
+/* ═══ PR #31 follow-ups: entry choreography (problem 13) ═══
+ * Landing load sequence retimed to ≤1.2s — orb lights (.55s), silk
+ * draws (.22s→.72s), nodes/cards spring staggered, rolls land last.
+ * A pointer-down inside the first moments adds .lp-intro-skip: every
+ * ENTRANCE animation (never the infinite loops) is forced to its end
+ * state at once. */
+.lp-intro-skip :is(.lp-orb, .lp-beam, .lp-node, .lp-card, .lp-plexus, .lp-fade-up) {
+  animation-delay: 0s !important;
+  animation-duration: 0.01s !important;
+}
+
+/* Login page: the orb and its glow lean toward the pointer (vars set
+ * on the page root from a pointermove handler; transform/opacity
+ * only), inputs get a flowing conic border on focus (the site's
+ * 流光 language), the submit keeps the shared press rebound. */
+.studio-login-orb {
+  transform: translate(calc(var(--px, 0) * 12px), calc(var(--py, 0) * 10px));
+  transition: transform 0.35s ease-out;
+}
+.studio-login-glow {
+  transform: translate(calc(var(--px, 0) * 46px), calc(var(--py, 0) * 34px));
+  transition: transform 0.5s ease-out;
+}
+@property --login-angle { syntax: "<angle>"; initial-value: 0deg; inherits: false; }
+.studio-login-field input:focus {
+  border-color: transparent;
+  background:
+    linear-gradient(rgba(13, 14, 14, 0.94), rgba(13, 14, 14, 0.94)) padding-box,
+    conic-gradient(from var(--login-angle, 0deg), rgba(230, 207, 152, 0.8), rgba(200, 205, 255, 0.3), rgba(147, 226, 210, 0.4), rgba(230, 207, 152, 0.8)) border-box;
+  box-shadow: 0 0 0 3px rgba(230, 207, 152, 0.1), 0 0 18px rgba(230, 207, 152, 0.12);
+  animation: login-border-spin 2.6s linear infinite;
+}
+@keyframes login-border-spin { to { --login-angle: 360deg; } }
+.studio-login-submit {
+  transition: scale 0.18s cubic-bezier(0.34, 1.56, 0.64, 1), border-color 0.2s, box-shadow 0.2s;
+  -webkit-tap-highlight-color: transparent;
+}
+.studio-login-submit:active { scale: 0.96; }
+.studio-login-page[data-leaving="1"] .studio-login-card {
+  opacity: 0; translate: 0 8px; transition: opacity 0.3s ease, translate 0.3s ease;
+}
+
+/* Success transition (0.8s): the card dissolves, the orb gathers and
+ * brightens in place, silk rays radiate — then the route changes and
+ * the landing's own orb catches at the same centre. Auth completes
+ * BEFORE this plays; the animation never gates the data. */
+.login-transition {
+  position: fixed; inset: 0; z-index: 200; overflow: hidden;
+  background: radial-gradient(ellipse 60% 62% at 50% 42%, #1b1c1c 0%, #121313 48%, #0d0e0e 100%);
+  animation: login-trans-in 0.25s ease both;
+}
+@keyframes login-trans-in { from { opacity: 0; } to { opacity: 1; } }
+.login-transition-orb {
+  position: absolute; left: 50%; top: 50%;
+  width: 118vmin; height: 118vmin;
+  translate: -50% -50%;
+  animation: login-trans-orb 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+@keyframes login-trans-orb {
+  0% { transform: scale(1); filter: brightness(1); }
+  55% { filter: brightness(2); }
+  100% { transform: scale(1.07); filter: brightness(1.3); }
+}
+.login-transition-silk { position: absolute; inset: 0; width: 100%; height: 100%; }
+.login-transition-silk line {
+  stroke: rgba(220, 225, 255, 0.5); stroke-width: 1.1;
+  stroke-dasharray: 420; stroke-dashoffset: 420;
+  animation: lp-draw 0.55s 0.15s ease-out forwards;
+}
+@media (prefers-reduced-motion: reduce) {
+  .studio-login-orb, .studio-login-glow { transition: none; transform: none; }
+  .studio-login-field input:focus { animation: none; }
+  .login-transition-orb, .login-transition { animation: none; }
+  .login-transition-silk line { animation: none; stroke-dashoffset: 0; }
+}
+
+/* ═══ Restored original map: anti-crowding row treatment ═══
+ * The module map is back to main's original composition (orb core,
+ * hub jelly + card column, silk fan into the list viewport). The ONLY
+ * deliberate deviation is the fan rows' rendering: on main they were
+ * bare text — a transparent button with no boundary between one row's
+ * meta line and the next row's title (the user's one complaint about
+ * the original map). The rows now wear the plate's card language
+ * (same tokens as the hub cards) while every geometric input stays
+ * the original's: rowLayout's arc positions and pitch, the scroll
+ * viewport, the silk endpoints and the row dot just left of the card
+ * are all untouched. Card height (text ~35 + padding 7 + border 2
+ * ≈ 44 design px) stays below the original pitch for every current
+ * hub (56 at 13 rows), so cards never touch; the press scale is the
+ * same rebound the retired rebuild's row cards used. */
+.ws-rows li > button {
+  background: var(--pl-card);
+  border: 1px solid var(--pl-card-bd);
+  border-radius: 10px;
+  box-shadow: var(--pl-card-shadow);
+  padding: 3px 12px 4px 10px;
+  transition: border-color 0.2s, background 0.2s, scale 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
+  -webkit-tap-highlight-color: transparent;
+}
+.ws-rows li > button:hover { border-color: var(--pl-card-on-bd); }
+.ws-rows li > button:active { scale: 0.97; }
+/* Mobile slots are exactly one pitch tall (min-height 50 = the 50px
+ * row pitch), so the card insets inside its original slot instead of
+ * kissing its neighbours — slot positions and silk dots unchanged. */
+.wsm-plate .ws-rows li > button { height: 45px; min-height: 0; margin-top: 2px; }
+@media (prefers-reduced-motion: reduce) {
+  .ws-rows li > button { transition: none; }
 }

@@ -17,13 +17,14 @@ export type WsHub = {
   rows: { id: string; title: string; a: string; b: string; c?: string }[];
   /** Set for user-created modules: section is the module id, not a section. */
   customId?: string;
-  /** Jelly image for custom-module hubs — shared assignment with the landing
-   *  (components/studio/module-jelly), so the same module shows the same
-   *  jellyfish in the map as on the landing. Built-ins use jelly-<key>.webp. */
-  img?: string;
-  /** Beam colour for custom-module hubs, from the same shared assignment. */
+  /** Beam colour for custom-module hubs, from the shared assignment. */
   beam?: string;
 };
+
+/** Editable workspace header copy (brand suffix / headline / EN line).
+ *  Owned + persisted by the studio page (localStorage studio_head_copy_v1);
+ *  the stats line under it stays data-derived and is NOT part of this. */
+export type WsHeadCopy = { brand: string; headline: string; en: string };
 
 /** Design space matches plate frames ~6.5s / 7.5s (1024x576 → 1600x820 content area). */
 const W = 1600;
@@ -49,28 +50,22 @@ const BEAM: Record<string, string> = {
 const CUSTOM_BEAM = "#C9D4E8";
 const beamOf = (h: WsHub) => h.beam ?? BEAM[h.key] ?? CUSTOM_BEAM;
 
-/** Hub jellyfish visual: every hub plays the one shared animation loop
- *  (JellyMedia); the hub's assigned still (built-ins: their plate jelly,
- *  custom modules: the shared-assignment image, same as their landing node)
- *  is the poster / fallback. The glass orb with the module's initial is
- *  kept only for when there is no still at all or the still itself fails. */
-function WsJellyVisual({ hub }: { hub: WsHub }) {
+/** Hub jellyfish visual: every hub — built-in or custom — plays the one
+ *  shared A animation loop with the A frame as poster (JellyMedia's
+ *  defaults). The glass orb placeholder is only the fallback if the
+ *  poster itself fails to load. (The per-hub stills this component used
+ *  on main are retired by the PR #31 site-wide A unification, which is
+ *  kept on purpose — it is a media rule, not part of the map layout.) */
+function WsJellyVisual() {
   const [failed, setFailed] = React.useState(false);
-  const src = hub.customId ? hub.img : `/studio/landing/jelly-${hub.key}.webp`;
-  if (!src || failed) {
+  if (failed) {
     return (
       <span className="ws-jelly-orb" aria-hidden>
-        <i>{hub.label.slice(0, 1)}</i>
+        <i>·</i>
       </span>
     );
   }
-  return (
-    <JellyMedia
-      still={src}
-      stillClassName={hub.customId ? "ws-feather" : undefined}
-      onStillError={() => setFailed(true)}
-    />
-  );
+  return <JellyMedia onStillError={() => setFailed(true)} />;
 }
 
 /**
@@ -108,6 +103,10 @@ function rowLayout(n: number, cardY: number) {
 
 export function NeuralWorkspace({
   hubs,
+  headCopy,
+  editMode,
+  onHeadCopyChange,
+  compact,
   themeLabel,
   themeEn,
   onCycleTheme,
@@ -120,6 +119,16 @@ export function NeuralWorkspace({
   stepCount,
 }: {
   hubs: WsHub[];
+  headCopy?: WsHeadCopy;
+  editMode?: boolean;
+  onHeadCopyChange?: (patch: Partial<WsHeadCopy>) => void;
+  /** Orb-skin prop in the studio page's contract; the restored original
+   *  scene themes via CSS variables (its orb is the plate image), so
+   *  this is accepted for parity but not read here. */
+  themeId?: "silver" | "warm" | "neu";
+  /** Page chrome collapsed (PR #31, problem 11): the plate head — an
+   *  overlay, not map geometry — hides together with the chrome. */
+  compact?: boolean;
   themeLabel: string;
   themeEn: string;
   onCycleTheme: () => void;
@@ -286,12 +295,44 @@ export function NeuralWorkspace({
           <span className="ws-orb-hint">返回主体</span>
         </button>
 
-        <div className="ws-head" data-testid="ws-head">
-          <p className="ws-kicker">
-            TANG · NEURAL STUDIO <span>网文拉新工作台</span>
-          </p>
-          <h2>{moduleN} 大模块，一条拉新流水线。</h2>
-          <p className="ws-head-en">{moduleWord} module{moduleN === 1 ? "" : "s"}, one growth pipeline.</p>
+        {!compact && (
+        <div className={cn("ws-head", editMode && "ws-head-edit")} data-testid="ws-head">
+          {editMode && headCopy && onHeadCopyChange ? (
+            <>
+              <p className="ws-kicker">
+                TANG · NEURAL STUDIO
+                <input
+                  className="ws-head-input ws-head-input-brand"
+                  aria-label="品牌行后缀"
+                  data-testid="ws-head-brand"
+                  value={headCopy.brand}
+                  onChange={(e) => onHeadCopyChange({ brand: e.target.value })}
+                />
+              </p>
+              <input
+                className="ws-head-input ws-head-input-h2"
+                aria-label="工作台主标题"
+                data-testid="ws-head-headline"
+                value={headCopy.headline}
+                onChange={(e) => onHeadCopyChange({ headline: e.target.value })}
+              />
+              <input
+                className="ws-head-input ws-head-input-en"
+                aria-label="工作台英文副标题"
+                data-testid="ws-head-en"
+                value={headCopy.en}
+                onChange={(e) => onHeadCopyChange({ en: e.target.value })}
+              />
+            </>
+          ) : (
+            <>
+              <p className="ws-kicker">
+                TANG · NEURAL STUDIO <span>{headCopy?.brand ?? "网文拉新工作台"}</span>
+              </p>
+              <h2>{headCopy?.headline ?? `${moduleN} 大模块，一条拉新流水线。`}</h2>
+              <p className="ws-head-en">{headCopy?.en ?? `${moduleWord} module${moduleN === 1 ? "" : "s"}, one growth pipeline.`}</p>
+            </>
+          )}
           <p className="ws-stats">
             <b><RollNumber value={moduleN} /></b> 个模块 <small>modules</small>
             <i>·</i>
@@ -302,6 +343,7 @@ export function NeuralWorkspace({
             <b><RollNumber value={hubs.find((h) => h.key === "ll")?.n ?? 0} /></b> Skill
           </p>
         </div>
+        )}
 
         {order.map((h, i) => {
           const y = slots[i];
@@ -326,7 +368,7 @@ export function NeuralWorkspace({
                 aria-label={`选中${h.label}`}
                 onClick={() => (on ? onOpenSection(h.section) : setSelNotify(h.key))}
               >
-                <WsJellyVisual hub={h} />
+                <WsJellyVisual />
               </button>
               <button
                 type="button"
@@ -460,6 +502,8 @@ export function NeuralWorkspaceMobile({
   onSelectHub,
 }: {
   hubs: WsHub[];
+  /** Same contract note as the desktop scene: accepted, not read. */
+  themeId?: "silver" | "warm" | "neu";
   onOpenSection: (section: string) => void;
   onPickRow: (row: { id: string; title: string }, hub: WsHub) => void;
   onReturnLanding: () => void;
@@ -597,7 +641,7 @@ export function NeuralWorkspaceMobile({
                 aria-label={on ? `打开${h.label}` : `选中${h.label}`}
                 onClick={() => tap(h)}
               >
-                <WsJellyVisual hub={h} />
+                <WsJellyVisual />
               </button>
               {!on && (
                 <button
