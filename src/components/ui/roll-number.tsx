@@ -36,9 +36,15 @@ const colDuration = (fromRight: number) => 560 + fromRight * 170;
 export function RollNumber({
   value,
   className,
+  delay = 0,
 }: {
   value: number;
   className?: string;
+  /** Hold the roll for this many ms after mount. Landing cards pass
+   *  their entrance delay: without it the roll finished behind the
+   *  cards' fade-in and nobody ever saw it. Value changes re-roll
+   *  immediately (the hold only applies to the mount roll). */
+  delay?: number;
 }) {
   const valid = Number.isFinite(value) && value >= 0 && Number.isInteger(value);
   const digits = valid ? String(value).split("").map(Number) : [];
@@ -61,7 +67,8 @@ export function RollNumber({
       const prev = prevIdx >= 0 ? cur[prevIdx] : 0;
       return ((prev % 10) + 10) % 10;
     });
-    const turns = mountedRef.current ? changeTurns : mountTurns;
+    const isMount = !mountedRef.current;
+    const turns = isMount ? mountTurns : changeTurns;
     mountedRef.current = true;
     const dest = target.map((d, j) => {
       const fromRight = len - 1 - j;
@@ -77,23 +84,33 @@ export function RollNumber({
       setCols(dest);
       return;
     }
-    const t0 = performance.now();
     cancelAnimationFrame(rafRef.current);
-    const tick = (now: number) => {
-      const elapsed = now - t0;
-      let done = true;
-      const next = dest.map((d, j) => {
-        const fromRight = len - 1 - j;
-        const t = Math.min(1, elapsed / colDuration(fromRight));
-        if (t < 1) done = false;
-        return start[j] + (d - start[j]) * easeOutBack(t);
-      });
-      colsRef.current = next;
-      setCols(next);
-      if (!done) rafRef.current = requestAnimationFrame(tick);
+    let startTimer = 0;
+    const begin = () => {
+      const t0 = performance.now();
+      const tick = (now: number) => {
+        const elapsed = now - t0;
+        let done = true;
+        const next = dest.map((d, j) => {
+          const fromRight = len - 1 - j;
+          const t = Math.min(1, elapsed / colDuration(fromRight));
+          if (t < 1) done = false;
+          return start[j] + (d - start[j]) * easeOutBack(t);
+        });
+        colsRef.current = next;
+        setCols(next);
+        if (!done) rafRef.current = requestAnimationFrame(tick);
+      };
+      rafRef.current = requestAnimationFrame(tick);
     };
-    rafRef.current = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(rafRef.current);
+    // The mount-delay hold applies once; later value changes re-roll now.
+    const hold = isMount ? delay : 0;
+    if (hold > 0) startTimer = window.setTimeout(begin, hold);
+    else begin();
+    return () => {
+      window.clearTimeout(startTimer);
+      cancelAnimationFrame(rafRef.current);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value, valid]);
 

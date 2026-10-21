@@ -14,37 +14,113 @@ import { RollNumber } from "@/components/ui/roll-number";
  * properties. Transform is written straight to the element (rAF-
  * throttled) so React never re-renders for pointer motion; the batch-1
  * transition on buttons smooths both the tracking and the return to
- * rest. Touch pointers and reduced-motion never engage. The card's
- * entrance animation uses fill backwards so a finished entrance never
- * pins `transform: none` over the tilt.
+ * rest. The card's entrance animation uses fill backwards so a finished
+ * entrance never pins `transform: none` over the tilt.
+ *
+ * Touch path (2026-10-21): phones have no hover, so the tilt follows a
+ * press-and-drag instead — past a 4px threshold the card leans with the
+ * finger (≤6° per axis) and the glare tracks the touch point. A drag
+ * that travelled >10px suppresses the click it would otherwise fire on
+ * release (the finger was steering, not tapping); a plain tap still
+ * opens the section. Reduced-motion disables both paths.
  */
 function useLpCardTilt() {
   const okRef = React.useRef(false);
+  const touchOkRef = React.useRef(false);
   const rafRef = React.useRef(0);
+  const dragRef = React.useRef<{
+    id: number;
+    x0: number;
+    y0: number;
+    moved: boolean;
+  } | null>(null);
   React.useEffect(() => {
+    const reduced = window.matchMedia(
+      "(prefers-reduced-motion: reduce)",
+    ).matches;
     okRef.current =
       window.matchMedia("(hover: hover) and (pointer: fine)").matches &&
-      !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      !reduced;
+    touchOkRef.current = !reduced;
   }, []);
-  const onPointerMove = (e: React.PointerEvent<HTMLElement>) => {
-    if (!okRef.current || e.pointerType !== "mouse") return;
-    const el = e.currentTarget;
-    const r = el.getBoundingClientRect();
-    if (r.width === 0 || r.height === 0) return;
-    const x = (e.clientX - r.left) / r.width;
-    const y = (e.clientY - r.top) / r.height;
+  const writeTilt = (
+    el: HTMLElement,
+    rx: number,
+    ry: number,
+    gx?: number,
+    gy?: number,
+  ) => {
     cancelAnimationFrame(rafRef.current);
     rafRef.current = requestAnimationFrame(() => {
-      el.style.transform = `perspective(720px) rotateX(${((0.5 - y) * 10).toFixed(2)}deg) rotateY(${((x - 0.5) * 10).toFixed(2)}deg)`;
-      el.style.setProperty("--gx", `${(x * 100).toFixed(1)}%`);
-      el.style.setProperty("--gy", `${(y * 100).toFixed(1)}%`);
+      el.style.transform = `perspective(720px) rotateX(${rx.toFixed(2)}deg) rotateY(${ry.toFixed(2)}deg)`;
+      if (gx != null && gy != null) {
+        el.style.setProperty("--gx", `${gx.toFixed(1)}%`);
+        el.style.setProperty("--gy", `${gy.toFixed(1)}%`);
+      }
     });
+  };
+  const onPointerMove = (e: React.PointerEvent<HTMLElement>) => {
+    const el = e.currentTarget;
+    if (e.pointerType === "mouse") {
+      if (!okRef.current) return;
+      const r = el.getBoundingClientRect();
+      if (r.width === 0 || r.height === 0) return;
+      const x = (e.clientX - r.left) / r.width;
+      const y = (e.clientY - r.top) / r.height;
+      writeTilt(el, (0.5 - y) * 10, (x - 0.5) * 10, x * 100, y * 100);
+      return;
+    }
+    // Touch / pen drag tilt (implicit pointer capture keeps the moves
+    // flowing to this card for the whole drag).
+    const d = dragRef.current;
+    if (!touchOkRef.current || !d || e.pointerId !== d.id) return;
+    const dx = e.clientX - d.x0;
+    const dy = e.clientY - d.y0;
+    if (Math.hypot(dx, dy) > 4) d.moved = true;
+    if (!d.moved) return;
+    const r = el.getBoundingClientRect();
+    const gx = r.width > 0 ? ((e.clientX - r.left) / r.width) * 100 : 50;
+    const gy = r.height > 0 ? ((e.clientY - r.top) / r.height) * 100 : 50;
+    writeTilt(
+      el,
+      Math.max(-6, Math.min(6, -dy / 10)),
+      Math.max(-6, Math.min(6, dx / 10)),
+      gx,
+      gy,
+    );
+  };
+  const onPointerDown = (e: React.PointerEvent<HTMLElement>) => {
+    if (!touchOkRef.current || e.pointerType === "mouse") return;
+    dragRef.current = { id: e.pointerId, x0: e.clientX, y0: e.clientY, moved: false };
+  };
+  const endDrag = (e: React.PointerEvent<HTMLElement>) => {
+    const d = dragRef.current;
+    if (!d || e.pointerId !== d.id) return;
+    dragRef.current = null;
+    cancelAnimationFrame(rafRef.current);
+    e.currentTarget.style.transform = "";
+    if (d.moved) e.currentTarget.dataset.tiltDragged = "1";
   };
   const onPointerLeave = (e: React.PointerEvent<HTMLElement>) => {
     cancelAnimationFrame(rafRef.current);
     e.currentTarget.style.transform = "";
   };
-  return { onPointerMove, onPointerLeave };
+  /** Swallow the click a real drag ends with; taps pass through. */
+  const onClickCapture = (e: React.SyntheticEvent<HTMLElement>) => {
+    if (e.currentTarget.dataset.tiltDragged) {
+      delete e.currentTarget.dataset.tiltDragged;
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  };
+  return {
+    onPointerMove,
+    onPointerLeave,
+    onPointerDown,
+    onPointerUp: endDrag,
+    onPointerCancel: endDrag,
+    onClickCapture,
+  };
 }
 
 export type LandingNode = {
@@ -108,32 +184,38 @@ const DESKTOP: Layout = {
   ],
 };
 
-/** Mobile portrait: same angles, composition re-packed into 2:3 so nothing stacks. */
+/** Mobile portrait: same angles, composition re-packed into 2:3 so nothing stacks.
+ *  2026-10-21 re-pack: the old table grazed in production (works/database
+ *  jellies overlapped their own cards, health/works cards sat 1 unit
+ *  apart, the finance jelly was squeezed between two foreign cards).
+ *  Every jelly/card box below was re-laid with ≥13 units of air between
+ *  neighbouring boxes (card height ≈148 units at these widths); anchors
+ *  are re-aimed at the core by aimAtCore as before. */
 const MOBILE: Layout = {
   w: 1000,
   h: 1560,
   core: [500, 860],
   orb: 680,
   nodes: {
-    top: { c: [500, 255], w: 210, anchor: [504, 320], card: [650, 185], cardW: 250, bend: -0.04 },
-    left: { c: [125, 665], w: 200, anchor: [190, 690], card: [20, 445], cardW: 230, bend: 0.08 },
-    right: { c: [875, 645], w: 210, anchor: [812, 680], card: [750, 425], cardW: 230, bend: -0.08 },
-    ll: { c: [200, 1205], w: 180, anchor: [245, 1165], card: [40, 1300], cardW: 250, bend: 0.14 },
-    lr: { c: [810, 1220], w: 180, anchor: [765, 1180], card: [715, 1315], cardW: 250, bend: -0.14 },
+    top: { c: [505, 245], w: 200, anchor: [504, 320], card: [668, 178], cardW: 250, bend: -0.04 },
+    left: { c: [130, 722], w: 190, anchor: [190, 690], card: [20, 470], cardW: 230, bend: 0.08 },
+    right: { c: [862, 793], w: 190, anchor: [812, 680], card: [724, 540], cardW: 250, bend: -0.08 },
+    ll: { c: [205, 1225], w: 175, anchor: [245, 1165], card: [36, 1322], cardW: 250, bend: 0.14 },
+    lr: { c: [795, 1270], w: 160, anchor: [765, 1180], card: [700, 1361], cardW: 250, bend: -0.14 },
   },
   slots: [
     // 0 · upper-left (health's fixed home)
-    { c: [185, 225], w: 150, anchor: [185, 225], card: [16, 296], cardW: 230, bend: 0.08 },
-    // 1 · band under the top card, jelly right of its card (finance's fixed home)
-    { c: [700, 377], w: 96, anchor: [700, 377], card: [420, 356], cardW: 230, bend: -0.06 },
+    { c: [180, 215], w: 160, anchor: [185, 225], card: [16, 305], cardW: 230, bend: 0.08 },
+    // 1 · band under the top jelly, jelly right of its card (finance's fixed home)
+    { c: [742, 442], w: 110, anchor: [700, 377], card: [432, 368], cardW: 230, bend: -0.06 },
     // 2 · left edge, mid-height
-    { c: [118, 905], w: 120, anchor: [118, 905], card: [16, 972], cardW: 230, bend: 0.1 },
+    { c: [122, 905], w: 130, anchor: [118, 905], card: [16, 981], cardW: 230, bend: 0.1 },
     // 3 · right edge, mid-height
-    { c: [882, 905], w: 120, anchor: [882, 905], card: [754, 982], cardW: 230, bend: -0.1 },
+    { c: [868, 955], w: 125, anchor: [882, 905], card: [738, 1030], cardW: 230, bend: -0.1 },
     // 4 · below the orb, left
-    { c: [392, 1242], w: 120, anchor: [392, 1242], card: [296, 1332], cardW: 200, bend: 0.12 },
+    { c: [398, 1252], w: 120, anchor: [392, 1242], card: [300, 1321], cardW: 200, bend: 0.12 },
     // 5 · below the orb, right
-    { c: [618, 1242], w: 120, anchor: [618, 1242], card: [500, 1364], cardW: 200, bend: -0.12 },
+    { c: [605, 1248], w: 120, anchor: [618, 1242], card: [510, 1324], cardW: 185, bend: -0.12 },
   ],
 };
 
@@ -411,6 +493,35 @@ export function NeuralLanding({
       window.removeEventListener("pointermove", onMove);
     };
   }, []);
+  // Touch press feedback: iOS Safari does not reliably paint :active on
+  // tap, so mirror the batch-1 press with an .lp-pressing class driven
+  // by real pointer events — one delegated listener set on the root
+  // covers nodes, cards, enter and theme alike. Reduced-motion keeps
+  // presses static, the same gate batch 1 uses for its :active rule.
+  React.useEffect(() => {
+    const el = rootRef.current;
+    if (!el) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches)
+      return;
+    const clear = () =>
+      el
+        .querySelectorAll(".lp-pressing")
+        .forEach((n) => n.classList.remove("lp-pressing"));
+    const down = (e: PointerEvent) => {
+      const t = e.target as HTMLElement | null;
+      const b = t?.closest?.('button, a, [role="button"]');
+      if (b && el.contains(b)) b.classList.add("lp-pressing");
+    };
+    const up = () => clear();
+    el.addEventListener("pointerdown", down);
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
+    return () => {
+      el.removeEventListener("pointerdown", down);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
+    };
+  }, []);
   const videoRef = React.useRef<HTMLVideoElement>(null);
   React.useEffect(() => {
     const v = videoRef.current;
@@ -451,6 +562,13 @@ export function NeuralLanding({
       data-quick={quick ? "1" : "0"}
     >
       <div className="lp-stage" data-testid="lp-stage">
+        {/* In-stage backdrop: the stage's centring transform makes it a
+            stacking context, which would isolate the node buttons'
+            screen blend from the root gradient painted outside it.
+            This layer re-paints that same gradient inside the stage
+            (geometry mapped into stage coordinates, see globals.css)
+            so the blend has a real backdrop everywhere in the stage. */}
+        <div className="lp-backdrop" aria-hidden />
         <Web L={DESKTOP} nodes={nodes} className="lp-only-d" />
         <Web L={MOBILE} nodes={nodes} className="lp-only-m" />
 
@@ -506,7 +624,7 @@ export function NeuralLanding({
                   ...toVars("m", place(MOBILE, node)),
                   ...jellyMotion(node.customId ?? node.key),
                   "--jelly-glow": node.beam ?? BEAM[node.key] ?? "#DCE2F0",
-                  animationDelay: `${0.55 + i * 0.12}s`,
+                  animationDelay: `${0.5 + i * 0.07}s`,
                 } as React.CSSProperties
               }
               onClick={openNode}
@@ -526,18 +644,22 @@ export function NeuralLanding({
                 {
                   ...toVars("d", cardPlace(DESKTOP, node)),
                   ...toVars("m", cardPlace(MOBILE, node)),
-                  animationDelay: `${1.25 + i * 0.1}s`,
+                  animationDelay: `${0.95 + i * 0.07}s`,
                 } as React.CSSProperties
               }
               onClick={openNode}
               onPointerMove={cardTilt.onPointerMove}
               onPointerLeave={cardTilt.onPointerLeave}
+              onPointerDown={cardTilt.onPointerDown}
+              onPointerUp={cardTilt.onPointerUp}
+              onPointerCancel={cardTilt.onPointerCancel}
+              onClickCapture={cardTilt.onClickCapture}
             >
               <span className="lp-card-glare" aria-hidden />
               <span className="lp-card-row">
                 <span className="lp-card-ico" aria-hidden />
                 <span className="lp-card-n">
-                  <RollNumber value={node.n} />
+                  <RollNumber value={node.n} delay={950 + i * 70} />
                 </span>
               </span>
               {/* Module distinction lives in the type now: the Chinese
@@ -577,12 +699,16 @@ export function NeuralLanding({
               onClick={() => onOpenCustom?.(p.id)}
               onPointerMove={cardTilt.onPointerMove}
               onPointerLeave={cardTilt.onPointerLeave}
+              onPointerDown={cardTilt.onPointerDown}
+              onPointerUp={cardTilt.onPointerUp}
+              onPointerCancel={cardTilt.onPointerCancel}
+              onClickCapture={cardTilt.onClickCapture}
             >
               <span className="lp-card-glare" aria-hidden />
               <span className="lp-card-row">
                 <span className="lp-card-ico" aria-hidden />
                 <span className="lp-card-n">
-                  <RollNumber value={p.count} />
+                  <RollNumber value={p.count} delay={200} />
                 </span>
               </span>
               <span
@@ -686,7 +812,7 @@ export function NeuralLanding({
                       {m.label} <em>{m.en}</em>
                     </small>
                     <b>
-                      <RollNumber value={m.value} />
+                      <RollNumber value={m.value} delay={1750} />
                       {m.isManual && (
                         <i
                           className="lp-manual-dot"
