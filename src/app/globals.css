@@ -3571,9 +3571,7 @@ div.studio-orb.studio-orb-bg,
   .hud-curve svg { height: 30px; }
   .hud-stage .hud-tag { white-space: normal; }
 }
-@media (prefers-reduced-motion: reduce) {
-  .hud-root *, .hud-root::before, .hud-root::after {
-    animation-duration: 0.01s !important;
-    animation-iteration-count: 1 !important;
-  }
-}
+/* NOTE (2026-10-21): no prefers-reduced-motion freeze for .hud-root.
+   The HUD's motion is the design itself; a system-level "animations off"
+   setting froze the whole page on the owner's machine (bug report:
+   "没有动态"). Do not re-add a blanket animation kill for .hud-root. */
