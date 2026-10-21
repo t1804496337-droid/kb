@@ -404,12 +404,6 @@ const PENDING_TICKETS: {
     detail: "配音已定稿（Fish Audio）· 待本人点发",
     owner: "Muse + 本人",
   },
-  {
-    id: "t-ds",
-    title: "omp DeepSeek 充值待命",
-    detail: "密钥已配 · Insufficient Balance · 充值后接 01/04/08",
-    owner: "待改派",
-  },
 ];
 
 /** Works gallery: real pending slots only — no stranger demo covers. */
