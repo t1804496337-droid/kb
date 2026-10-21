@@ -191,7 +191,15 @@ export function NeuralWorkspace({
   const COL_TOP = ORB_TOP + ORB_SIZE + 12;
   const PANEL_HEAD_Y = COL_TOP;
   const ROWS_TOP = COL_TOP + 48;
-  const ROWS_H = H - ROWS_TOP - 36;
+  // Bottom safe pad for the rows viewport: the floating theme switcher
+  // (.ws-theme, absolute in the wrap) occupies the bottom-right corner —
+  // a ~87 screen-px footprint (16px bottom offset + tag + pill) — while
+  // the panel's right edge runs to the wrap's right edge. With only the
+  // old 36 design-px clearance, the last row cards' right ends (chips)
+  // slid under the switcher and could not be scrolled clear. Reserve
+  // 100 screen px, converted to design px at the current plate scale.
+  const ROWS_SAFE_BOTTOM = Math.max(36, Math.ceil(100 / scale));
+  const ROWS_H = H - ROWS_TOP - ROWS_SAFE_BOTTOM;
   const PANEL_W = designW - PANEL_X - 40;
 
   const selHub = hubs.find((h) => h.key === sel) ?? hubs[0];
