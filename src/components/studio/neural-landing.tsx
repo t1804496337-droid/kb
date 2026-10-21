@@ -2,7 +2,10 @@
 
 import * as React from "react";
 import { cn } from "@/lib/utils";
-import { HudModuleContent } from "@/components/studio/hud-module-content";
+import {
+  HudModuleContent,
+  HudDecisionNote,
+} from "@/components/studio/hud-module-content";
 
 export type LandingNode = {
   key: string;
@@ -250,6 +253,10 @@ export function NeuralLanding({
     setView(id);
   };
   const viewMod = view ? (modules.find((m) => m.id === view) ?? null) : null;
+  /* Decision-stack note views (X 恢复 / 小红书去向）: no module behind
+   * them — a facts-only note page, opened with view = "note:x"|"note:xhs". */
+  const noteKind =
+    view === "note:x" ? ("x" as const) : view === "note:xhs" ? ("xhs" as const) : null;
   const selMod = sel ? (modules.find((m) => m.id === sel) ?? null) : null;
   const sharePct = (n: number | null) =>
     n == null || total <= 0 ? 0 : Math.round((n / total) * 100);
@@ -313,48 +320,56 @@ export function NeuralLanding({
     .map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`)
     .join(" ");
 
-  /* ---- decision stack (real open items, 2026-10-21 caliber) ---- */
+  /* ---- decision stack (real open items, 2026-10-21 caliber) ----
+   * Every row is clickable: module-backed items jump to that module's
+   * content view; the two decision items (X / XHS) open a facts-only
+   * note view. Status copy is factual only — the decorative progress
+   * percentages of the frozen mockup were removed (no real source). */
   const decisions: {
     led: HudModule["led"] | "p";
     name: string;
     en: string;
     tag: string;
     tagCls: string;
-    bar: string;
-    pct: number;
-    sub: string;
+    fact: string;
+    target?: string;
+    note?: "x" | "xhs";
   }[] = [
     {
-      led: "p", name: "EP001 公开", en: "YOUTUBE PUBLISH", tag: "WAIT",
-      tagCls: "hud-c-pink", bar: "hud-bar-pink", pct: 80,
-      sub: "已上传 · 待手机端改公开 · 80%",
+      led: "p", name: "EP001 公开", en: "YOUTUBE PUBLISH", tag: "待公开",
+      tagCls: "hud-c-pink", target: "works",
+      fact: "已上传 · 待手机端改公开",
     },
     {
       led: "a", name: "健康数据同步", en: "HEALTH SYNC", tag: "STALE",
-      tagCls: "hud-c-amb", bar: "hud-bar-cyan", pct: 30,
-      sub: `最近完整记录 ${health.sleepLast ?? "10-19"} · 30%`,
+      tagCls: "hud-c-amb", target: "health",
+      fact: `最近完整记录 ${health.sleepLast ?? "10-19"} · 数据待更新`,
     },
     {
-      led: "g", name: `待办票 ×${ticketsN}`, en: "CALENDAR TICKETS", tag: "OPEN",
-      tagCls: "hud-c-cyan", bar: "hud-bar-yel", pct: 45,
-      sub: "日历模块待办票未清 · 45%",
+      led: "g", name: `待办票 ×${ticketsN}`, en: "CALENDAR TICKETS", tag: "待清",
+      tagCls: "hud-c-cyan", target: "calendar",
+      fact: "日历模块待办票未清",
     },
     {
-      led: "d", name: "本体知识库填充", en: "ONTOLOGY BUILD", tag: "IDLING",
-      tagCls: "hud-c-pur", bar: "hud-bar-pur", pct: 8,
-      sub: "空壳已上线 · 细节待排期 · 8%",
+      led: "d", name: "本体知识库填充", en: "ONTOLOGY BUILD", tag: "建设中",
+      tagCls: "hud-c-pur", target: "ontology",
+      fact: "空壳已上线 · 条目 0 · 细节待排期",
     },
     {
-      led: "d", name: "X 账号恢复", en: "X OPS RESUME", tag: "PAUSED",
-      tagCls: "hud-c-pink", bar: "hud-bar-dim", pct: 100,
-      sub: "8 个定时任务停用 · 待指令",
+      led: "d", name: "X 账号恢复", en: "X OPS RESUME", tag: "已暂停",
+      tagCls: "hud-c-pink", note: "x",
+      fact: "8 个定时任务停用 · 待指令",
     },
     {
-      led: "p", name: "小红书去向", en: "XHS DECISION A/B/C", tag: "DECIDE",
-      tagCls: "hud-c-pur", bar: "hud-bar-pur", pct: 12,
-      sub: "申诉 / 换号 / 搁置 · 待拍板 · 12%",
+      led: "p", name: "小红书去向", en: "XHS DECISION A/B/C", tag: "待拍板",
+      tagCls: "hud-c-pur", note: "xhs",
+      fact: "申诉 / 换号 / 搁置 · 待拍板",
     },
   ];
+  const openDecision = (d: (typeof decisions)[number]) => {
+    if (d.target) openModule(d.target);
+    else if (d.note) setView(`note:${d.note}`);
+  };
 
   return (
     <div
@@ -451,6 +466,8 @@ export function NeuralLanding({
             onBack={() => setView(null)}
             onOpen={openModule}
           />
+        ) : noteKind ? (
+          <HudDecisionNote kind={noteKind} onBack={() => setView(null)} />
         ) : (
           <>
         {/* ══ MAIN ══ */}
@@ -837,24 +854,27 @@ export function NeuralLanding({
             <div className="hud-panel hud-p-pink hud-stack">
               <div className="hud-phead">
                 <span className="hud-t">DECISION STACK · 决策栈</span>
-                <span className="hud-chip hud-c-pink">{decisions.length} OPEN</span>
+                <span className="hud-chip hud-c-pink">{decisions.length} 待决</span>
                 <span className="hud-hex">0xD5TK</span>
               </div>
               {decisions.map((d) => (
-                <div className="hud-srow" key={d.en}>
+                <button
+                  type="button"
+                  className="hud-srow hud-srow-btn"
+                  key={d.en}
+                  data-testid={`hud-decision-${d.note ?? d.target ?? d.en}`}
+                  onClick={() => openDecision(d)}
+                >
                   <div className="hud-r1">
                     <span className={`hud-led hud-led-${d.led}`} />
                     <span className="hud-name">{d.name}</span>
                     <span className="hud-en">{d.en}</span>
                     <span className={`hud-tag hud-chip ${d.tagCls}`}>{d.tag}</span>
                   </div>
-                  <div className={`hud-bar ${d.bar}`}>
-                    <i style={{ width: `${d.pct}%` }} />
-                  </div>
                   <div className="hud-en" style={{ marginTop: 4 }}>
-                    {d.sub}
+                    {d.fact} · {d.target ? "点击进入 →" : "点击看说明 →"}
                   </div>
-                </div>
+                </button>
               ))}
             </div>
           </div>

@@ -401,7 +401,7 @@ const PENDING_TICKETS: {
   {
     id: "t-ep01",
     title: "视频号 ep01 待发布",
-    detail: "等 Muse Fish Audio 配音就绪后再点发",
+    detail: "配音已定稿（Fish Audio）· 待本人点发",
     owner: "Muse + 本人",
   },
   {
@@ -425,7 +425,7 @@ const WORK_SLOTS: {
     id: "slot-ep01",
     index: "ep01",
     title: "视频号 ep01 · 待发布",
-    subtitle: "Muse Fish Audio 配音中 · 成片槽位",
+    subtitle: "Fish Audio 配音已定稿 · 成片槽位",
     status: "待发布",
     date: "2026-10",
   },
