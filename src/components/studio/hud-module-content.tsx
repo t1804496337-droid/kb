@@ -26,7 +26,9 @@ import healthSyncJson from "../../../public/health-sync.json";
  *               小计 + 流水（金额口径走 finance-module 的 fmtMoney）
  * - health    ← public/health-sync.json（睡眠/步数/饮食）+ 训练记录区
  *               （计划＝塑形计划-轻器械高次数.md，完成状态无确认数据
- *               → 标计划态，不代填）
+ *               → 标计划态，不代填）+ 教学视频（/health-media.json
+ *               运行时拉取，键＝动作 id，点开展开 B 站嵌入播放器；
+ *               拉不到就只显文字，不编造）
  * - ontology  ← 结构与口径：条目源＝第二大脑笔记
  *               （goals/ai-2/hidden_files/notes/，现仅框架 README、
  *               笔记 0 条）→ 如实标建设中
@@ -87,15 +89,26 @@ const FINANCE_LEDGER_ENTRIES = [
   },
 ];
 
-/* ── health training plan（塑形计划-轻器械高次数.md，只读镜像） ── */
-const TRAINING_MOVES: { name: string; reps: string; cue: string }[] = [
-  { name: "弹力带深蹲", reps: "15–20 次", cue: "膝盖顺着脚尖方向" },
-  { name: "水瓶推举", reps: "12–15 次", cue: "水瓶代哑铃 · 核心收紧抓牢瓶身" },
-  { name: "弹力带划船", reps: "12–15 次", cue: "拉到胸前时肩胛骨夹紧" },
-  { name: "臀桥", reps: "15–20 次", cue: "环形带套膝盖上方 · 顶到最高夹紧 1 秒" },
-  { name: "水瓶弯举", reps: "12–15 次", cue: "大臂贴紧身体别动" },
-  { name: "跪姿腹肌轮推出", reps: "8–10 次", cue: "推到快贴地就拉回 · 全程别塌腰" },
+/* ── health training plan（塑形计划-轻器械高次数.md，只读镜像） ──
+ * id 与 public/health-media.json 的键对齐（旧 health-module.tsx 的
+ * MAIN_ITEMS 同一套 id），教学视频运行时从 /health-media.json 拉取。 */
+const TRAINING_MOVES: { id: string; name: string; reps: string; cue: string }[] = [
+  { id: "main-band-squat", name: "弹力带深蹲", reps: "15–20 次", cue: "膝盖顺着脚尖方向" },
+  { id: "main-bottle-press", name: "水瓶推举", reps: "12–15 次", cue: "水瓶代哑铃 · 核心收紧抓牢瓶身" },
+  { id: "main-band-row", name: "弹力带划船", reps: "12–15 次", cue: "拉到胸前时肩胛骨夹紧" },
+  { id: "main-glute-bridge", name: "臀桥", reps: "15–20 次", cue: "环形带套膝盖上方 · 顶到最高夹紧 1 秒" },
+  { id: "main-bottle-curl", name: "水瓶弯举", reps: "12–15 次", cue: "大臂贴紧身体别动" },
+  { id: "main-ab-wheel", name: "跪姿腹肌轮推出", reps: "8–10 次", cue: "推到快贴地就拉回 · 全程别塌腰" },
 ];
+
+/** public/health-media.json 的条目形状（同旧 health-module.tsx）。 */
+type HealthMediaItem = {
+  title: string;
+  embed?: string;
+  link: string;
+  source: string;
+};
+type HealthMediaMap = Record<string, HealthMediaItem>;
 const TRAINING_EQUIP = ["弹力带套装（已有）", "腹肌轮（已有）", "水瓶代哑铃 1.5–2L 灌满", "瑜伽垫（可选）"];
 
 /* ── inspiration zones（WORKFLOW-ZONES-SPEC：我 / AI / Agent） ── */
@@ -828,6 +841,8 @@ function FinanceBody() {
 function HealthBody() {
   const [sync, setSync] = React.useState<HealthSync | null>(null);
   const [failed, setFailed] = React.useState(false);
+  const [mediaMap, setMediaMap] = React.useState<HealthMediaMap>({});
+  const [openVideoId, setOpenVideoId] = React.useState<string | null>(null);
   React.useEffect(() => {
     let live = true;
     fetch("/health-sync.json", { cache: "no-store" })
@@ -839,6 +854,15 @@ function HealthBody() {
       })
       .catch(() => {
         if (live) setFailed(true);
+      });
+    /* 教学视频映射（同旧模块口径）：拿不到就当没有，动作行只少按钮。 */
+    fetch("/health-media.json", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j: HealthMediaMap | null) => {
+        if (live && j && typeof j === "object") setMediaMap(j);
+      })
+      .catch(() => {
+        /* 媒体文件缺失时训练区保持纯文字，不报错 */
       });
     return () => {
       live = false;
@@ -911,17 +935,66 @@ function HealthBody() {
       </Kv>
       <Kv k="器械">{TRAINING_EQUIP.join(" · ")}</Kv>
       <div style={{ marginTop: 8 }}>
-        {TRAINING_MOVES.map((m, i) => (
-          <Row key={m.name} testid={`hud-train-${i}`}>
-            <span className="hud-module-note">{`0${i + 1}`}</span>
-            <div className="hud-module-row-main">
-              <div className="hud-module-row-t">{m.name}</div>
-              <div className="hud-module-row-sub">{m.cue}</div>
-            </div>
-            <span className="hud-chip hud-c-cyan">{m.reps}</span>
-            <span className="hud-chip hud-c-dim">计划</span>
-          </Row>
-        ))}
+        {TRAINING_MOVES.map((m, i) => {
+          const media = mediaMap[m.id];
+          const open = openVideoId === m.id;
+          return (
+            <React.Fragment key={m.id}>
+              <Row testid={`hud-train-${i}`}>
+                <span className="hud-module-note">{`0${i + 1}`}</span>
+                <div className="hud-module-row-main">
+                  <div className="hud-module-row-t">{m.name}</div>
+                  <div className="hud-module-row-sub">{m.cue}</div>
+                </div>
+                <span className="hud-chip hud-c-cyan">{m.reps}</span>
+                <span className="hud-chip hud-c-dim">计划</span>
+                {media?.embed ? (
+                  <button
+                    type="button"
+                    className="hud-module-toggle"
+                    data-testid={`hud-train-video-btn-${m.id}`}
+                    onClick={() => setOpenVideoId(open ? null : m.id)}
+                  >
+                    {open ? "收起视频" : "教学视频"}
+                  </button>
+                ) : null}
+                {media ? (
+                  <a
+                    className="hud-module-toggle hud-module-toggle-link"
+                    data-testid={`hud-train-video-link-${m.id}`}
+                    href={media.link}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    {media.source}
+                  </a>
+                ) : null}
+              </Row>
+              {open && media?.embed ? (
+                <div
+                  className="hud-module-video"
+                  data-testid={`hud-train-video-${m.id}`}
+                >
+                  <div className="hud-module-video-frame">
+                    <iframe
+                      data-testid={`hud-train-iframe-${m.id}`}
+                      src={media.embed}
+                      title={media.title}
+                      loading="lazy"
+                      allowFullScreen
+                    />
+                  </div>
+                  <p className="hud-module-video-cap">
+                    {media.title} · 来源 {media.source} ·{" "}
+                    <a href={media.link} target="_blank" rel="noreferrer">
+                      原文链接
+                    </a>
+                  </p>
+                </div>
+              ) : null}
+            </React.Fragment>
+          );
+        })}
       </div>
       <p className="hud-module-note">
         结构：热身 5 分钟 → 主训练 6 动作 ×2 组 → 拉伸 5 分钟；另有每日
