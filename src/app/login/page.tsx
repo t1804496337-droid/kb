@@ -7,6 +7,8 @@ export default function LoginPage() {
   const router = useRouter();
   const [username, setUsername] = React.useState("");
   const [password, setPassword] = React.useState("");
+  const [remember, setRemember] = React.useState(false);
+  const [resetOpen, setResetOpen] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [pending, setPending] = React.useState(false);
   const [leaving, setLeaving] = React.useState(false);
@@ -46,7 +48,7 @@ export default function LoginPage() {
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify({ username, password, remember }),
       });
       if (!res.ok) {
         const data = (await res.json().catch(() => null)) as {
@@ -76,6 +78,11 @@ export default function LoginPage() {
       setPending(false);
     }
   }
+
+  // Placeholder reset hook: there is no self-service password change —
+  // the key lives in the server env (SITE_AUTH_PASS). The link only
+  // unfolds the real instructions for rotating it.
+  const onResetPassword = () => setResetOpen((v) => !v);
 
   // Radiating silk endpoints for the success transition (12 rays).
   const rays = Array.from({ length: 12 }, (_, i) => {
@@ -120,7 +127,7 @@ export default function LoginPage() {
           TANG <span>NEURAL</span>
         </p>
         <h1>登录工作台</h1>
-        <p className="studio-login-sub">银黑门禁 · 进入后进入神经登录页</p>
+        <p className="studio-login-sub">[ SYSTEM: GATEWAY_SECURE ] 请输入神经凭证</p>
         <label className="studio-login-field">
           <span>用户名</span>
           <input
@@ -146,6 +153,35 @@ export default function LoginPage() {
             placeholder="••••••••"
           />
         </label>
+        <div className="studio-login-tools">
+          <label className="studio-login-remember">
+            <input
+              type="checkbox"
+              data-testid="login-remember"
+              checked={remember}
+              onChange={(e) => setRemember(e.target.checked)}
+            />
+            <span>
+              记住凭证 <em>REMEMBER</em>
+            </span>
+          </label>
+          <button
+            type="button"
+            className="studio-login-reset"
+            data-testid="login-reset"
+            aria-expanded={resetOpen}
+            onClick={onResetPassword}
+          >
+            [ 修改密钥 / RESET ]
+          </button>
+        </div>
+        {resetOpen ? (
+          <p className="studio-login-reset-note" data-testid="login-reset-note">
+            密钥保存在服务器环境变量 SITE_AUTH_PASS
+            中，无法在此自助修改。如需更换，请前往 Vercel
+            项目设置更新该变量，并重新部署后生效。
+          </p>
+        ) : null}
         {error ? (
           <p className="studio-login-error" role="alert">
             {error}
@@ -160,6 +196,9 @@ export default function LoginPage() {
           {pending ? "登录中…" : "进入"}
           <span>ENTER</span>
         </button>
+        <p className="studio-login-foot" data-testid="login-foot">
+          ENCRYPTION: AES-256 | TERMINAL: ACTIVE
+        </p>
       </form>
       {leaving && (
         <div className="login-transition" data-testid="login-transition" aria-hidden>

@@ -26,13 +26,16 @@ export async function POST(request: Request) {
 
   let username = "";
   let password = "";
+  let remember = false;
   try {
     const body = (await request.json()) as {
       username?: string;
       password?: string;
+      remember?: unknown;
     };
     username = typeof body.username === "string" ? body.username.trim() : "";
     password = typeof body.password === "string" ? body.password : "";
+    remember = body.remember === true;
   } catch {
     return NextResponse.json({ error: "Invalid body" }, { status: 400 });
   }
@@ -52,12 +55,15 @@ export async function POST(request: Request) {
   }
 
   const res = NextResponse.json({ ok: true, user: creds.user });
+  // Same token, same flags — only the lifetime differs: "remember me"
+  // gets a 30-day persistent cookie; otherwise a session cookie (no
+  // Max-Age/Expires) that dies with the browser.
   res.cookies.set("site_session", `ok:${creds.user}`, {
     httpOnly: true,
     sameSite: "lax",
     path: "/",
     secure: process.env.NODE_ENV === "production",
-    maxAge: 60 * 60 * 24 * 30,
+    ...(remember ? { maxAge: 60 * 60 * 24 * 30 } : {}),
   });
   return res;
 }
