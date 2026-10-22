@@ -3710,6 +3710,16 @@ div.studio-orb.studio-orb-bg,
   gap: 8px;
   margin: 10px 0 6px;
 }
+.hud-module-group-fold { cursor: pointer; user-select: none; }
+.hud-module-group-fold:hover .hud-module-group-n {
+  text-shadow: 0 0 12px rgba(178, 0, 255, 0.95);
+}
+.hud-module-group-arrow {
+  margin-left: auto;
+  color: var(--hud-cyan);
+  font-size: 11px;
+  text-shadow: 0 0 7px rgba(0, 255, 255, 0.6);
+}
 .hud-module-group-n {
   font-size: 12px;
   color: #fff;

@@ -212,6 +212,9 @@ function Kv({ k, children }: { k: string; children: React.ReactNode }) {
 
 /* ─────────────────────────── 5 · skills ─────────────────────────── */
 
+/** 技能分组折叠态的本机存储键（与日历事项同机制：只存这台设备）。 */
+const SKILLS_COLLAPSED_KEY = "studio_skills_collapsed_v1";
+
 function SkillsBody() {
   const [agents, setAgents] = React.useState<SkillAgentGroup[]>(
     SKILLS_SYNC.agents,
@@ -221,6 +224,38 @@ function SkillsBody() {
   );
   const [query, setQuery] = React.useState("");
   const [openId, setOpenId] = React.useState<string | null>(null);
+  const [collapsed, setCollapsed] = React.useState<Record<string, boolean>>(
+    {},
+  );
+  React.useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(SKILLS_COLLAPSED_KEY);
+      if (raw) {
+        const obj = JSON.parse(raw) as Record<string, unknown>;
+        const next: Record<string, boolean> = {};
+        for (const [k, v] of Object.entries(obj ?? {})) {
+          if (typeof v === "boolean") next[k] = v;
+        }
+        setCollapsed(next);
+      }
+    } catch {
+      /* storage unavailable → 默认全展开 */
+    }
+  }, []);
+  const toggleGroup = (id: string) => {
+    setCollapsed((prev) => {
+      const next = { ...prev, [id]: !prev[id] };
+      try {
+        window.localStorage.setItem(
+          SKILLS_COLLAPSED_KEY,
+          JSON.stringify(next),
+        );
+      } catch {
+        /* storage unavailable → 仅本次会话内生效 */
+      }
+      return next;
+    });
+  };
   React.useEffect(() => {
     let live = true;
     fetch("/skills-sync.json", { cache: "no-store" })
@@ -275,9 +310,28 @@ function SkillsBody() {
         const list = agent.skills.filter(match);
         if (list.length === 0) return null;
         const hasDetail = agent.skills.some((s) => s.detail);
+        /* 搜索时含命中的分组强制展开；清空搜索后恢复用户折叠态 */
+        const isCollapsed = !q && !!collapsed[agent.id];
         return (
-          <div key={agent.id} className="hud-module-group">
-            <div className="hud-module-group-h">
+          <div
+            key={agent.id}
+            className="hud-module-group"
+            data-testid={`hud-skill-group-${agent.id}`}
+          >
+            <div
+              className="hud-module-group-h hud-module-group-fold"
+              data-testid={`hud-skill-group-toggle-${agent.id}`}
+              role="button"
+              tabIndex={0}
+              aria-expanded={!isCollapsed}
+              onClick={() => toggleGroup(agent.id)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  toggleGroup(agent.id);
+                }
+              }}
+            >
               <span className="hud-module-group-n">{agent.name}</span>
               <span className="hud-chip hud-c-pur">AGENT</span>
               <span className="hud-module-note">
@@ -289,44 +343,49 @@ function SkillsBody() {
                   ? "· 点「详情」展开 SKILL.md 全文"
                   : "· 源文件未提供简介字段，仅列现有字段"}
               </span>
+              <span className="hud-module-group-arrow" aria-hidden="true">
+                {isCollapsed ? "▸" : "▾"}
+              </span>
             </div>
-            {list.map((s) => (
-              <React.Fragment key={s.id}>
-                <Row testid={`hud-skill-${s.id}`}>
-                  <div className="hud-module-row-main">
-                    <div className="hud-module-row-t">
-                      {s.zh}
-                      <span className="hud-module-row-en">{s.name}</span>
-                    </div>
-                    {s.desc ? (
-                      <div className="hud-module-row-sub">{s.desc}</div>
+            {isCollapsed
+              ? null
+              : list.map((s) => (
+                  <React.Fragment key={s.id}>
+                    <Row testid={`hud-skill-${s.id}`}>
+                      <div className="hud-module-row-main">
+                        <div className="hud-module-row-t">
+                          {s.zh}
+                          <span className="hud-module-row-en">{s.name}</span>
+                        </div>
+                        {s.desc ? (
+                          <div className="hud-module-row-sub">{s.desc}</div>
+                        ) : null}
+                        <div className="hud-module-row-src">{s.source}</div>
+                      </div>
+                      <span className="hud-chip hud-c-cyan">{s.tag}</span>
+                      {s.detail ? (
+                        <button
+                          type="button"
+                          className="hud-module-toggle"
+                          data-testid={`hud-skill-toggle-${s.id}`}
+                          onClick={() =>
+                            setOpenId(openId === s.id ? null : s.id)
+                          }
+                        >
+                          {openId === s.id ? "收起" : "详情"}
+                        </button>
+                      ) : null}
+                    </Row>
+                    {s.detail && openId === s.id ? (
+                      <div
+                        className="hud-module-detail"
+                        data-testid={`hud-skill-detail-${s.id}`}
+                      >
+                        {s.detail}
+                      </div>
                     ) : null}
-                    <div className="hud-module-row-src">{s.source}</div>
-                  </div>
-                  <span className="hud-chip hud-c-cyan">{s.tag}</span>
-                  {s.detail ? (
-                    <button
-                      type="button"
-                      className="hud-module-toggle"
-                      data-testid={`hud-skill-toggle-${s.id}`}
-                      onClick={() =>
-                        setOpenId(openId === s.id ? null : s.id)
-                      }
-                    >
-                      {openId === s.id ? "收起" : "详情"}
-                    </button>
-                  ) : null}
-                </Row>
-                {s.detail && openId === s.id ? (
-                  <div
-                    className="hud-module-detail"
-                    data-testid={`hud-skill-detail-${s.id}`}
-                  >
-                    {s.detail}
-                  </div>
-                ) : null}
-              </React.Fragment>
-            ))}
+                  </React.Fragment>
+                ))}
           </div>
         );
       })}
