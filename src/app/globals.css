@@ -4544,6 +4544,18 @@ div.studio-orb.studio-orb-bg,
       0 0 0 1px var(--hud-int-alert),
       0 0 18px rgba(255, 0, 127, 0.4);
   }
+
+  /* ── sphere stage tags: only the primary identifier survives ──
+   * The stage's four corner tags are laid out for desktop width;
+   * at the stacking breakpoint the hemisphere lines collide with
+   * the module identifier at the top of the disc and the node
+   * detail rows collide with the layout tag at the bottom (QA
+   * 2026-10-22, 390px first screen). Secondary annotations hide
+   * here — the top-left primary tag (module name / KNOWLEDGE n)
+   * stays, and the telemetry strip below the stage still carries
+   * status, count and share. Desktop (>1100px) is untouched. */
+  .hud-stage .hud-tag-aux { display: none; }
+  .hud-stage .hud-tag-sub { display: none; }
 }
 @keyframes hud-group-flash {
   35% { fill: #ffffff; filter: drop-shadow(0 0 6px var(--hud-cyan)); }
