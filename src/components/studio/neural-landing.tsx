@@ -6,6 +6,12 @@ import {
   HudModuleContent,
   HudDecisionNote,
 } from "@/components/studio/hud-module-content";
+import {
+  exportState,
+  importState,
+  restorePreImport,
+  hasPreImportBackup,
+} from "@/components/studio/snapshot";
 
 export type LandingNode = {
   key: string;
@@ -765,6 +771,82 @@ export function NeuralLanding({
   const [palQuery, setPalQuery] = React.useState("");
   const [palIdx, setPalIdx] = React.useState(0);
   const palInputRef = React.useRef<HTMLInputElement | null>(null);
+  /* ── 脑机快照（Local-First 持久化层，snapshot.ts）：导出/导入/撤销 ──
+   * 导入两步确认（InlineConfirmButton 式）：先选文件，按钮变
+   * 「确认覆盖导入？」再点才执行；成功后整页 reload 复位，结果行
+   * 通过 sessionStorage 一次性 flash 跨 reload 显示。 */
+  const SNAP_FLASH_KEY = "studio_snap_flash";
+  const [snapNote, setSnapNote] = React.useState("");
+  const [snapPending, setSnapPending] = React.useState<File | null>(null);
+  const [snapUndoArmed, setSnapUndoArmed] = React.useState(false);
+  const [snapHasBackup, setSnapHasBackup] = React.useState(false);
+  const snapFileRef = React.useRef<HTMLInputElement | null>(null);
+  const snapNoteTimer = React.useRef<number | undefined>(undefined);
+  const snapPendingTimer = React.useRef<number | undefined>(undefined);
+  const showSnapNote = React.useCallback((msg: string) => {
+    setSnapNote(msg);
+    window.clearTimeout(snapNoteTimer.current);
+    snapNoteTimer.current = window.setTimeout(() => setSnapNote(""), 6000);
+  }, []);
+  React.useEffect(() => {
+    setSnapHasBackup(hasPreImportBackup());
+    try {
+      const flash = window.sessionStorage.getItem(SNAP_FLASH_KEY);
+      if (flash) {
+        window.sessionStorage.removeItem(SNAP_FLASH_KEY);
+        showSnapNote(flash);
+      }
+    } catch {
+      /* sessionStorage unavailable → 无 flash */
+    }
+  }, [showSnapNote]);
+  const armSnapPending = React.useCallback((f: File | null) => {
+    setSnapPending(f);
+    window.clearTimeout(snapPendingTimer.current);
+    if (f) {
+      snapPendingTimer.current = window.setTimeout(
+        () => setSnapPending(null),
+        12000,
+      );
+    }
+  }, []);
+  const runSnapImport = async () => {
+    const f = snapPending;
+    armSnapPending(null);
+    if (!f) return;
+    const r = await importState(f);
+    if (!r.ok) {
+      showSnapNote(r.error);
+      return;
+    }
+    try {
+      window.sessionStorage.setItem(
+        SNAP_FLASH_KEY,
+        `快照已导入：写入 ${r.written} 片，跳过 ${r.skipped} 片。可点「撤销导入」回到导入前。`,
+      );
+    } catch {
+      /* ignore */
+    }
+    window.location.reload();
+  };
+  const runSnapUndo = () => {
+    setSnapUndoArmed(false);
+    const r = restorePreImport();
+    if (!r.ok) {
+      showSnapNote(r.error);
+      return;
+    }
+    try {
+      window.sessionStorage.setItem(
+        SNAP_FLASH_KEY,
+        "已撤销导入，状态恢复到导入前。",
+      );
+    } catch {
+      /* ignore */
+    }
+    window.location.reload();
+  };
+
   const palPanelRef = React.useRef<HTMLDivElement | null>(null);
   const palItemEls = React.useRef(new Map<string, HTMLButtonElement>());
   const palReturnFocus = React.useRef<HTMLElement | null>(null);
@@ -1455,7 +1537,7 @@ export function NeuralLanding({
               />
             </svg>
           </div>
-          <div className="hud-spark">
+          <div className="hud-spark hud-spark-act">
             ACT
             <svg width="64" height="14" viewBox="0 0 64 14" aria-hidden>
               <polyline
@@ -1477,7 +1559,93 @@ export function NeuralLanding({
               )}{" "}
               · HEALTH-SYNC → MAIN
             </div>
-            <div className="hud-metric">0x3F9A · SEC 07</div>
+            <div className="hud-metric hud-top-hex">0x3F9A · SEC 07</div>
+            <div className="hud-snap-group">
+              <button
+                type="button"
+                className="hud-cmdk"
+                data-testid="hud-snap-export"
+                onClick={() => {
+                  exportState();
+                  showSnapNote("快照已导出（second-brain 备份文件）。");
+                }}
+              >
+                <span className="hud-snap-long">导出快照</span>
+                <span className="hud-snap-short">导出</span>
+              </button>
+              {snapPending ? (
+                <span className="hud-snap-confirm-group">
+                  <button
+                    type="button"
+                    className="hud-cmdk hud-snap-danger"
+                    data-testid="hud-snap-import-confirm"
+                    onClick={runSnapImport}
+                  >
+                    确认覆盖导入？
+                  </button>
+                  <button
+                    type="button"
+                    className="hud-cmdk"
+                    data-testid="hud-snap-import-cancel"
+                    onClick={() => armSnapPending(null)}
+                  >
+                    取消
+                  </button>
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  className="hud-cmdk"
+                  data-testid="hud-snap-import"
+                  onClick={() => snapFileRef.current?.click()}
+                >
+                  <span className="hud-snap-long">导入还原</span>
+                  <span className="hud-snap-short">导入</span>
+                </button>
+              )}
+              {snapHasBackup &&
+                (snapUndoArmed ? (
+                  <span className="hud-snap-confirm-group">
+                    <button
+                      type="button"
+                      className="hud-cmdk hud-snap-danger"
+                      data-testid="hud-snap-undo-confirm"
+                      onClick={runSnapUndo}
+                    >
+                      确认撤销？
+                    </button>
+                    <button
+                      type="button"
+                      className="hud-cmdk"
+                      data-testid="hud-snap-undo-cancel"
+                      onClick={() => setSnapUndoArmed(false)}
+                    >
+                      取消
+                    </button>
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    className="hud-cmdk"
+                    data-testid="hud-snap-undo"
+                    onClick={() => setSnapUndoArmed(true)}
+                  >
+                    撤销导入
+                  </button>
+                ))}
+              <input
+                ref={snapFileRef}
+                type="file"
+                accept=".json,application/json"
+                data-testid="hud-snap-file"
+                style={{ display: "none" }}
+                onChange={(e) => {
+                  const f = e.target.files?.[0] ?? null;
+                  e.target.value = "";
+                  if (f) armSnapPending(f);
+                }}
+              />
+            </div>
             <button
               type="button"
               className="hud-cmdk"
@@ -1492,6 +1660,13 @@ export function NeuralLanding({
             </div>
           </div>
         </div>
+
+        {/* ══ SNAPSHOT STATUS NOTE ══ */}
+        {snapNote && (
+          <div className="hud-snap-note" data-testid="hud-snap-note" role="status">
+            {snapNote}
+          </div>
+        )}
 
         {/* ══ TICKER ══ */}
         <div className="hud-panel hud-ticker">

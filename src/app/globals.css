@@ -2962,6 +2962,8 @@ div.studio-orb.studio-orb-bg,
   --hud-int-corner-glow: drop-shadow(0 0 4px var(--hud-cyan));
   --hud-int-alert: #ff007f;
   --hud-int-drag-done-dur: 0.3s;
+  --hud-int-snap-note-bg: rgba(0, 255, 255, 0.08);
+  --hud-int-snap-note-border: rgba(0, 255, 255, 0.35);
   /* mobile nav / sheets / drag rail (2026-10-22, hud-mobile-nav) */
   --hud-int-mnav-h: 56px;
   --hud-int-mnav-bg: rgba(7, 10, 18, 0.97);
@@ -3538,6 +3540,35 @@ div.studio-orb.studio-orb-bg,
   box-shadow: var(--hud-int-chip-glow);
 }
 
+/* topbar snapshot group （导出/导入/撤销，hud-persistence 2026-10-22):
+ * buttons reuse the .hud-cmdk chip look; the confirm step reuses the
+ * InlineConfirmButton two-step pattern with an alert-tinted chip. */
+.hud-snap-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.hud-snap-confirm-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.hud-cmdk.hud-snap-danger {
+  color: var(--hud-int-alert);
+  border-color: var(--hud-int-alert);
+}
+.hud-snap-short { display: none; }
+.hud-snap-note {
+  flex: none;
+  padding: 4px 12px;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--hud-cyan);
+  background: var(--hud-int-snap-note-bg);
+  border: 1px solid var(--hud-int-snap-note-border);
+  animation: hud-slide-in var(--hud-int-slide-dur) ease both;
+}
+
 /* command palette — centered glass panel (desktop form) */
 .hud-pal-mask {
   position: absolute;
@@ -3842,6 +3873,18 @@ div.studio-orb.studio-orb-bg,
 .hud-blink { animation: hud-pulse 1s ease-in-out infinite; }
 
 /* ---------- responsive: stack vertically, never overflow-x ---------- */
+/* Topbar squeeze tier (hud-persistence, 2026-10-22): the snapshot
+   buttons joined the top-right cluster, and below 1600px the purely
+   decorative pieces (hex tag, ACT spark) step aside so every real
+   metric — including the clock — stays on screen, in the base state
+   and in the wider import-confirm state alike. Same shedding idea as
+   the ≤1100px spark rule below, one tier up. */
+@media (max-width: 1600px) {
+  .hud-top-hex { display: none; }
+  .hud-spark-act { display: none; }
+  .hud-top-right { gap: 10px; }
+}
+
 /* Breakpoint is 1100px, not a phone width: some in-app webviews lay out
    at ~980px on a phone-sized screen, which slipped past an 860px query
    and squeezed the desktop 3-column HUD into the small screen
@@ -3853,6 +3896,8 @@ div.studio-orb.studio-orb-bg,
   .hud-phead { flex-wrap: wrap; row-gap: 4px; }
   .hud-phead .hud-hex { margin-left: 0; }
   .hud-top-right { margin-left: 0; flex-wrap: wrap; }
+  .hud-snap-long { display: none; }
+  .hud-snap-short { display: inline; }
   .hud-spark { display: none; }
   .hud-main { flex-direction: column; }
   .hud-tree { width: auto; }
