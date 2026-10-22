@@ -12,6 +12,7 @@ import {
   restorePreImport,
   hasPreImportBackup,
 } from "@/components/studio/snapshot";
+import { emit as busEmit, on as onBusEvent } from "@/components/studio/bus";
 import { RadialMenu } from "@/components/studio/radial-menu";
 import { MindMap } from "@/components/studio/mind-map";
 
@@ -142,6 +143,43 @@ function useTypewriter(text: string, cps = 32): string {
   }, [text, cps]);
   return text.slice(0, n);
 }
+
+/* ── terminal EXEC log store (2026-10-22, hud-bus-pulse) ──
+ * Every real business action that completes on the bus appends one
+ * line here: `[YYYY-MM-DD HH:mm:ss] EXEC: <TYPE> -> SUCCESS` in
+ * viewer-local time, persisted to localStorage studio_exec_log_v1
+ * (registered in snapshot.ts as the execLog slice) and capped at 20
+ * lines — the oldest fall off. The terminal renders these after the
+ * HUD_LOG_FACTS lines; nothing else may write this key. */
+const EXEC_LOG_KEY = "studio_exec_log_v1";
+const EXEC_LOG_MAX = 20;
+type ExecLogItem = { ts: number; text: string };
+const loadExecLog = (): ExecLogItem[] => {
+  try {
+    const raw = window.localStorage.getItem(EXEC_LOG_KEY);
+    const v: unknown = raw ? JSON.parse(raw) : null;
+    if (!Array.isArray(v)) return [];
+    return v
+      .filter(
+        (x): x is ExecLogItem =>
+          typeof x === "object" &&
+          x !== null &&
+          typeof (x as ExecLogItem).ts === "number" &&
+          Number.isFinite((x as ExecLogItem).ts) &&
+          typeof (x as ExecLogItem).text === "string",
+      )
+      .slice(-EXEC_LOG_MAX);
+  } catch {
+    return [];
+  }
+};
+const fmtExecStamp = (d: Date): string => {
+  const p = (n: number) => String(n).padStart(2, "0");
+  return (
+    `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ` +
+    `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`
+  );
+};
 
 /* ── scramble hover decode (2026-10-22, hud-interactions) ──
  * rAF-driven text scramble for the module-tree labels: on hover the
@@ -559,12 +597,21 @@ export function NeuralLanding({
   const [sel, setSel] = React.useState<string | null>(null);
   const [hov, setHov] = React.useState<string | null>(null);
   const scramble = useScramble();
-  /* terminal typewriter: the newest real log line (the last
-   * HUD_LOG_FACTS entry) types itself in on mount / on change. */
-  const typedTermLatest = useTypewriter(
-    HUD_LOG_FACTS[HUD_LOG_FACTS.length - 1]?.text ?? "",
-    32,
-  );
+  /* EXEC log state (hud-bus-pulse): the ref is the write path for
+   * the bus subscriber (synchronous append + persist, so an import's
+   * own EXEC line survives the reload that follows it); the state
+   * mirror drives the terminal render. */
+  const [execLog, setExecLog] = React.useState<ExecLogItem[]>(loadExecLog);
+  const execLogRef = React.useRef(execLog);
+  const logLinesRef = React.useRef<HTMLDivElement | null>(null);
+  /* terminal typewriter: the newest real log line types itself in
+   * on mount / on change — the newest EXEC line once any exist,
+   * otherwise the last HUD_LOG_FACTS entry (hud-restyle behaviour). */
+  const termLatestText =
+    execLog.length > 0
+      ? execLog[execLog.length - 1].text
+      : (HUD_LOG_FACTS[HUD_LOG_FACTS.length - 1]?.text ?? "");
+  const typedTermLatest = useTypewriter(termLatestText, 32);
   /* ── decision archive (2026-10-22, hud-restyle) ──
    * [ARCHIVE] on a decision row is a REAL archive: the row's id goes
    * to localStorage studio_decision_archived_v1 (registered in the
@@ -593,10 +640,16 @@ export function NeuralLanding({
       /* storage unavailable → archive lasts for this session only */
     }
   }, []);
-  const archiveDecision = (id: string) =>
-    writeArchived([...new Set([...archivedIds, id])]);
-  const restoreDecision = (id: string) =>
-    writeArchived(archivedIds.filter((x) => x !== id));
+  const archiveDecision = (d: { id: string; module?: string }) => {
+    writeArchived([...new Set([...archivedIds, d.id])]);
+    /* 业务总线（hud-bus-pulse）：归档落盘后发射，module 取该决策
+     * 的归属模块，无归属的 note 类用 "hub"。 */
+    busEmit("DECISION_ARCHIVE", d.module ?? "hub");
+  };
+  const restoreDecision = (d: { id: string; module?: string }) => {
+    writeArchived(archivedIds.filter((x) => x !== d.id));
+    busEmit("DECISION_RESTORE", d.module ?? "hub");
+  };
   /* ── mobile bottom nav + panel sheets (2026-10-22, hud-mobile-nav) ──
    * At ≤1100px (the stacking breakpoint) the module tree and the
    * decision stack become bottom sheets driven by this one state —
@@ -1063,6 +1116,10 @@ export function NeuralLanding({
       showSnapNote(r.error);
       return;
     }
+    /* 业务总线（hud-bus-pulse）：导入成功、全部片已落盘 → 发射。
+     * 订阅端同步把 EXEC 行追加进（刚被快照恢复的）execLog，然后
+     * 才走下面的 reload，所以这行日志重载后仍在终端里。 */
+    busEmit("SNAPSHOT_IMPORT", "hub");
     try {
       window.sessionStorage.setItem(
         SNAP_FLASH_KEY,
@@ -1292,6 +1349,13 @@ export function NeuralLanding({
   const dragRef = React.useRef<DragState | null>(null);
   const dragRafRef = React.useRef(0);
   const dragSuppressRef = React.useRef(false);
+  /* business-pulse bridges (hud-bus-pulse): the canvas is shared
+   * with the bus pulse layer defined further below. A drag that
+   * activates cancels any playing business pulse (the canvas belongs
+   * to the gesture); when a drag fully settles, the flush hook starts
+   * the next queued business pulse. The bus section assigns both. */
+  const busPulseFlushRef = React.useRef<() => void>(() => undefined);
+  const busPulseCancelRef = React.useRef<() => void>(() => undefined);
   const DRAG_THRESHOLD = 10;
   const DRAG_SNAP_R = 90;
   const dragPulseMs = () => {
@@ -1378,6 +1442,9 @@ export function NeuralLanding({
       }
       fireDrop(s.srcId, target.id);
     }
+    /* drag fully settled — a queued business pulse may take the
+     * canvas now (hud-bus-pulse). */
+    busPulseFlushRef.current();
   };
   const drawDragFrame = (now: number) => {
     const canvas = dragCanvasRef.current;
@@ -1511,6 +1578,7 @@ export function NeuralLanding({
     if (s.phase === "fade" && now - s.fadeStart >= 100) {
       clearDragCanvas();
       dragRef.current = null;
+      busPulseFlushRef.current();
       return;
     }
     dragRafRef.current = requestAnimationFrame(dragLoop);
@@ -1607,6 +1675,9 @@ export function NeuralLanding({
     if (!s.active) {
       if (Math.hypot(s.x - s.originX, s.y - s.originY) < DRAG_THRESHOLD) return;
       s.active = true;
+      /* the gesture takes the shared canvas: cancel any business
+       * pulse mid-flight (queued ones replay after the drop). */
+      busPulseCancelRef.current();
       document
         .querySelector(".hud-root")
         ?.classList.add("hud-dragging");
@@ -1659,6 +1730,7 @@ export function NeuralLanding({
       /* below the threshold: a plain click — leave it to the
        * element's own onClick, untouched. */
       dragRef.current = null;
+      busPulseFlushRef.current();
       return;
     }
     dragSuppressRef.current = true;
@@ -1743,6 +1815,217 @@ export function NeuralLanding({
     (d.module ? modById(d.module)?.color : undefined) ??
     (d.note === "xhs" ? "#B200FF" : d.note === "x" ? "#FF007F" : "#00FFFF");
 
+  /* ── business bus: EXEC log + sphere pulse (2026-10-22, hud-bus-pulse) ──
+   * The landing is the bus's single subscriber. Every event (bus.ts)
+   * appends one EXEC line to the persisted terminal log — in any
+   * view, unconditionally — and, only while the overview is on
+   * screen (view === null), fires a light-burst at the owning
+   * module's sphere hotspot: double expanding rings, eight radial
+   * comet streaks and a glow flash in the module's beam colour,
+   * ≈900ms on the drag engine's shared full-screen canvas.
+   * Coexistence with the drag engine (one canvas, one painter at a
+   * time): a pulse starts only while no drag state exists; pulses
+   * that arrive mid-gesture queue (cap 6, oldest dropped) and flush
+   * when the drag fully settles (drop landed / faded / plain click /
+   * radial cancel — see busPulseFlushRef call sites); a drag that
+   * activates mid-pulse cancels the pulse outright (queue survives).
+   * "hub" resolves to the sphere-centre hotspot (创作空间). */
+  type BusPulse = {
+    moduleId: string;
+    color: string;
+    cx: number;
+    cy: number;
+    start: number;
+    lowFx: boolean;
+  };
+  const BUS_PULSE_MS = 900;
+  const busPulseRef = React.useRef<BusPulse | null>(null);
+  const busPulseQueueRef = React.useRef<string[]>([]);
+  const busPulseRafRef = React.useRef(0);
+  const viewRef = React.useRef<string | null>(null);
+  viewRef.current = view;
+  /* same hotspot geometry as measureDragAnchors' orb anchors:
+   * modules[0..7] on the 0.58-radius ring, modules[8] at centre. */
+  const orbHotspot = (
+    moduleId: string,
+  ): { cx: number; cy: number; color: string } | null => {
+    const id = moduleId === "hub" ? "studio" : moduleId;
+    const nine = modules.slice(0, 9);
+    const idx = nine.findIndex((m) => m.id === id);
+    if (idx < 0) return null;
+    const sphere = document.querySelector(".hud-sphere");
+    if (!sphere) return null;
+    const r = sphere.getBoundingClientRect();
+    if (r.width === 0 || r.height === 0) return null;
+    const cx = r.left + r.width / 2;
+    const cy = r.top + r.height / 2;
+    const rad = Math.min(r.width, r.height) / 2;
+    const spot =
+      idx === 8
+        ? { dx: 0, dy: 0 }
+        : {
+            dx: Math.cos((idx * Math.PI) / 4 - Math.PI / 2) * 0.58,
+            dy: Math.sin((idx * Math.PI) / 4 - Math.PI / 2) * 0.58,
+          };
+    return { cx: cx + spot.dx * rad, cy: cy + spot.dy * rad, color: nine[idx].color };
+  };
+  const drawBusPulseFrame = (now: number) => {
+    const canvas = dragCanvasRef.current;
+    const p = busPulseRef.current;
+    if (!canvas || !p) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+    const t = Math.min(1, Math.max(0, (now - p.start) / BUS_PULSE_MS));
+    const col = p.color;
+    ctx.save();
+    /* hotspot glow flash */
+    ctx.beginPath();
+    ctx.arc(p.cx, p.cy, 13 + 16 * t, 0, Math.PI * 2);
+    ctx.globalAlpha = 0.5 * (1 - t);
+    ctx.fillStyle = col;
+    if (!p.lowFx) {
+      ctx.shadowColor = col;
+      ctx.shadowBlur = 22;
+    }
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    /* double expanding rings (second one trails by 0.22) */
+    for (const delay of [0, 0.22]) {
+      const lt = (t - delay) / (1 - delay);
+      if (lt < 0 || lt > 1) continue;
+      ctx.beginPath();
+      ctx.arc(p.cx, p.cy, 8 + 76 * lt, 0, Math.PI * 2);
+      ctx.globalAlpha = 0.85 * (1 - lt);
+      ctx.strokeStyle = col;
+      ctx.lineWidth = 2 - lt;
+      ctx.stroke();
+    }
+    /* eight radial comet streaks chasing the expanding front */
+    const front = 16 + 60 * t;
+    const tailLen = 3 + 15 * (1 - t);
+    ctx.lineWidth = 2;
+    for (let k = 0; k < 8; k += 1) {
+      const a = (k * Math.PI) / 4 - Math.PI / 2;
+      const ca = Math.cos(a);
+      const sa = Math.sin(a);
+      ctx.beginPath();
+      ctx.moveTo(p.cx + ca * (front - tailLen), p.cy + sa * (front - tailLen));
+      ctx.lineTo(p.cx + ca * front, p.cy + sa * front);
+      ctx.globalAlpha = 0.75 * (1 - t);
+      ctx.strokeStyle = col;
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(p.cx + ca * front, p.cy + sa * front, 1.8, 0, Math.PI * 2);
+      ctx.globalAlpha = 0.9 * (1 - t);
+      ctx.fillStyle = "#ffffff";
+      ctx.fill();
+    }
+    /* white-hot core */
+    ctx.beginPath();
+    ctx.arc(p.cx, p.cy, 2.8, 0, Math.PI * 2);
+    ctx.globalAlpha = 1 - t * 0.6;
+    ctx.fillStyle = "#ffffff";
+    ctx.fill();
+    ctx.restore();
+  };
+  function tryStartBusPulse() {
+    if (busPulseRef.current || dragRef.current) return;
+    const next = busPulseQueueRef.current.shift();
+    if (!next) return;
+    const spot = orbHotspot(next);
+    if (!spot) {
+      /* module has no hotspot (custom x-* node): drop it and move
+       * on to whatever queued behind it — the log already told the
+       * story, the burst is best-effort. */
+      tryStartBusPulse();
+      return;
+    }
+    busPulseRef.current = {
+      moduleId: next,
+      ...spot,
+      start: performance.now(),
+      lowFx: window.matchMedia("(max-width: 768px)").matches,
+    };
+    sizeDragCanvas();
+    ensureBusPulseLoop();
+  }
+  const busPulseLoop = (now: number) => {
+    busPulseRafRef.current = 0;
+    const p = busPulseRef.current;
+    if (!p) return;
+    drawBusPulseFrame(now);
+    if (now - p.start >= BUS_PULSE_MS) {
+      busPulseRef.current = null;
+      clearDragCanvas();
+      tryStartBusPulse();
+      return;
+    }
+    busPulseRafRef.current = requestAnimationFrame(busPulseLoop);
+  };
+  const ensureBusPulseLoop = () => {
+    if (!busPulseRafRef.current) {
+      busPulseRafRef.current = requestAnimationFrame(busPulseLoop);
+    }
+  };
+  const cancelBusPulse = () => {
+    if (busPulseRafRef.current) cancelAnimationFrame(busPulseRafRef.current);
+    busPulseRafRef.current = 0;
+    if (busPulseRef.current) {
+      busPulseRef.current = null;
+      clearDragCanvas();
+    }
+  };
+  const queueBusPulse = (moduleId: string) => {
+    const q = busPulseQueueRef.current;
+    q.push(moduleId);
+    if (q.length > 6) q.splice(0, q.length - 6);
+    tryStartBusPulse();
+  };
+  /* hand the drag engine its two bridge hooks (assigned every
+   * render — the refs they feed are stable). */
+  React.useEffect(() => {
+    busPulseFlushRef.current = tryStartBusPulse;
+    busPulseCancelRef.current = cancelBusPulse;
+  });
+  React.useEffect(
+    () => () => {
+      if (busPulseRafRef.current) cancelAnimationFrame(busPulseRafRef.current);
+      busPulseRafRef.current = 0;
+      busPulseRef.current = null;
+      busPulseQueueRef.current = [];
+    },
+    [],
+  );
+  /* the subscription itself: log always, pulse on the overview only */
+  React.useEffect(
+    () =>
+      onBusEvent((ev) => {
+        const now = new Date();
+        const item: ExecLogItem = {
+          ts: now.getTime(),
+          text: `[${fmtExecStamp(now)}] EXEC: ${ev.type} -> SUCCESS`,
+        };
+        const next = [...execLogRef.current, item].slice(-EXEC_LOG_MAX);
+        execLogRef.current = next;
+        try {
+          window.localStorage.setItem(EXEC_LOG_KEY, JSON.stringify(next));
+        } catch {
+          /* storage unavailable → the log lasts for this session only */
+        }
+        setExecLog(next);
+        if (!viewRef.current) queueBusPulse(ev.moduleId);
+      }),
+    [],
+  );
+  /* keep the newest terminal line on screen: the line box caps at
+   * --hud-int-log-max-h and scrolls — pin to the bottom whenever
+   * the EXEC log grows (and once on mount, for a restored log). */
+  React.useEffect(() => {
+    const el = logLinesRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [execLog]);
+
   /* ── radial menu + zen mode (2026-10-22, hud-radial) ──
    * The wheel (radial-menu.tsx) and the palette are mutually
    * exclusive: its onOpenChange closes the palette here, and
@@ -1770,6 +2053,9 @@ export function NeuralLanding({
         clearDragCanvas();
       }
     }
+    /* the wheel taking over also settles the drag — queued business
+     * pulses may play now (hud-bus-pulse). */
+    busPulseFlushRef.current();
     dragSuppressRef.current = true;
     window.setTimeout(() => {
       dragSuppressRef.current = false;
@@ -2207,7 +2493,7 @@ export function NeuralLanding({
                 <span>&gt; TERMINAL_LOG</span>
                 <span className="hud-led hud-led-g" />
               </div>
-              <div className="hud-log-lines">
+              <div className="hud-log-lines" ref={logLinesRef}>
                 <div style={{ color: "#8fa3c4" }}>
                   {health.ok
                     ? `[${health.syncTime ?? "--:--"}] SYNC health-sync.json → MAIN · OK`
@@ -2215,10 +2501,11 @@ export function NeuralLanding({
                 </div>
                 <div>[BOOT] SKILLS LOADED · {skillsN} ENTRIES</div>
                 {HUD_LOG_FACTS.map((l, li) =>
-                  li === HUD_LOG_FACTS.length - 1 ? (
+                  li === HUD_LOG_FACTS.length - 1 && execLog.length === 0 ? (
                     /* newest real event line: typewriter reveal
                      * (hud-restyle) — content is the existing log
-                     * line itself, never a generated event. */
+                     * line itself, never a generated event. Once EXEC
+                     * lines exist they take over the typed slot. */
                     <div
                       key={l.text}
                       data-testid="hud-term-latest"
@@ -2232,6 +2519,27 @@ export function NeuralLanding({
                     </div>
                   ),
                 )}
+                {/* EXEC lines (hud-bus-pulse): one per completed
+                 * business action, appended in time order after the
+                 * fact lines; the newest types itself in. */}
+                {execLog.map((item, i) => {
+                  const isLast = i === execLog.length - 1;
+                  return (
+                    <div
+                      key={`${item.ts}-${i}`}
+                      data-exec-line="1"
+                      data-type={
+                        /EXEC: (\S+)/.exec(item.text)?.[1] ?? ""
+                      }
+                      {...(isLast
+                        ? { "data-testid": "hud-term-latest" }
+                        : {})}
+                      style={{ color: "#c8e6ff" }}
+                    >
+                      {isLast ? typedTermLatest : item.text}
+                    </div>
+                  );
+                })}
                 <div style={{ color: "var(--hud-yellow)" }}>
                   [NOW] AWAITING COMMAND{" "}
                   <span className="hud-term-caret" data-testid="hud-term-caret">
@@ -2573,7 +2881,7 @@ export function NeuralLanding({
                         onPointerDown={(e) => e.stopPropagation()}
                         onClick={(e) => {
                           e.stopPropagation();
-                          archiveDecision(d.id);
+                          archiveDecision(d);
                         }}
                       >
                         [ARCHIVE]
@@ -2615,7 +2923,7 @@ export function NeuralLanding({
                           role="button"
                           aria-label={`恢复 ${s.d.name}`}
                           data-testid={`hud-decision-restore-${s.d.id}`}
-                          onClick={() => restoreDecision(s.d.id)}
+                          onClick={() => restoreDecision(s.d)}
                         >
                           [RESTORE]
                         </span>

@@ -176,6 +176,10 @@ export const SLICES: SliceDef[] = [
   jsonSlice("decisionArchived", "studio_decision_archived_v1", "决策栈归档", arrayOf(
     (v) => typeof v === "string",
   )),
+  /* 终端 EXEC 日志（2026-10-22, hud-bus-pulse）：{ts: epoch, text} 数组，上限 20 条 */
+  jsonSlice("execLog", "studio_exec_log_v1", "终端 EXEC 日志", arrayOf(
+    (v) => isPlainObject(v) && isFiniteNum(v.ts) && typeof v.text === "string",
+  )),
   jsonSlice("skillsCollapsed", "studio_skills_collapsed_v1", "技能库折叠", isBoolRecord),
   /* 日历事项 / 灵感池步骤（HUD 与旧层共用同键） */
   jsonSlice("calendarItems", "studio_calendar_items_v1", "日历事项", arrayOf(okCalItem)),

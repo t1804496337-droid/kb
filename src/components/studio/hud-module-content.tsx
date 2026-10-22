@@ -14,6 +14,7 @@ import {
   type FinanceLiability,
 } from "@/components/studio/finance-module";
 import { InlineConfirmButton } from "@/components/ui/inline-confirm";
+import { emit } from "@/components/studio/bus";
 import skillsSyncJson from "../../../public/skills-sync.json";
 import healthSyncJson from "../../../public/health-sync.json";
 
@@ -1248,6 +1249,9 @@ function FinanceBody() {
   const addEntry = (data: Omit<FinanceEntry, "id">) => {
     const entry: FinanceEntry = { ...data, id: `fin-${Date.now()}` };
     saveEntries([...entries, entry]);
+    /* 业务总线（hud-bus-pulse）：手工记账与 OCR 确认入账共用这一条
+     * 新增路径，落盘后只发一次 FINANCE_ADD_ENTRY。 */
+    emit("FINANCE_ADD_ENTRY", "finance");
     return entry;
   };
 
@@ -2165,6 +2169,7 @@ function FinanceBody() {
                     saveEntries(entries.filter((x) => x.id !== e.id));
                     if (editingEntryId === e.id) resetEntryForm();
                     showToast("明细已删除");
+                    emit("FINANCE_DELETE_ENTRY", "finance");
                   }}
                 />
               </Row>
@@ -3041,6 +3046,7 @@ export function HudDecisionNote({
   }, [kind]);
   const choose = (id: string) => {
     setPick(id);
+    let recorded = false;
     try {
       const raw = window.localStorage.getItem(DECISION_PICKS_KEY);
       const obj = raw
@@ -3048,9 +3054,13 @@ export function HudDecisionNote({
         : {};
       obj[kind] = id;
       window.localStorage.setItem(DECISION_PICKS_KEY, JSON.stringify(obj));
+      recorded = true;
     } catch {
       /* storage unavailable → 仅本次会话内显示 */
     }
+    /* 业务总线（hud-bus-pulse）：意向真正落盘后才发。X / 小红书两项
+     * 都是无归属模块的 note 类决策 → moduleId 用 "hub"。 */
+    if (recorded) emit("DECISION_PICK", "hub");
   };
   const pickLabel = options.find((o) => o.id === pick)?.label;
   return (
