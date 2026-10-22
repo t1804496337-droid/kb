@@ -23,6 +23,9 @@ export const SNAPSHOT_KIND = "second-brain-snapshot";
 export const SNAPSHOT_VERSION = 1;
 export const PRE_IMPORT_BACKUP_KEY = "studio_pre_import_backup";
 
+/* 订阅校验（2026-10-23, hud-finance-subs）：与 finance-subscriptions.ts 同源。 */
+import { isSubscription as okFinanceSubscription } from "./finance-subscriptions";
+
 /* ── 形状校验小工具：宁松勿误杀合法数据，明显异形必须拒 ── */
 
 const isPlainObject = (v: unknown): v is Record<string, unknown> =>
@@ -66,6 +69,9 @@ const okFinanceAsset = (a: unknown): boolean =>
   typeof a.id === "string" &&
   typeof a.name === "string" &&
   isFiniteNum(a.cost);
+
+/* 订阅校验（2026-10-23, hud-finance-subs）：见顶部 import，与
+ * finance-subscriptions.ts 的 isSubscription 同源。 */
 
 const okCalItem = (i: unknown): boolean =>
   isPlainObject(i) &&
@@ -192,6 +198,9 @@ export const SLICES: SliceDef[] = [
   jsonSlice("financeEntries", "studio_finance_entries_v1", "财务", arrayOf(okFinanceEntry)),
   jsonSlice("financeLiabilities", "studio_finance_liabilities_v1", "财务", arrayOf(okFinanceLiability)),
   jsonSlice("financeAssets", "studio_finance_assets_v1", "财务", arrayOf(okFinanceAsset)),
+  /* 订阅管理（2026-10-23, hud-finance-subs）：新键 studio_finance_subscriptions_v1，
+   * 无种子，空态合法。提醒落盘键 studio_finance_sub_reminded_v1 为临时状态不登记。 */
+  jsonSlice("financeSubscriptions", "studio_finance_subscriptions_v1", "财务", arrayOf(okFinanceSubscription)),
   {
     name: "financeBudget",
     key: "studio_finance_budget_v1",
