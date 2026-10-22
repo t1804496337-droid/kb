@@ -19,6 +19,7 @@ import {
   loadManualHealth,
   onManualHealthChange,
   manualWins,
+  clearManualHealth,
   type ManualHealth,
 } from "@/components/studio/health-effective";
 import skillsSyncJson from "../../../public/skills-sync.json";
@@ -40,16 +41,18 @@ import healthSyncJson from "../../../public/health-sync.json";
  *               studio_works_items_v1，首访以 EP001/视频号 ep01 两件
  *               真实作品播种，站内增删改+状态流转）与待办票分区；
  *               平台同步六平台如实标未接入
- * - calendar  ← 2026-10 月历 + 事项（localStorage
- *               studio_calendar_items_v1，可增删，本地保存）+ 待办票
+ * - calendar  ← 可翻月月历（默认当前月）+ 事项（localStorage
+ *               studio_calendar_items_v1，增删改 + done 完成状态，
+ *               本地保存）+ 待办票（由作品待发与未完成事项派生）
  * - finance   ← 旧版五区接回（概览/记账明细/月度报告/负债管理/
  *               资产台账）：数据层与旧模块同构（localStorage 同键 +
  *               台账 2 条种子），数字全由条目实时派生；记账明细带
  *               图片记账（tesseract.js 本地 OCR + chi_sim 自托管，
  *               提取金额/日期/对方/分类 → 待确认卡 → 确认才入账）
  * - health    ← public/health-sync.json（睡眠/步数/饮食）+ 训练记录区
- *               （计划＝塑形计划-轻器械高次数.md，完成状态无确认数据
- *               → 标计划态，不代填）+ 教学视频（/health-media.json
+ *               （计划＝塑形计划-轻器械高次数.md；完成记录由站内训练
+ *               打卡 studio_health_checkins_v1 实算，手动同步记录可
+ *               在页内清除）+ 教学视频（/health-media.json
  *               运行时拉取，键＝动作 id，点开展开 B 站嵌入播放器；
  *               拉不到就只显文字，不编造）
  * - ontology  ← 结构与口径：条目源＝第二大脑笔记
@@ -85,37 +88,42 @@ const ALL_SKILLS: SkillEntry[] = SKILLS_SYNC.agents.flatMap((a) => a.skills);
 /* ── page.tsx mirrors (read-only copies of the source constants) ── */
 
 type Ticket = { id: string; title: string; detail: string; owner: string };
-/** PENDING_TICKETS in page.tsx（文案已按 2026-10-21 事实更新）。 */
-const PENDING_TICKETS: Ticket[] = [
-  {
-    id: "t-ep01",
-    title: "视频号 ep01 待发布",
-    detail: "配音已定稿（Fish Audio）· 待本人点发",
-    owner: "Muse + 本人",
-  },
-];
+/* ── 待办票数据化（2026-10-22, hud-crud-p12）──
+ * 原写死常量 PENDING_TICKETS（仅 1 张「视频号 ep01 待发布」）退役：
+ * 待办票一律由真实数据派生（口径 b：作品库待发条目 + 日历未完成
+ * 事项合成）——作品 status 为「待发布/待公开」的各成一票（标题=
+ * 作品标题+状态、detail=作品备注、owner=作品库），日历未完成事项
+ * 各成一票（owner=日历）。源数据状态变化票随之增减：作品改「已
+ * 发布」或事项勾选完成，票即消失。works 传 null（键从未落盘）时
+ * 按 WorksBody 的播种口径以 WORK_SEED_ITEMS 为准——首访用户在任
+ * 何视图看到的票数都与作品库播种结果一致。 */
+function derivePendingTickets(
+  works: WorkItem[] | null,
+  cal: CalItem[],
+): Ticket[] {
+  const wEff = works ?? WORK_SEED_ITEMS;
+  const fromWorks: Ticket[] = wEff
+    .filter((w) => w.status === "待发布" || w.status === "待公开")
+    .map((w) => ({
+      id: `tk-w-${w.id}`,
+      title: `${w.title} ${w.status}`,
+      detail: w.note ?? "",
+      owner: "作品库",
+    }));
+  const fromCal: Ticket[] = cal
+    .filter((i) => !i.done)
+    .map((i) => ({
+      id: `tk-c-${i.id}`,
+      title: i.title,
+      detail: [i.date, i.note].filter(Boolean).join(" · "),
+      owner: "日历",
+    }));
+  return [...fromWorks, ...fromCal];
+}
 
-/** FINANCE_SEED_ENTRIES in page.tsx (ledger.csv, both 2026-10-17). */
-const FINANCE_LEDGER_ENTRIES = [
-  {
-    id: "fin-seed-ledger-1",
-    date: "2026-10-17",
-    kind: "expense" as const,
-    amount: 22,
-    category: "日用",
-    channel: "现金/未知",
-    note: "水+烟",
-  },
-  {
-    id: "fin-seed-ledger-2",
-    date: "2026-10-17",
-    kind: "expense" as const,
-    amount: 401.54,
-    category: "还款",
-    channel: "微信分付",
-    note: "微信分付还款",
-  },
-];
+/* 注：原台账种子镜像常量 FINANCE_LEDGER_ENTRIES 已于 hud-crud-p12
+ * 退役——数据库条目索引改读财务现行 localStorage（readFinanceEntries，
+ * 与 FinanceBody 同口径），种子本体以财务区 FIN_SEED_ENTRIES 为准。 */
 
 /* ── health training plan（塑形计划-轻器械高次数.md，只读镜像） ──
  * id 与 public/health-media.json 的键对齐（旧 health-module.tsx 的
@@ -230,8 +238,31 @@ type HealthSync = {
 };
 const HEALTH_SYNC_STATIC = healthSyncJson as unknown as HealthSync;
 
-type CalItem = { id: string; date: string; title: string; note?: string };
+/* done 为 hud-crud-p12 的加性字段：旧存档没有它——缺省未完成；
+ * 快照校验 okCalItem 已同步放行（undefined 或 boolean）。 */
+type CalItem = {
+  id: string;
+  date: string;
+  title: string;
+  note?: string;
+  done?: boolean;
+};
 const CAL_KEY = "studio_calendar_items_v1";
+
+/** 日历事项统一读取口径（CalendarBody / WorksBody / StudioBody 共用）。 */
+function readCalItems(): CalItem[] {
+  try {
+    const raw = window.localStorage.getItem(CAL_KEY);
+    if (!raw) return [];
+    const arr = JSON.parse(raw) as CalItem[];
+    if (!Array.isArray(arr)) return [];
+    return arr.filter(
+      (i) => i && typeof i.date === "string" && typeof i.title === "string",
+    );
+  } catch {
+    return [];
+  }
+}
 
 /* ─────────────────────────── shared bits ─────────────────────────── */
 
@@ -554,16 +585,82 @@ function SkillsBody() {
 
 /* ─────────────────────────── 6 · database ─────────────────────────── */
 
+/* 财务条目同口径读取（2026-10-22, hud-crud-p12）：与 FinanceBody
+ * 挂载读取完全相同的校验与播种语义（键不存在且未播种过 → 以台账
+ * 种子 2 条落盘并置种子标记；删过的条目不复活）。FinanceBody 的
+ * 读取仍是其 effect 内的原实现，本助手供 DatabaseBody 条目索引
+ * 同源使用——财务页增删后这里读到的就是同一份现行数据。 */
+function readFinanceEntries(): FinanceEntry[] {
+  try {
+    const rawE = window.localStorage.getItem(FIN_ENTRIES_KEY);
+    let loaded: FinanceEntry[] = [];
+    if (rawE) {
+      const arr = JSON.parse(rawE) as FinanceEntry[];
+      if (Array.isArray(arr)) {
+        loaded = arr.filter(
+          (e) =>
+            e &&
+            typeof e.id === "string" &&
+            typeof e.date === "string" &&
+            /^\d{4}-\d{2}-\d{2}$/.test(e.date) &&
+            (e.kind === "income" || e.kind === "expense") &&
+            typeof e.amount === "number" &&
+            Number.isFinite(e.amount) &&
+            typeof e.category === "string",
+        );
+      }
+    }
+    if (!window.localStorage.getItem(FIN_SEEDED_KEY)) {
+      if (!rawE) {
+        loaded = [...FIN_SEED_ENTRIES];
+        window.localStorage.setItem(FIN_ENTRIES_KEY, JSON.stringify(loaded));
+      }
+      window.localStorage.setItem(FIN_SEEDED_KEY, "1");
+    }
+    return loaded;
+  } catch {
+    return [];
+  }
+}
+
 function DatabaseBody() {
   const [steps, setSteps] = React.useState<FlowStep[]>([]);
+  /* 条目索引同源化（hud-crud-p12）：财务读现行 localStorage、睡眠
+   * 状态走 health-effective 的 manualWins 合并口径，不再读种子
+   * 镜像常量、不再写死 STALE。 */
+  const [finEntries, setFinEntries] = React.useState<FinanceEntry[]>([]);
+  const [manual, setManual] = React.useState<ManualHealth | null>(() =>
+    typeof window === "undefined" ? null : loadManualHealth(),
+  );
   React.useEffect(() => {
     setSteps(readFlowSteps());
+    setFinEntries(readFinanceEntries());
+    setManual(loadManualHealth());
+    return onManualHealthChange(() => setManual(loadManualHealth()));
   }, []);
   /* 分段切换（hud-dbgrid）：三区一次显示一区，纯前端状态不落盘。 */
   const [tab, setTab] = React.useState<"skills" | "flow" | "entries">(
     "skills",
   );
-  const sleepN = HEALTH_SYNC_STATIC.sleep?.last7?.length ?? 0;
+  /* 睡眠有效视图（hud-crud-p12）：与 HealthBody 同一合并口径——
+   * manualWins 时以手动记录为最近一晚，last7 按日期去重合并计数；
+   * 新鲜度判定与健康页一致（stale = 无记录或最近一晚早于今日）。 */
+  const fileSleep = HEALTH_SYNC_STATIC.sleep;
+  const mWinsDb = manualWins(manual, fileSleep?.last?.date ?? null);
+  const manualSleepDb =
+    mWinsDb && manual && manual.sleepHours !== undefined ? manual : null;
+  const effLastSleep = manualSleepDb
+    ? { date: manualSleepDb.date, hours: manualSleepDb.sleepHours as number }
+    : fileSleep?.last;
+  const sleepDates = new Set<string>(
+    (fileSleep?.last7 ?? []).map((s) => s.date),
+  );
+  if (manualSleepDb) sleepDates.add(manualSleepDb.date);
+  const sleepN = sleepDates.size;
+  const nowDb = new Date();
+  const p2db = (n: number) => String(n).padStart(2, "0");
+  const todayStrDb = `${nowDb.getFullYear()}-${p2db(nowDb.getMonth() + 1)}-${p2db(nowDb.getDate())}`;
+  const sleepStale = !effLastSleep || effLastSleep.date < todayStrDb;
   const entryRows: {
     id: string;
     title: string;
@@ -585,7 +682,7 @@ function DatabaseBody() {
       kind: "WORKS",
       cls: "hud-c-pink",
     },
-    ...FINANCE_LEDGER_ENTRIES.map((e) => ({
+    ...finEntries.map((e) => ({
       id: `e-${e.id}`,
       title: `台账 · ${e.note} ${fmtMoney(e.amount)}`,
       sub: `财务系统 · ${e.date} · ${e.category}`,
@@ -595,9 +692,9 @@ function DatabaseBody() {
     {
       id: "e-sleep",
       title: `健康同步 · 睡眠记录 ${sleepN} 晚`,
-      sub: `身体健康 · 截至 ${HEALTH_SYNC_STATIC.sleep?.last?.date ?? "—"} · STALE`,
+      sub: `身体健康 · 截至 ${effLastSleep?.date ?? "—"} · ${sleepStale ? "STALE" : "FRESH"}`,
       kind: "HEALTH",
-      cls: "hud-c-amb",
+      cls: sleepStale ? "hud-c-amb" : "hud-c-grn",
     },
   ];
   const tabs: {
@@ -1012,6 +1109,8 @@ function WorksBody() {
   const [synced, setSynced] = React.useState<SyncedWork[] | null>(null);
   const [intent, setIntent] = React.useState<Record<string, boolean>>({});
   const [items, setItems] = React.useState<WorkItem[]>([]);
+  /* 待办票派生用：日历事项与本视图同一次挂载读取（hud-crud-p12）。 */
+  const [calItems, setCalItems] = React.useState<CalItem[]>([]);
   /* 新增表单态（hud-crud-p0） */
   const [adding, setAdding] = React.useState(false);
   const [fTitle, setFTitle] = React.useState("");
@@ -1030,6 +1129,7 @@ function WorksBody() {
   const [eUrl, setEUrl] = React.useState("");
   React.useEffect(() => {
     setIntent(readChannelsIntent());
+    setCalItems(readCalItems());
     /* 作品本体：键不存在才播种两件真实作品并落盘；键存在（含空
      * 数组）照读——删除不复活（hud-crud-p0）。 */
     const cur = readWorksItems();
@@ -1145,6 +1245,8 @@ function WorksBody() {
     if (editId === w.id) setEditId(null);
     commitItems(items.filter((x) => x.id !== w.id));
   };
+  /* 待办票（hud-crud-p12）：作品状态在本视图内改动即时反映到票面。 */
+  const tickets = derivePendingTickets(items, calItems);
   return (
     <div>
       <SecHead
@@ -1270,20 +1372,27 @@ function WorksBody() {
         en="PENDING TICKETS"
         right={
           <span className="hud-module-note">
-            待办在日历表清 · 这里只作关联展示
+            由作品待发与日历未完成事项实时派生 · 状态变了票就消失
           </span>
         }
       />
-      {PENDING_TICKETS.map((t) => (
+      {tickets.map((t) => (
         <Row key={t.id} testid={`hud-wticket-${t.id}`}>
           <div className="hud-module-row-main">
             <div className="hud-module-row-t">{t.title}</div>
-            <div className="hud-module-row-sub">{t.detail}</div>
+            {t.detail ? (
+              <div className="hud-module-row-sub">{t.detail}</div>
+            ) : null}
           </div>
           <span className="hud-module-note">{t.owner}</span>
           <span className="hud-chip hud-c-yel">待办</span>
         </Row>
       ))}
+      {tickets.length === 0 ? (
+        <p className="hud-module-note">
+          暂无待办票 · 作品待发与日历未完成事项都已清零
+        </p>
+      ) : null}
       <SecHead title="多平台同步" en="PLATFORM SYNC" />
       {synced && synced.length > 0 ? (
         synced.map((w) => (
@@ -1323,24 +1432,24 @@ function WorksBody() {
 function CalendarBody() {
   const [items, setItems] = React.useState<CalItem[]>([]);
   const [title, setTitle] = React.useState("");
-  const [date, setDate] = React.useState("2026-10-21");
+  const [note, setNote] = React.useState("");
+  const now0 = new Date();
+  const p2 = (n: number) => String(n).padStart(2, "0");
+  const todayStr = `${now0.getFullYear()}-${p2(now0.getMonth() + 1)}-${p2(now0.getDate())}`;
+  const [date, setDate] = React.useState(todayStr);
+  /* 翻月（hud-crud-p12）：默认显示当前真实月份，不再锁死 2026-10。 */
+  const [viewYear, setViewYear] = React.useState(now0.getFullYear());
+  const [viewMonth, setViewMonth] = React.useState(now0.getMonth() + 1);
+  /* 行内编辑态（hud-crud-p12）：editId 非空时该行换成编辑表单。 */
+  const [editId, setEditId] = React.useState<string | null>(null);
+  const [eTitle, setETitle] = React.useState("");
+  const [eDate, setEDate] = React.useState("");
+  const [eNote, setENote] = React.useState("");
+  /* 待办票派生用：作品条目与本视图同一次挂载读取（hud-crud-p12）。 */
+  const [works, setWorks] = React.useState<WorkItem[] | null>(null);
   React.useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem(CAL_KEY);
-      if (raw) {
-        const arr = JSON.parse(raw) as CalItem[];
-        if (Array.isArray(arr)) {
-          setItems(
-            arr.filter(
-              (i) =>
-                i && typeof i.date === "string" && typeof i.title === "string",
-            ),
-          );
-        }
-      }
-    } catch {
-      /* storage unavailable → 事项为空 */
-    }
+    setItems(readCalItems());
+    setWorks(readWorksItems());
   }, []);
   const saveItems = (next: CalItem[]) => {
     setItems(next);
@@ -1353,14 +1462,50 @@ function CalendarBody() {
   const addItem = () => {
     const t = title.trim();
     if (!t || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return;
-    saveItems([
-      ...items,
-      { id: `cal-${Date.now()}`, date, title: t },
-    ]);
+    const item: CalItem = { id: `cal-${Date.now()}`, date, title: t };
+    const n = note.trim();
+    if (n) item.note = n;
+    saveItems([...items, item]);
     setTitle("");
+    setNote("");
   };
-  const year = 2026;
-  const month = 10;
+  const startEdit = (it: CalItem) => {
+    setEditId(it.id);
+    setETitle(it.title);
+    setEDate(it.date);
+    setENote(it.note ?? "");
+  };
+  const saveEdit = () => {
+    if (!editId) return;
+    const t = eTitle.trim();
+    if (!t || !/^\d{4}-\d{2}-\d{2}$/.test(eDate)) return;
+    const next = items.map((x) => {
+      if (x.id !== editId) return x;
+      const copy: CalItem = { ...x, title: t, date: eDate };
+      const n = eNote.trim();
+      if (n) copy.note = n;
+      else delete copy.note;
+      return copy;
+    });
+    saveItems(next);
+    setEditId(null);
+  };
+  const toggleDone = (it: CalItem) =>
+    saveItems(
+      items.map((x) => (x.id === it.id ? { ...x, done: !x.done } : x)),
+    );
+  const shiftMonth = (delta: number) => {
+    const d = new Date(viewYear, viewMonth - 1 + delta, 1);
+    setViewYear(d.getFullYear());
+    setViewMonth(d.getMonth() + 1);
+  };
+  const backToThisMonth = () => {
+    const n = new Date();
+    setViewYear(n.getFullYear());
+    setViewMonth(n.getMonth() + 1);
+  };
+  const year = viewYear;
+  const month = viewMonth;
   const firstDow = (new Date(year, month - 1, 1).getDay() + 6) % 7;
   const daysInMonth = new Date(year, month, 0).getDate();
   const dateStr = (d: number) =>
@@ -1370,6 +1515,9 @@ function CalendarBody() {
     now.getFullYear() === year && now.getMonth() + 1 === month
       ? now.getDate()
       : -1;
+  /* 待办票（hud-crud-p12）：与作品库同源派生，随状态实时增减。 */
+  const tickets = derivePendingTickets(works, items);
+  const openCount = items.filter((i) => !i.done).length;
   const marked = new Map<string, CalItem[]>();
   for (const it of items) {
     const list = marked.get(it.date) ?? [];
@@ -1384,10 +1532,42 @@ function CalendarBody() {
         en="MONTH GRID"
         right={
           <span className="hud-module-note">
-            事项 {items.length} 条 · 待办票 {PENDING_TICKETS.length} 张
+            事项 {items.length} 条 · 未完成 {openCount} · 待办票{" "}
+            {tickets.length} 张
           </span>
         }
       />
+      <div className="hud-module-form hud-cal-nav">
+        <button
+          type="button"
+          className="hud-module-toggle"
+          data-testid="hud-cal-prev"
+          aria-label="上个月"
+          onClick={() => shiftMonth(-1)}
+        >
+          ‹ 上月
+        </button>
+        <button
+          type="button"
+          className="hud-module-toggle"
+          data-testid="hud-cal-next"
+          aria-label="下个月"
+          onClick={() => shiftMonth(1)}
+        >
+          下月 ›
+        </button>
+        <button
+          type="button"
+          className="hud-module-toggle"
+          data-testid="hud-cal-thismonth"
+          onClick={backToThisMonth}
+        >
+          回到本月
+        </button>
+        <span className="hud-module-note" data-testid="hud-cal-viewlabel">
+          {year} 年 {month} 月
+        </span>
+      </div>
       <div className="hud-module-cal" data-testid="hud-cal-grid">
         {["一", "二", "三", "四", "五", "六", "日"].map((d) => (
           <div key={d} className="hud-module-cal-h">
@@ -1445,6 +1625,18 @@ function CalendarBody() {
           onChange={(e) => setDate(e.target.value)}
           aria-label="事项日期"
         />
+        <input
+          className="hud-module-input hud-module-input-flex"
+          data-testid="hud-cal-note"
+          type="text"
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") addItem();
+          }}
+          placeholder="备注（选填）"
+          aria-label="事项备注"
+        />
         <button
           type="button"
           className="hud-module-toggle"
@@ -1455,42 +1647,146 @@ function CalendarBody() {
         </button>
       </div>
       {sorted.length > 0 ? (
-        sorted.map((it) => (
-          <Row key={it.id} testid={`hud-cal-item-${it.id}`}>
-            <div className="hud-module-row-main">
-              <div className="hud-module-row-t">{it.title}</div>
-              {it.note ? (
-                <div className="hud-module-row-sub">{it.note}</div>
-              ) : null}
-            </div>
-            <span className="hud-module-note">{it.date}</span>
-            <button
-              type="button"
-              className="hud-module-del"
-              aria-label={`删除事项 ${it.title}`}
-              onClick={() => saveItems(items.filter((x) => x.id !== it.id))}
+        sorted.map((it) =>
+          editId === it.id ? (
+            <div
+              key={it.id}
+              className="hud-module-editbox"
+              data-testid={`hud-cal-eform-${it.id}`}
             >
-              删除
-            </button>
-          </Row>
-        ))
+              <div className="hud-module-form">
+                <input
+                  className="hud-module-input hud-module-input-flex"
+                  data-testid="hud-cal-e-title"
+                  type="text"
+                  value={eTitle}
+                  onChange={(e) => setETitle(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") saveEdit();
+                  }}
+                  placeholder="事项标题（必填）"
+                  aria-label="事项标题"
+                />
+                <input
+                  className="hud-module-input hud-module-input-date"
+                  data-testid="hud-cal-e-date"
+                  type="date"
+                  value={eDate}
+                  onChange={(e) => setEDate(e.target.value)}
+                  aria-label="事项日期"
+                />
+              </div>
+              <div className="hud-module-form">
+                <input
+                  className="hud-module-input hud-module-input-flex"
+                  data-testid="hud-cal-e-note"
+                  type="text"
+                  value={eNote}
+                  onChange={(e) => setENote(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") saveEdit();
+                  }}
+                  placeholder="备注（选填）"
+                  aria-label="事项备注"
+                />
+                <button
+                  type="button"
+                  className="hud-module-toggle"
+                  data-testid="hud-cal-e-save"
+                  onClick={saveEdit}
+                >
+                  保存
+                </button>
+                <button
+                  type="button"
+                  className="hud-module-toggle"
+                  data-testid="hud-cal-e-cancel"
+                  onClick={() => setEditId(null)}
+                >
+                  取消
+                </button>
+              </div>
+            </div>
+          ) : (
+            <Row key={it.id} testid={`hud-cal-item-${it.id}`}>
+              <button
+                type="button"
+                className={cn(
+                  "hud-module-toggle hud-cal-donebtn",
+                  it.done && "hud-cal-done-on",
+                )}
+                data-testid={`hud-cal-done-${it.id}`}
+                aria-pressed={!!it.done}
+                aria-label={it.done ? `取消完成 ${it.title}` : `标记完成 ${it.title}`}
+                onClick={() => toggleDone(it)}
+              >
+                {it.done ? "✓ 已完成" : "○ 待办"}
+              </button>
+              <div className="hud-module-row-main">
+                <div
+                  className={cn(
+                    "hud-module-row-t",
+                    it.done && "hud-cal-done-t",
+                  )}
+                >
+                  {it.title}
+                </div>
+                {it.note ? (
+                  <div className="hud-module-row-sub">{it.note}</div>
+                ) : null}
+              </div>
+              <span className="hud-module-note">{it.date}</span>
+              <button
+                type="button"
+                className="hud-module-toggle"
+                data-testid={`hud-cal-edit-${it.id}`}
+                onClick={() => startEdit(it)}
+              >
+                编辑
+              </button>
+              <button
+                type="button"
+                className="hud-module-del"
+                aria-label={`删除事项 ${it.title}`}
+                onClick={() => saveItems(items.filter((x) => x.id !== it.id))}
+              >
+                删除
+              </button>
+            </Row>
+          ),
+        )
       ) : (
         <EmptyState
           title="暂无日历事项"
-          sub="本月事项 0 条 · 用上方表单添加（保存在本机浏览器）"
+          sub="事项 0 条 · 用上方表单添加（保存在本机浏览器）"
         />
       )}
-      <SecHead title="待办票" en="PENDING TICKETS" />
-      {PENDING_TICKETS.map((t) => (
+      <SecHead
+        title="待办票"
+        en="PENDING TICKETS"
+        right={
+          <span className="hud-module-note">
+            由作品待发与本页未完成事项实时派生 · 共 {tickets.length} 张
+          </span>
+        }
+      />
+      {tickets.map((t) => (
         <Row key={t.id} testid={`hud-ticket-${t.id}`}>
           <div className="hud-module-row-main">
             <div className="hud-module-row-t">{t.title}</div>
-            <div className="hud-module-row-sub">{t.detail}</div>
+            {t.detail ? (
+              <div className="hud-module-row-sub">{t.detail}</div>
+            ) : null}
           </div>
           <span className="hud-module-note">{t.owner}</span>
           <span className="hud-chip hud-c-yel">待办</span>
         </Row>
       ))}
+      {tickets.length === 0 ? (
+        <p className="hud-module-note">
+          暂无待办票 · 作品待发与日历未完成事项都已清零
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -3479,6 +3775,28 @@ function AncientFitness() {
   );
 }
 
+/* ── 主训练打卡（2026-10-22, hud-crud-p12）──
+ * 键 studio_health_checkins_v1：日期字符串数组（快照 healthCheckins
+ * 片的既有形状，与旧层 page.tsx 同键同形）。与古法打卡
+ * （studio_ancient_checkins_v1，{日期:true} 映射）是两个独立板块，
+ * 键与统计互不串扰。完成记录只按本键真实打卡实算。 */
+const TRAIN_CHECKIN_KEY = "studio_health_checkins_v1";
+function readTrainCheckins(): string[] {
+  try {
+    const raw = window.localStorage.getItem(TRAIN_CHECKIN_KEY);
+    if (!raw) return [];
+    const v = JSON.parse(raw) as unknown;
+    if (!Array.isArray(v)) return [];
+    const days = v.filter(
+      (d): d is string =>
+        typeof d === "string" && /^\d{4}-\d{2}-\d{2}$/.test(d),
+    );
+    return [...new Set(days)].sort();
+  } catch {
+    return [];
+  }
+}
+
 /* ─────────────────────────── 2 · health ─────────────────────────── */
 
 function HealthBody() {
@@ -3553,6 +3871,25 @@ function HealthBody() {
       ? manual.steps
       : data.steps?.today;
   const stale = !last || last.date < todayStr;
+  /* 主训练打卡（hud-crud-p12）：读写 studio_health_checkins_v1。 */
+  const [trainChecks, setTrainChecks] = React.useState<string[]>([]);
+  React.useEffect(() => {
+    setTrainChecks(readTrainCheckins());
+  }, []);
+  const trainDoneToday = trainChecks.includes(todayStr);
+  const lastTrainDay =
+    trainChecks.length > 0 ? trainChecks[trainChecks.length - 1] : null;
+  const toggleTrainToday = () => {
+    const next = trainDoneToday
+      ? trainChecks.filter((d) => d !== todayStr)
+      : [...trainChecks, todayStr].sort();
+    try {
+      window.localStorage.setItem(TRAIN_CHECKIN_KEY, JSON.stringify(next));
+    } catch {
+      return; /* 落盘失败不假装已打卡 */
+    }
+    setTrainChecks(next);
+  };
   return (
     <div>
       <SecHead
@@ -3577,7 +3914,30 @@ function HealthBody() {
             剪贴板解析口 · {manual.date}
             {manual.sleepHours !== undefined ? ` · 睡眠 ${manual.sleepHours}h` : ""}
             {manual.steps !== undefined ? ` · 步数 ${manual.steps}` : ""}
-          </span>
+          </span>{" "}
+          <InlineConfirmButton
+            label="清除手动记录"
+            confirmLabel="确认清除"
+            testId="hud-health-manual-clear"
+            ariaLabel="清除手动同步记录"
+            className="hud-module-del"
+            onConfirm={() => clearManualHealth()}
+          />
+        </Kv>
+      ) : null}
+      {manual && !mWins ? (
+        <Kv k="手动同步">
+          <span className="hud-module-note" data-testid="hud-health-manual-stale">
+            手动记录 {manual.date} · 早于文件最新记录，未生效
+          </span>{" "}
+          <InlineConfirmButton
+            label="清除手动记录"
+            confirmLabel="确认清除"
+            testId="hud-health-manual-clear"
+            ariaLabel="清除手动同步记录"
+            className="hud-module-del"
+            onConfirm={() => clearManualHealth()}
+          />
         </Kv>
       ) : null}
       {last ? (
@@ -3621,10 +3981,36 @@ function HealthBody() {
       />
       <Kv k="计划">在家塑形 · 轻器械 × 高次数（第 1–2 周）</Kv>
       <Kv k="频率">周一 / 周三 / 周五 · 每次约 30 分钟 · 2026-10-19 起</Kv>
+      <div className="hud-ancient-bar" data-testid="hud-train-checkin">
+        <div>
+          <div className="hud-ancient-state" data-testid="hud-train-checkin-state">
+            {trainDoneToday ? "今日已打卡" : "今日待打卡"} · {todayStr}
+          </div>
+          <div className="hud-module-note">
+            主训练完成后来这里打卡 · 与晨间古法打卡分开统计
+          </div>
+        </div>
+        <button
+          type="button"
+          className={cn("hud-module-toggle", trainDoneToday && "hud-ancient-done")}
+          data-testid="hud-train-checkin-toggle"
+          aria-pressed={trainDoneToday}
+          onClick={toggleTrainToday}
+        >
+          {trainDoneToday ? "已打卡 ✓ · 点按撤销" : "今日训练打卡"}
+        </button>
+      </div>
       <Kv k="完成记录">
-        <span className="hud-c-amb">
-          暂无确认记录 · 计划态（完成状态以本人确认为准，不代填）
-        </span>
+        {trainChecks.length > 0 ? (
+          <span className="hud-c-grn" data-testid="hud-train-record">
+            最近完成 {lastTrainDay} · 累计 {trainChecks.length}{" "}
+            天（只按本机打卡记录实算）
+          </span>
+        ) : (
+          <span className="hud-c-amb" data-testid="hud-train-record">
+            尚无打卡记录 · 练完点上方「今日训练打卡」记入
+          </span>
+        )}
       </Kv>
       <Kv k="器械">{TRAINING_EQUIP.join(" · ")}</Kv>
       <div style={{ marginTop: 8 }}>
@@ -3691,8 +4077,9 @@ function HealthBody() {
       </div>
       <p className="hud-module-note">
         结构：热身 5 分钟 → 主训练 6 动作 ×2 组 → 拉伸 5 分钟；另有每日
-        5 分钟体态修复（下巴后缩 / 靠墙站 / 髋屈肌拉伸 / 猫牛式）。练完在
-        聊天里报「练完了」，Luna 记入完成记录。
+        5 分钟体态修复（下巴后缩 / 靠墙站 / 髋屈肌拉伸 / 猫牛式）。练完点
+        上方「今日训练打卡」即记入完成记录（本机保存
+        studio_health_checkins_v1）。
       </p>
       {data.diet ? (
         <>
@@ -3722,8 +4109,50 @@ function HealthBody() {
  * 的 Obsidian 库叫什么只有他知道，未填时不许拼链接乱开。 */
 const OBSIDIAN_VAULT_KEY = "studio_obsidian_vault_v1";
 
+/* ── 本体站内笔记（2026-10-22, hud-crud-p12）──
+ * 新键 studio_ontology_notes_v1：{id,title,tag,body?,createdAt}，
+ * snapshot.ts 已登记 ontologyNotes 片。这是站内可变数据（存本机、
+ * 可增删改），与下方「库内文件」（Obsidian 目录的真实镜像、只读）
+ * 分区呈现、互不冒充。标签沿用本体既有标签体系。 */
+const ONTO_NOTES_KEY = "studio_ontology_notes_v1";
+const ONTO_TAGS = ["灵感", "干货", "待办线索", "人脉", "消费决策", "其他"];
+type OntoNote = {
+  id: string;
+  title: string;
+  tag: string;
+  body?: string;
+  createdAt: string;
+};
+function readOntoNotes(): OntoNote[] {
+  try {
+    const raw = window.localStorage.getItem(ONTO_NOTES_KEY);
+    if (!raw) return [];
+    const v = JSON.parse(raw) as unknown;
+    if (!Array.isArray(v)) return [];
+    return v.filter(
+      (n): n is OntoNote =>
+        !!n &&
+        typeof n === "object" &&
+        typeof (n as OntoNote).id === "string" &&
+        typeof (n as OntoNote).title === "string" &&
+        typeof (n as OntoNote).tag === "string" &&
+        typeof (n as OntoNote).createdAt === "string",
+    );
+  } catch {
+    return [];
+  }
+}
+function writeOntoNotes(notes: OntoNote[]): boolean {
+  try {
+    window.localStorage.setItem(ONTO_NOTES_KEY, JSON.stringify(notes));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** 库内真实文件清单（镜像源：goals/ai-2/hidden_files/notes/ 目录，
- * 与 FINANCE_LEDGER_ENTRIES 镜像 ledger.csv 同例）。当前库内只有
+ * 与财务 FIN_SEED_ENTRIES 镜像 ledger.csv 同例）。当前库内只有
  * 框架 README 一件——新笔记落盘后往这里补行，file 即文件名，
  * 也是 obsidian:// 协议里的 file 参数。 */
 const ONTOLOGY_FILES: { file: string; title: string; tag: string }[] = [
@@ -3731,9 +4160,20 @@ const ONTOLOGY_FILES: { file: string; title: string; tag: string }[] = [
 ];
 
 function OntologyBody() {
+  const p2 = (n: number) => String(n).padStart(2, "0");
   const [vault, setVault] = React.useState("");
   const [needVault, setNeedVault] = React.useState(false);
   const vaultInputRef = React.useRef<HTMLInputElement | null>(null);
+  /* 站内笔记（hud-crud-p12）：本机可变数据，与库内文件镜像分区。 */
+  const [notes, setNotes] = React.useState<OntoNote[]>([]);
+  const [nAdding, setNAdding] = React.useState(false);
+  const [nTitle, setNTitle] = React.useState("");
+  const [nTag, setNTag] = React.useState(ONTO_TAGS[0]);
+  const [nBody, setNBody] = React.useState("");
+  const [nEditId, setNEditId] = React.useState<string | null>(null);
+  const [nETitle, setNETitle] = React.useState("");
+  const [nETag, setNETag] = React.useState(ONTO_TAGS[0]);
+  const [nEBody, setNEBody] = React.useState("");
   React.useEffect(() => {
     try {
       const v = window.localStorage.getItem(OBSIDIAN_VAULT_KEY);
@@ -3741,7 +4181,52 @@ function OntologyBody() {
     } catch {
       /* storage unavailable → 本次会话内填写 */
     }
+    setNotes(readOntoNotes());
   }, []);
+  const commitNotes = (next: OntoNote[]): boolean => {
+    if (!writeOntoNotes(next)) return false;
+    setNotes(next);
+    return true;
+  };
+  const addNote = () => {
+    const t = nTitle.trim();
+    if (!t) return;
+    const now = new Date();
+    const note: OntoNote = {
+      id: `onto-${Date.now()}`,
+      title: t,
+      tag: nTag,
+      createdAt: `${now.getFullYear()}-${p2(now.getMonth() + 1)}-${p2(now.getDate())}`,
+    };
+    const b = nBody.trim();
+    if (b) note.body = b;
+    if (commitNotes([...notes, note])) {
+      setNTitle("");
+      setNBody("");
+      setNTag(ONTO_TAGS[0]);
+      setNAdding(false);
+    }
+  };
+  const startNoteEdit = (n: OntoNote) => {
+    setNEditId(n.id);
+    setNETitle(n.title);
+    setNETag(n.tag);
+    setNEBody(n.body ?? "");
+  };
+  const saveNoteEdit = () => {
+    if (!nEditId) return;
+    const t = nETitle.trim();
+    if (!t) return;
+    const next = notes.map((n) => {
+      if (n.id !== nEditId) return n;
+      const copy: OntoNote = { ...n, title: t, tag: nETag };
+      const b = nEBody.trim();
+      if (b) copy.body = b;
+      else delete copy.body;
+      return copy;
+    });
+    if (commitNotes(next)) setNEditId(null);
+  };
   const saveVault = (v: string) => {
     setVault(v);
     if (v.trim()) setNeedVault(false);
@@ -3797,10 +4282,13 @@ function OntologyBody() {
         ) : null}
       </div>
       <Kv k="状态">
-        <span className="hud-c-amb">建设中 · 空壳已上线 · 条目 0</span>
+        <span className="hud-c-amb">
+          建设中 · 库内文件 {ONTOLOGY_FILES.length} 件 · 站内笔记{" "}
+          {notes.length} 条
+        </span>
       </Kv>
-      <Kv k="条目来源">第二大脑笔记 · goals/ai-2/hidden_files/notes/</Kv>
-      <Kv k="库存现状">框架 README 已建 · 归档笔记 0 篇（用户平时不存东西，从增量起步）</Kv>
+      <Kv k="条目来源">第二大脑笔记 · goals/ai-2/hidden_files/notes/（库内文件）＋ 站内笔记（本机）</Kv>
+      <Kv k="库存现状">框架 README 已建 · 归档笔记 0 篇（用户平时不存东西，从增量起步）· 站内笔记 {notes.length} 条</Kv>
       <Kv k="归档规则">一事一件 · 文件名 YYYY-MM-DD-主题.md · 头部带来源/日期/标签</Kv>
       <Kv k="标签体系">灵感 / 干货 / 待办线索 / 人脉 / 消费决策 / 其他</Kv>
       <Kv k="捕获方式">聊天里丢来的链接/截图/灵感由 Luna 归档；对话中的有价值信息同步沉淀</Kv>
@@ -3843,6 +4331,202 @@ function OntologyBody() {
         归档笔记仍为 0 篇——上面是库内现有的框架文件；第一条笔记落盘后
         会按同样的行样式列进这里，[ OBSIDIAN ] 直达随行就有。
       </p>
+      <SecHead
+        title="站内笔记"
+        en="LOCAL NOTES"
+        right={
+          <span className="hud-module-note">
+            存本机 studio_ontology_notes_v1 · 与上方 Obsidian 镜像分开
+          </span>
+        }
+      />
+      <div className="hud-module-form">
+        {!nAdding ? (
+          <button
+            type="button"
+            className="hud-module-toggle"
+            data-testid="hud-onto-note-add"
+            onClick={() => setNAdding(true)}
+          >
+            + 新增笔记
+          </button>
+        ) : null}
+        <span className="hud-module-note">
+          站内随手记 · 增删改即时落盘，进导出快照
+        </span>
+      </div>
+      {nAdding ? (
+        <div className="hud-module-editbox" data-testid="hud-onto-note-form">
+          <div className="hud-module-form">
+            <input
+              className="hud-module-input hud-module-input-flex"
+              data-testid="hud-onto-note-f-title"
+              type="text"
+              value={nTitle}
+              onChange={(e) => setNTitle(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") addNote();
+              }}
+              placeholder="笔记标题（必填）"
+              aria-label="笔记标题"
+            />
+            <label className="hud-module-flabel">
+              <span className="hud-module-note">标签</span>
+              <select
+                className="hud-module-input hud-module-select"
+                data-testid="hud-onto-note-f-tag"
+                value={nTag}
+                onChange={(e) => setNTag(e.target.value)}
+                aria-label="笔记标签"
+              >
+                {ONTO_TAGS.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <div className="hud-module-form">
+            <input
+              className="hud-module-input hud-module-input-flex"
+              data-testid="hud-onto-note-f-body"
+              type="text"
+              value={nBody}
+              onChange={(e) => setNBody(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") addNote();
+              }}
+              placeholder="正文（选填）"
+              aria-label="笔记正文"
+            />
+            <button
+              type="button"
+              className="hud-module-toggle"
+              data-testid="hud-onto-note-f-save"
+              onClick={addNote}
+            >
+              保存
+            </button>
+            <button
+              type="button"
+              className="hud-module-toggle"
+              data-testid="hud-onto-note-f-cancel"
+              onClick={() => setNAdding(false)}
+            >
+              取消
+            </button>
+          </div>
+        </div>
+      ) : null}
+      {notes.length === 0 && !nAdding ? (
+        <EmptyState
+          title="暂无站内笔记"
+          sub="点『+ 新增笔记』记第一条 · 只存这台设备，可随快照导出"
+        />
+      ) : null}
+      {notes.map((n) =>
+        nEditId === n.id ? (
+          <div
+            key={n.id}
+            className="hud-module-editbox"
+            data-testid={`hud-onto-note-eform-${n.id}`}
+          >
+            <div className="hud-module-form">
+              <input
+                className="hud-module-input hud-module-input-flex"
+                data-testid="hud-onto-note-e-title"
+                type="text"
+                value={nETitle}
+                onChange={(e) => setNETitle(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") saveNoteEdit();
+                }}
+                placeholder="笔记标题（必填）"
+                aria-label="笔记标题"
+              />
+              <label className="hud-module-flabel">
+                <span className="hud-module-note">标签</span>
+                <select
+                  className="hud-module-input hud-module-select"
+                  data-testid="hud-onto-note-e-tag"
+                  value={nETag}
+                  onChange={(e) => setNETag(e.target.value)}
+                  aria-label="笔记标签"
+                >
+                  {ONTO_TAGS.map((t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <div className="hud-module-form">
+              <input
+                className="hud-module-input hud-module-input-flex"
+                data-testid="hud-onto-note-e-body"
+                type="text"
+                value={nEBody}
+                onChange={(e) => setNEBody(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") saveNoteEdit();
+                }}
+                placeholder="正文（选填）"
+                aria-label="笔记正文"
+              />
+              <button
+                type="button"
+                className="hud-module-toggle"
+                data-testid="hud-onto-note-e-save"
+                onClick={saveNoteEdit}
+              >
+                保存
+              </button>
+              <button
+                type="button"
+                className="hud-module-toggle"
+                data-testid="hud-onto-note-e-cancel"
+                onClick={() => setNEditId(null)}
+              >
+                取消
+              </button>
+            </div>
+          </div>
+        ) : (
+          <Row key={n.id} testid={`hud-onto-note-${n.id}`}>
+            <div className="hud-module-row-main">
+              <div className="hud-module-row-t">{n.title}</div>
+              {n.body ? (
+                <div className="hud-module-row-sub">{n.body}</div>
+              ) : null}
+              <div className="hud-module-row-src">
+                站内笔记 · {n.createdAt}
+              </div>
+            </div>
+            <span className="hud-chip hud-c-pur">{n.tag}</span>
+            <button
+              type="button"
+              className="hud-module-toggle"
+              data-testid={`hud-onto-note-edit-${n.id}`}
+              onClick={() => startNoteEdit(n)}
+            >
+              编辑
+            </button>
+            <InlineConfirmButton
+              label="删除"
+              confirmLabel="确认删除"
+              testId={`hud-onto-note-del-${n.id}`}
+              ariaLabel={`删除笔记 ${n.title}`}
+              className="hud-module-del"
+              onConfirm={() => {
+                if (nEditId === n.id) setNEditId(null);
+                commitNotes(notes.filter((x) => x.id !== n.id));
+              }}
+            />
+          </Row>
+        ),
+      )}
     </div>
   );
 }
@@ -4479,6 +5163,12 @@ function StudioBody({ onOpen }: { onOpen: (id: string) => void }) {
     const cur = readWorksItems();
     return cur === null ? WORK_SEED_ITEMS.length : cur.length;
   });
+  /* 待办票计数同源派生（hud-crud-p12）：与作品库/日历同一
+   * derivePendingTickets 口径，挂载时直读两键。 */
+  const [ticketsN] = React.useState<number>(() => {
+    if (typeof window === "undefined") return 0;
+    return derivePendingTickets(readWorksItems(), readCalItems()).length;
+  });
   const cards: {
     id: string;
     label: string;
@@ -4545,7 +5235,7 @@ function StudioBody({ onOpen }: { onOpen: (id: string) => void }) {
         en="GROUP OVERVIEW"
         right={<span className="hud-module-note">计数与最近动态 · 皆为真事实</span>}
       />
-      <Kv k="作品库">{worksN} 件作品 · 另有待办票 {PENDING_TICKETS.length} 张</Kv>
+      <Kv k="作品库">{worksN} 件作品 · 另有待办票 {ticketsN} 张</Kv>
       <Kv k="技能库">{ALL_SKILLS.length} 个已装技能（grokbot 8 · Luna 5）</Kv>
       <Kv k="最近动态 · 10-18">YouTube EP001 已上传 · 待改公开</Kv>
       <Kv k="最近动态 · 10-19">视频号 ep01 配音定稿（Fish Audio 影视解说男声）· 待发布</Kv>

@@ -5212,6 +5212,17 @@ div.studio-orb.studio-orb-bg,
   background: var(--hud-pink);
   box-shadow: 0 0 var(--hud-sp-5) var(--hud-pink);
 }
+/* 日历完成态（hud-crud-p12）：完成行标题降亮 + 删除线 + ✓ 勾记；
+ * 完成钮亮绿，与古法打卡完成态（.hud-ancient-done）同色口径。 */
+.hud-cal-done-t {
+  opacity: 0.45;
+  text-decoration: line-through;
+}
+.hud-cal-done-on {
+  color: var(--hud-c-3dff9e);
+  border-color: var(--hud-c-3dff9e-a55);
+  background: var(--hud-c-3dff9e-a10);
+}
 .hud-module-hub {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
