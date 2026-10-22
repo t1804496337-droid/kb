@@ -13,6 +13,26 @@ import {
   type FinanceEntry,
   type FinanceLiability,
 } from "@/components/studio/finance-module";
+import {
+  SUB_CATEGORIES,
+  SUB_CYCLE_LABEL,
+  SUB_RENEWMODE_LABEL,
+  daysLeftLabel,
+  dueReminders,
+  dueSoon,
+  loadRemindedMap,
+  loadSubscriptions,
+  monthlyCost,
+  nextDueAfter,
+  saveRemindedMap,
+  saveSubscriptions,
+  subTodayStr,
+  summarizeSubs,
+  unclaimedReminders,
+  type SubCycle,
+  type SubRenewMode,
+  type Subscription,
+} from "@/components/studio/finance-subscriptions";
 import { InlineConfirmButton } from "@/components/ui/inline-confirm";
 import { emit } from "@/components/studio/bus";
 import {
@@ -2165,6 +2185,28 @@ function FinanceBody() {
         const n = Number(rawB);
         if (Number.isFinite(n) && n > 0) setBudget(n);
       }
+      /* 订阅管理（2026-10-23, hud-finance-subs）：只读新键，无种子。 */
+      const loadedSubs = loadSubscriptions();
+      setSubs(loadedSubs);
+      /* 到期提醒「当天只提示一次」：未认领的 7/3/1 天提醒 toast 一次并落盘。 */
+      const remindedMap = loadRemindedMap();
+      const fresh = unclaimedReminders(dueReminders(loadedSubs), remindedMap);
+      if (fresh.length > 0) {
+        const today = subTodayStr();
+        const merged: Record<string, string> = { ...remindedMap };
+        fresh.forEach((r) => {
+          merged[r.sub.id] = today;
+        });
+        setReminded(merged);
+        saveRemindedMap(merged);
+        showToast(
+          `订阅到期提醒：${fresh
+            .map((r) => `「${r.sub.name}」${daysLeftLabel(r.daysLeft)}`)
+            .join("；")}`,
+        );
+      } else {
+        setReminded(remindedMap);
+      }
     } catch {
       /* storage unavailable → 空态 */
     }
@@ -2465,6 +2507,108 @@ function FinanceBody() {
 
   /* ---- 预算编辑（概览卡内） ---- */
   const [budgetDraft, setBudgetDraft] = React.useState("");
+
+  /* ── 订阅管理（2026-10-23, hud-finance-subs：纯加法）── */
+  const [subs, setSubs] = React.useState<Subscription[]>([]);
+  const [reminded, setReminded] = React.useState<Record<string, string>>({});
+  const [editingSubId, setEditingSubId] = React.useState<string | null>(null);
+  const [subForm, setSubForm] = React.useState({
+    name: "",
+    amount: "",
+    cycle: "monthly" as SubCycle,
+    customDays: "",
+    category: "视频",
+    nextDue: "",
+    renewMode: "roll" as SubRenewMode,
+    note: "",
+    active: true,
+  });
+  const saveSubs = (next: Subscription[]) => {
+    setSubs(next);
+    saveSubscriptions(next);
+  };
+  const resetSubForm = () => {
+    setEditingSubId(null);
+    setSubForm({
+      name: "",
+      amount: "",
+      cycle: "monthly",
+      customDays: "",
+      category: "视频",
+      nextDue: "",
+      renewMode: "roll",
+      note: "",
+      active: true,
+    });
+  };
+  const submitSub = () => {
+    const name = subForm.name.trim();
+    if (!name) {
+      showToast("先填订阅名称");
+      return;
+    }
+    const amount = Number(subForm.amount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      showToast("金额需为大于 0 的数字");
+      return;
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(subForm.nextDue)) {
+      showToast("下次到期日格式为 YYYY-MM-DD");
+      return;
+    }
+    const customDays = Number(subForm.customDays);
+    if (subForm.cycle === "custom" && (!Number.isFinite(customDays) || customDays <= 0)) {
+      showToast("自定义天数需为大于 0 的数字");
+      return;
+    }
+    const payload: Omit<Subscription, "id"> = {
+      name,
+      amount: Math.round(amount * 100) / 100,
+      cycle: subForm.cycle,
+      ...(subForm.cycle === "custom" ? { customDays: Math.round(customDays) } : {}),
+      category: subForm.category,
+      nextDue: subForm.nextDue,
+      renewMode: subForm.renewMode,
+      ...(subForm.note.trim() ? { note: subForm.note.trim() } : {}),
+      active: subForm.active,
+      payments: [],
+      createdAt: subTodayStr(),
+    };
+    if (editingSubId) {
+      saveSubs(
+        subs.map((s) =>
+          s.id === editingSubId ? { ...s, ...payload, payments: s.payments, createdAt: s.createdAt } : s,
+        ),
+      );
+      showToast("订阅已更新");
+    } else {
+      saveSubs([...subs, { ...payload, id: `finsub-${Date.now()}` }]);
+      showToast("订阅已添加");
+    }
+    resetSubForm();
+  };
+  const renewSub = (id: string) => {
+    const today = subTodayStr();
+    const next = subs.map((s) => {
+      if (s.id !== id) return s;
+      const custom = s.cycle === "custom" ? (s.customDays ?? 30) : 30;
+      const newDue = nextDueAfter(s.nextDue, s.cycle, custom, s.renewMode, today);
+      if (!newDue) return s;
+      return {
+        ...s,
+        nextDue: newDue,
+        payments: [...s.payments, { date: today, amount: s.amount, note: "续费" }],
+      };
+    });
+    saveSubs(next);
+    const s = next.find((x) => x.id === id);
+    showToast(s ? `已续费「${s.name}」，下次到期 ${s.nextDue}` : "已续费");
+  };
+
+  /* 订阅派生（2026-10-23, hud-finance-subs）：全部由订阅台账实时算。 */
+  const subSummary = React.useMemo(() => summarizeSubs(subs), [subs]);
+  const subRemindList = React.useMemo(() => dueReminders(subs), [subs]);
+  const subDueSoonList = React.useMemo(() => dueSoon(subs), [subs]);
   const [budgetEditing, setBudgetEditing] = React.useState(false);
   const applyBudget = () => {
     const n = Number(budgetDraft);
@@ -3595,6 +3739,298 @@ function FinanceBody() {
                     saveAssets(assets.filter((x) => x.id !== a.id));
                     if (editingAssetId === a.id) resetAssetForm();
                     showToast("资产已删除");
+                  }}
+                />
+              </Row>
+            ))
+          )}
+        </div>
+      </div>
+
+      {/* ---------- 订阅管理（2026-10-23, hud-finance-subs：加法；
+           * 数据键 studio_finance_subscriptions_v1，无种子） ---------- */}
+      <div data-testid="hud-fin-subs-sec" style={{ marginTop: 14 }}>
+        <SecHead
+          title="订阅管理"
+          en="SUBSCRIPTIONS"
+          right={
+            <span className="hud-module-note">
+              订阅 {subSummary.activeCount} 项在用 · 数据存本机浏览器
+            </span>
+          }
+        />
+        {subRemindList.length > 0 ? (
+          <div
+            data-testid="hud-fin-subs-reminders"
+            data-count={subRemindList.length}
+            className="hud-module-note"
+            style={{ margin: "8px 0", color: "var(--hud-yellow)" }}
+          >
+            到期提醒：
+            {subRemindList
+              .map((r) => `「${r.sub.name}」${daysLeftLabel(r.daysLeft)}`)
+              .join("；")}
+          </div>
+        ) : null}
+        <div
+          data-testid="hud-fin-subs-summary"
+          data-count={subSummary.activeCount}
+          data-monthly={subSummary.monthly}
+          data-annual={subSummary.annual}
+        >
+          <Kv k="在用订阅">{subSummary.activeCount} 项</Kv>
+          <Kv k="订阅支出 · 折合每月">{fmtMoney(subSummary.monthly)}</Kv>
+          <Kv k="订阅支出 · 折合每年">{fmtMoney(subSummary.annual)}</Kv>
+        </div>
+        <div
+          data-testid="hud-fin-subs-due7"
+          data-count={subDueSoonList.length}
+          style={{ marginTop: 8 }}
+        >
+          <p className="hud-module-note" style={{ margin: "0 0 6px" }}>
+            近 7 天到期{subDueSoonList.length === 0 ? "：暂无" : ""}
+          </p>
+          {subDueSoonList.length > 0
+            ? subDueSoonList.map(({ sub: s, daysLeft }) => (
+                <Row key={s.id} testid={`hud-fin-subs-due-${s.id}`}>
+                  <div className="hud-module-row-main">
+                    <div className="hud-module-row-t">{s.name}</div>
+                    <div className="hud-module-row-src">
+                      {s.nextDue} ·{" "}
+                      <span style={{ color: "var(--hud-yellow)" }}>
+                        {daysLeftLabel(daysLeft)}
+                      </span>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    className="hud-module-toggle"
+                    data-testid={`hud-fin-subs-renew-${s.id}`}
+                    onClick={() => renewSub(s.id)}
+                  >
+                    续费
+                  </button>
+                </Row>
+              ))
+            : null}
+        </div>
+        <form
+          className="hud-module-form"
+          style={{ marginTop: 10 }}
+          onSubmit={(e) => {
+            e.preventDefault();
+            submitSub();
+          }}
+        >
+          <FinField label="名称">
+            <input
+              data-testid="hud-fin-subs-name"
+              className={finInputCls}
+              style={finInputStyle}
+              value={subForm.name}
+              placeholder="如 iCloud+"
+              onChange={(e) => setSubForm({ ...subForm, name: e.target.value })}
+            />
+          </FinField>
+          <FinField label="金额（元/周期）" w={130}>
+            <input
+              data-testid="hud-fin-subs-amount"
+              type="number"
+              min="0"
+              step="0.01"
+              className={finInputCls}
+              style={finInputStyle}
+              value={subForm.amount}
+              placeholder="0.00"
+              onChange={(e) => setSubForm({ ...subForm, amount: e.target.value })}
+            />
+          </FinField>
+          <FinField label="周期" w={130}>
+            <select
+              data-testid="hud-fin-subs-cycle"
+              className={finInputCls}
+              style={finInputStyle}
+              value={subForm.cycle}
+              onChange={(e) =>
+                setSubForm({ ...subForm, cycle: e.target.value as SubCycle })
+              }
+            >
+              {(Object.keys(SUB_CYCLE_LABEL) as SubCycle[]).map((c) => (
+                <option key={c} value={c}>
+                  {SUB_CYCLE_LABEL[c]}
+                </option>
+              ))}
+            </select>
+          </FinField>
+          {subForm.cycle === "custom" ? (
+            <FinField label="自定义天数" w={110}>
+              <input
+                data-testid="hud-fin-subs-customdays"
+                type="number"
+                min="1"
+                step="1"
+                className={finInputCls}
+                style={finInputStyle}
+                value={subForm.customDays}
+                placeholder="如 45"
+                onChange={(e) =>
+                  setSubForm({ ...subForm, customDays: e.target.value })
+                }
+              />
+            </FinField>
+          ) : null}
+          <FinField label="分类" w={110}>
+            <select
+              data-testid="hud-fin-subs-category"
+              className={finInputCls}
+              style={finInputStyle}
+              value={subForm.category}
+              onChange={(e) => setSubForm({ ...subForm, category: e.target.value })}
+            >
+              {SUB_CATEGORIES.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+          </FinField>
+          <FinField label="下次到期日" w={150}>
+            <input
+              data-testid="hud-fin-subs-nextdue"
+              type="date"
+              className={finInputCls}
+              style={finInputStyle}
+              value={subForm.nextDue}
+              onChange={(e) => setSubForm({ ...subForm, nextDue: e.target.value })}
+            />
+          </FinField>
+          <FinField label="续费模式" w={190}>
+            <select
+              data-testid="hud-fin-subs-renewmode"
+              className={finInputCls}
+              style={finInputStyle}
+              value={subForm.renewMode}
+              onChange={(e) =>
+                setSubForm({ ...subForm, renewMode: e.target.value as SubRenewMode })
+              }
+            >
+              {(Object.keys(SUB_RENEWMODE_LABEL) as SubRenewMode[]).map((m) => (
+                <option key={m} value={m}>
+                  {SUB_RENEWMODE_LABEL[m]}
+                </option>
+              ))}
+            </select>
+          </FinField>
+          <FinField label="备注（可选）">
+            <input
+              data-testid="hud-fin-subs-note"
+              className={finInputCls}
+              style={finInputStyle}
+              value={subForm.note}
+              placeholder="补充说明"
+              onChange={(e) => setSubForm({ ...subForm, note: e.target.value })}
+            />
+          </FinField>
+          <FinField label="在用中" w={80}>
+            <input
+              data-testid="hud-fin-subs-active"
+              type="checkbox"
+              checked={subForm.active}
+              onChange={(e) => setSubForm({ ...subForm, active: e.target.checked })}
+            />
+          </FinField>
+          <div style={{ display: "flex", alignItems: "flex-end", gap: 6 }}>
+            <button
+              type="submit"
+              data-testid="hud-fin-subs-submit"
+              className="hud-module-toggle"
+            >
+              {editingSubId ? "保存修改" : "添加订阅"}
+            </button>
+            {editingSubId ? (
+              <button
+                type="button"
+                className="hud-module-toggle"
+                onClick={resetSubForm}
+              >
+                取消
+              </button>
+            ) : null}
+          </div>
+        </form>
+        <div data-testid="hud-fin-subs-list" data-count={subs.length}>
+          {subs.length === 0 ? (
+            <div className="hud-module-zone-empty">
+              还没有订阅记录 · 用上面的表单添加第一笔
+            </div>
+          ) : (
+            subs.map((s) => (
+              <Row key={s.id} testid={`hud-fin-subs-${s.id}`}>
+                <div className="hud-module-row-main">
+                  <div className="hud-module-row-t">
+                    {s.name}
+                    {!s.active ? (
+                      <span className="hud-module-note" style={{ marginLeft: 6 }}>
+                        已停用
+                      </span>
+                    ) : null}
+                    {s.note ? (
+                      <span className="hud-module-note" style={{ marginLeft: 6 }}>
+                        {s.note}
+                      </span>
+                    ) : null}
+                  </div>
+                  <div className="hud-module-row-src">
+                    {s.category} · {SUB_CYCLE_LABEL[s.cycle]}
+                    {s.cycle === "custom" && s.customDays ? ` ${s.customDays} 天` : ""} ·
+                    下次 {s.nextDue} · 折合月 {fmtMoney(monthlyCost(s))}
+                    {s.payments.length > 0
+                      ? ` · 已续 ${s.payments.length} 次`
+                      : ""}
+                  </div>
+                </div>
+                <span className="hud-module-amt">
+                  {fmtMoney(s.amount)}/{SUB_CYCLE_LABEL[s.cycle]}
+                </span>
+                <button
+                  type="button"
+                  className="hud-module-toggle"
+                  data-testid={`hud-fin-subs-renewrow-${s.id}`}
+                  onClick={() => renewSub(s.id)}
+                >
+                  续费
+                </button>
+                <button
+                  type="button"
+                  className="hud-module-toggle"
+                  data-testid={`hud-fin-subs-edit-${s.id}`}
+                  onClick={() => {
+                    setEditingSubId(s.id);
+                    setSubForm({
+                      name: s.name,
+                      amount: String(s.amount),
+                      cycle: s.cycle,
+                      customDays: s.customDays !== undefined ? String(s.customDays) : "",
+                      category: s.category,
+                      nextDue: s.nextDue,
+                      renewMode: s.renewMode,
+                      note: s.note ?? "",
+                      active: s.active,
+                    });
+                  }}
+                >
+                  编辑
+                </button>
+                <InlineConfirmButton
+                  label="删除"
+                  confirmLabel="确认删除"
+                  testId={`hud-fin-subs-del-${s.id}`}
+                  ariaLabel={`删除订阅 ${s.name}`}
+                  className="hud-module-del"
+                  onConfirm={() => {
+                    saveSubs(subs.filter((x) => x.id !== s.id));
+                    if (editingSubId === s.id) resetSubForm();
+                    showToast("订阅已删除");
                   }}
                 />
               </Row>
