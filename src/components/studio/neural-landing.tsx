@@ -12,7 +12,11 @@ import {
   restorePreImport,
   hasPreImportBackup,
 } from "@/components/studio/snapshot";
-import { emit as busEmit, on as onBusEvent } from "@/components/studio/bus";
+import {
+  emit as busEmit,
+  on as onBusEvent,
+  type BusEventType,
+} from "@/components/studio/bus";
 import { RadialMenu } from "@/components/studio/radial-menu";
 import { MindMap } from "@/components/studio/mind-map";
 import {
@@ -62,12 +66,12 @@ export type LandingNode = {
  * (missing/unreachable → STALE).
  */
 const HUD_LOG_FACTS: { text: string; color?: string }[] = [
-  { text: "[10-18] EP001 UPLOADED · AWAITING PUBLISH" },
+  { text: "[10-18] EP001 已上传 · 待公开" },
   {
-    text: "[10-20 13:29] XHS ACCOUNT BANNED · OPS HALTED",
+    text: "[10-20 13:29] 小红书账号被封 · 运营终止",
     color: "var(--hud-pink)",
   },
-  { text: "[10-20 16:12] X OPS PAUSED · 8 TASKS OFF" },
+  { text: "[10-20 16:12] X 运营已暂停 · 8 个任务关闭" },
 ];
 
 type HudModule = {
@@ -152,161 +156,77 @@ function useTypewriter(text: string, cps = 32): string {
   return text.slice(0, n);
 }
 
-/* ── terminal EXEC log store (2026-10-22, hud-bus-pulse) ──
+/* ── terminal business log store (2026-10-22, hud-bus-pulse;
+ * structured + Chinese rendering, hud-ux-dock) ──
  * Every real business action that completes on the bus appends one
- * line here: `[YYYY-MM-DD HH:mm:ss] EXEC: <TYPE> -> SUCCESS` in
- * viewer-local time, persisted to localStorage studio_exec_log_v1
- * (registered in snapshot.ts as the execLog slice) and capped at 20
- * lines — the oldest fall off. The terminal renders these after the
- * HUD_LOG_FACTS lines; nothing else may write this key. */
+ * STRUCTURED item {ts, type, module, detail} here, persisted to
+ * localStorage studio_exec_log_v1 (registered in snapshot.ts as the
+ * execLog slice) and capped at 20 — the oldest fall off. Rendering
+ * composes a plain-language Chinese broadcast line from the parts
+ * (execLineText below), so the terminal never shows raw event codes.
+ * LEGACY items {ts, text} written before the upgrade render their
+ * stored text verbatim — history is never rewritten. Nothing else
+ * may write this key. */
 const EXEC_LOG_KEY = "studio_exec_log_v1";
 const EXEC_LOG_MAX = 20;
-type ExecLogItem = { ts: number; text: string };
+type ExecLogItem =
+  | { ts: number; text: string }
+  | { ts: number; type: BusEventType; module: string; detail?: string };
+const isExecLogItem = (x: unknown): x is ExecLogItem => {
+  if (typeof x !== "object" || x === null) return false;
+  const o = x as { ts?: unknown; text?: unknown; type?: unknown };
+  return (
+    typeof o.ts === "number" &&
+    Number.isFinite(o.ts) &&
+    (typeof o.text === "string" || typeof o.type === "string")
+  );
+};
 const loadExecLog = (): ExecLogItem[] => {
   try {
     const raw = window.localStorage.getItem(EXEC_LOG_KEY);
     const v: unknown = raw ? JSON.parse(raw) : null;
     if (!Array.isArray(v)) return [];
-    return v
-      .filter(
-        (x): x is ExecLogItem =>
-          typeof x === "object" &&
-          x !== null &&
-          typeof (x as ExecLogItem).ts === "number" &&
-          Number.isFinite((x as ExecLogItem).ts) &&
-          typeof (x as ExecLogItem).text === "string",
-      )
-      .slice(-EXEC_LOG_MAX);
+    return v.filter(isExecLogItem).slice(-EXEC_LOG_MAX);
   } catch {
     return [];
   }
 };
-const fmtExecStamp = (d: Date): string => {
+const fmtClock = (d: Date): string => {
   const p = (n: number) => String(n).padStart(2, "0");
-  return (
-    `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ` +
-    `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`
-  );
+  return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
 };
-
-/* ── scramble hover decode (2026-10-22, hud-interactions) ──
- * rAF-driven text scramble for the module-tree labels: on hover the
- * label dissolves into glyph noise and re-resolves to the real text
- * within 14 frames. Two width disciplines keep the row box frozen:
- * (1) the replacement pool is width-matched per character — CJK
- * slots take full-width radicals, ASCII slots take ASCII (a CJK
- * glyph is 2× an ASCII advance and falls back to a different font,
- * so mixing them per-slot would jitter the width); (2) the label's
- * rendered length is locked with SVG textLength for the whole run
- * and released on finish/cancel. */
-const SCRAMBLE_ASCII: string[] = [..."0x!f@#%&/<>"];
-const SCRAMBLE_RADICALS: string[] = [
-  "氵", "艹", "阝", "钅", "纟", "爿", "灬", "訁", "飠",
-];
-const scramblePoolFor = (ch: string): string[] =>
-  ch.charCodeAt(0) > 0xff ? SCRAMBLE_RADICALS : SCRAMBLE_ASCII;
-
-function useScramble() {
-  const els = React.useRef(new Map<string, SVGTextElement>());
-  const frames = React.useRef(new Map<string, number>());
-
-  const releaseLock = (el: SVGTextElement) => {
-    el.removeAttribute("textLength");
-    el.removeAttribute("lengthAdjust");
-  };
-
-  const stop = React.useCallback((id: string, restore?: string) => {
-    const f = frames.current.get(id);
-    if (f !== undefined) cancelAnimationFrame(f);
-    frames.current.delete(id);
-    const el = els.current.get(id);
-    if (el) {
-      releaseLock(el);
-      if (restore !== undefined) el.textContent = restore;
-    }
-  }, []);
-
-  const play = React.useCallback(
-    (id: string, text: string) => {
-      const el = els.current.get(id);
-      if (!el || !text) return;
-      stop(id);
-      /* lock the rendered length before the first mutated frame */
-      try {
-        const w = el.getComputedTextLength();
-        if (Number.isFinite(w) && w > 0) {
-          el.setAttribute("textLength", String(w));
-          el.setAttribute("lengthAdjust", "spacing");
-        }
-      } catch {
-        /* measurement unavailable — width-matched pools still apply */
-      }
-      const TOTAL = 14;
-      let frame = 0;
-      const tick = () => {
-        frame += 1;
-        const done = Math.floor((frame / TOTAL) * text.length);
-        let out = text.slice(0, done);
-        for (let i = done; i < text.length; i += 1) {
-          const pool = scramblePoolFor(text[i]);
-          out += pool[(Math.random() * pool.length) | 0];
-        }
-        el.textContent = out;
-        if (frame < TOTAL) {
-          frames.current.set(id, requestAnimationFrame(tick));
-        } else {
-          el.textContent = text;
-          releaseLock(el);
-          frames.current.delete(id);
-        }
-      };
-      frames.current.set(id, requestAnimationFrame(tick));
-    },
-    [stop],
-  );
-
-  const finePointer = () =>
-    typeof window !== "undefined" &&
-    window.matchMedia("(hover: hover) and (pointer: fine)").matches;
-
-  /* Mouse path: hover-capable devices only (media-gated). */
-  const start = React.useCallback(
-    (id: string, text: string) => {
-      if (finePointer()) play(id, text);
-    },
-    [play],
-  );
-
-  /* Touch path (2026-10-22 rule: every hover effect needs a touch
-   * equivalent): a tap plays the scramble once, in the same frame as
-   * the row's click behaviour — it never blocks or delays selection.
-   * On fine-pointer devices the hover path owns the effect, so tap
-   * stays a no-op there. */
-  const tap = React.useCallback(
-    (id: string, text: string) => {
-      if (!finePointer()) play(id, text);
-    },
-    [play],
-  );
-
-  React.useEffect(() => {
-    const pending = frames.current;
-    return () => {
-      pending.forEach((f) => cancelAnimationFrame(f));
-      pending.clear();
-    };
-  }, []);
-
-  const register = React.useCallback(
-    (id: string) => (el: SVGTextElement | null) => {
-      if (el) els.current.set(id, el);
-      else els.current.delete(id);
-    },
-    [],
-  );
-
-  return { register, start, tap, stop };
-}
+/* 中文业务播报模板（hud-ux-dock）：结构化日志项 → 一行人话。
+ * detail 是发射点带上的业务对象名（类别+金额 / 决策标题 / 芯片
+ * 名→泳道 / 健康摘要 / 节点文字），缺省时模板自然降级。 */
+const execLineText = (item: ExecLogItem): string => {
+  if ("text" in item) return item.text;
+  const t = `[${fmtClock(new Date(item.ts))}]`;
+  const d = item.detail ?? "";
+  switch (item.type) {
+    case "FINANCE_ADD_ENTRY":
+      return `${t} [财务] 新增记录：${d}`;
+    case "FINANCE_DELETE_ENTRY":
+      return `${t} [财务] 删除记录：${d}`;
+    case "DECISION_ARCHIVE":
+      return `${t} [决策] 已归档：${d}`;
+    case "DECISION_RESTORE":
+      return `${t} [决策] 已恢复：${d}`;
+    case "DECISION_PICK":
+      return `${t} [决策] 已记录意向：${d}`;
+    case "SNAPSHOT_IMPORT":
+      return `${t} [系统] 快照导入完成`;
+    case "HEALTH_SYNC":
+      return `${t} [健康] 数据同步：${d}`;
+    case "STUDIO_STAGE_MOVE":
+      return `${t} [创作] ${d}`;
+    case "MINDMAP_NODE":
+      return `${t} [图谱] 新增灵感节点：${d}`;
+    case "MINDMAP_EDGE":
+      return `${t} [图谱] 灵感节点已连接：${d}`;
+    default:
+      return `${t} ${item.type}`;
+  }
+};
 
 /* ── mobile bottom navigation (2026-10-22, hud-mobile-nav) ──
  * Rendered at every width but display:none above 1100px (CSS), so
@@ -402,6 +322,90 @@ function HudDragRail({
     </div>
   );
 }
+
+/* ── module dock (2026-10-22, hud-ux-dock) ──
+ * Persistent navigation shown whenever a module (or decision-note)
+ * view is open: on desktop a slim vertical bar at the left of the
+ * view row; at ≤1100px the same DOM becomes a horizontal scrollable
+ * strip above the module panel (CSS reflow — see globals.css). The
+ * overview never renders it (it has its own navigation). 总览 goes
+ * through backToOverview so the leaving-focus semantics stay in one
+ * place; module buttons go through openModule — lateral routing
+ * never round-trips the overview. Short labels are the brief's
+ * single characters; beam colour + current highlight come from the
+ * modules table, never a private copy of the list. */
+const DOCK_SHORT: Record<string, string> = {
+  inspiration: "灵",
+  skills: "技",
+  works: "作",
+  database: "数",
+  ontology: "本",
+  calendar: "历",
+  health: "健",
+  finance: "财",
+  studio: "创",
+};
+function HudDock({
+  modules,
+  current,
+  onHome,
+  onOpen,
+}: {
+  modules: HudModule[];
+  current: string | null;
+  onHome: () => void;
+  onOpen: (id: string) => void;
+}) {
+  return (
+    <nav className="hud-dock" data-testid="hud-dock" aria-label="模块导航">
+      <button
+        type="button"
+        className="hud-dock-btn hud-dock-home"
+        data-testid="hud-dock-home"
+        onClick={onHome}
+        title="返回总览"
+      >
+        <span className="hud-dock-ch">总</span>
+        <span className="hud-dock-en">总览</span>
+      </button>
+      {modules.slice(0, 9).map((m) => (
+        <button
+          key={m.id}
+          type="button"
+          className={cn("hud-dock-btn", current === m.id && "hud-dock-on")}
+          data-testid={`hud-dock-btn-${m.id}`}
+          aria-current={current === m.id ? "page" : undefined}
+          style={{ "--beam": m.color } as React.CSSProperties}
+          onClick={() => onOpen(m.id)}
+          title={m.label}
+        >
+          <span className="hud-dock-ch">
+            {DOCK_SHORT[m.id] ?? m.label.slice(0, 1)}
+          </span>
+          <span className="hud-dock-en">{m.en}</span>
+        </button>
+      ))}
+    </nav>
+  );
+}
+
+/* ── ticker slogan store (2026-10-22, hud-ux-dock) ──
+ * The ticker splits in two: a user-editable SLOGAN segment (this
+ * store — localStorage studio_marquee_v1, registered in snapshot.ts
+ * as the marquee slice) and a live STATUS segment that stays
+ * data-driven in the render (health freshness / EP001 / X / XHS)
+ * and is never written into the stored slogan. */
+const MARQUEE_KEY = "studio_marquee_v1";
+const MARQUEE_DEFAULT =
+  "九大模块 · 一个第二大脑 · NINE MODULES · ONE SECOND BRAIN";
+const loadMarquee = (): string => {
+  try {
+    const v = window.localStorage.getItem(MARQUEE_KEY);
+    return v && v.trim() ? v : MARQUEE_DEFAULT;
+  } catch {
+    return MARQUEE_DEFAULT;
+  }
+};
 
 export function NeuralLanding({
   nodes,
@@ -633,13 +637,12 @@ export function NeuralLanding({
   const knowledgeN = skillsN + dbN;
   const outputN = worksN + finN;
 
-  /* ---- module focus: tree nodes + console cards are clickable; the
+  /* ---- module focus: console cards select a focus module; the
    * CORE MAP corner tags, telemetry strip and radar stat rows follow
    * the selection. All copy is derived from the live counts/health
-   * above — same caliber as the overview, never invented. ---- */
+   * above — same caliber as the overview, never invented. (The tree
+   * panel that also used to set focus was retired in hud-ux-dock.) ---- */
   const [sel, setSel] = React.useState<string | null>(null);
-  const [hov, setHov] = React.useState<string | null>(null);
-  const scramble = useScramble();
   /* EXEC log state (hud-bus-pulse): the ref is the write path for
    * the bus subscriber (synchronous append + persist, so an import's
    * own EXEC line survives the reload that follows it); the state
@@ -665,7 +668,7 @@ export function NeuralLanding({
       const note: TermNote = {
         id: termNoteIdRef.current,
         ts: now.getTime(),
-        text: `[${fmtExecStamp(now)}] ${body}`,
+        text: `[${fmtClock(now)}] ${body}`,
         kind,
       };
       setTermNotes((prev) => [...prev.slice(-9), note]);
@@ -692,7 +695,7 @@ export function NeuralLanding({
     latestKind === "note"
       ? (lastTermNote as TermNote).text
       : latestKind === "exec"
-        ? (lastExecItem as ExecLogItem).text
+        ? execLineText(lastExecItem as ExecLogItem)
         : (HUD_LOG_FACTS[HUD_LOG_FACTS.length - 1]?.text ?? "");
   const typedTermLatest = useTypewriter(termLatestText, 32);
   /* ── decision archive (2026-10-22, hud-restyle) ──
@@ -723,15 +726,16 @@ export function NeuralLanding({
       /* storage unavailable → archive lasts for this session only */
     }
   }, []);
-  const archiveDecision = (d: { id: string; module?: string }) => {
+  const archiveDecision = (d: { id: string; module?: string; name?: string }) => {
     writeArchived([...new Set([...archivedIds, d.id])]);
     /* 业务总线（hud-bus-pulse）：归档落盘后发射，module 取该决策
-     * 的归属模块，无归属的 note 类用 "hub"。 */
-    busEmit("DECISION_ARCHIVE", d.module ?? "hub");
+     * 的归属模块，无归属的 note 类用 "hub"；detail 带决策标题，
+     * 供终端拼中文播报（hud-ux-dock）。 */
+    busEmit("DECISION_ARCHIVE", d.module ?? "hub", d.name);
   };
-  const restoreDecision = (d: { id: string; module?: string }) => {
+  const restoreDecision = (d: { id: string; module?: string; name?: string }) => {
     writeArchived(archivedIds.filter((x) => x !== d.id));
-    busEmit("DECISION_RESTORE", d.module ?? "hub");
+    busEmit("DECISION_RESTORE", d.module ?? "hub", d.name);
   };
   /* ── mobile bottom nav + panel sheets (2026-10-22, hud-mobile-nav) ──
    * At ≤1100px (the stacking breakpoint) the module tree and the
@@ -856,59 +860,7 @@ export function NeuralLanding({
           : { main: "EMPTY", note: `${m.en} · 条目 0 · 待填充` };
     }
   };
-  /** Tree SVG row centers (viewBox 276×472), keyed by module id. */
-  const treeRows: { id: string; y: number }[] = [
-    { id: "studio", y: 86 },
-    { id: "works", y: 116 },
-    { id: "skills", y: 146 },
-    { id: "database", y: 226 },
-    { id: "ontology", y: 256 },
-    { id: "inspiration", y: 336 },
-    { id: "calendar", y: 366 },
-    { id: "health", y: 396 },
-    { id: "finance", y: 426 },
-  ];
-  const treeRowY = (id: string) =>
-    treeRows.find((r) => r.id === id)?.y ?? 0;
   const modById = (id: string) => modules.find((m) => m.id === id);
-  const cntFill = (n: number) => (n > 0 ? "#e8f4ff" : "#5f7194");
-  /* Restyle block meter (2026-10-22, hud-restyle): the share track
-   * beside each tree row's number becomes five blocks; lit =
-   * round(share / 20) of the SAME real entry share the filled bars
-   * encoded (sharePct of the live count) — presentation only, the
-   * number is never new. The off-block fill matches
-   * --hud-int-block-off in globals.css. */
-  const treeBlocks = (
-    id: string,
-    count: number | null,
-    y: number,
-    color: string,
-  ) => {
-    const share = sharePct(count);
-    const lit = Math.round(share / 20);
-    return (
-      <g
-        data-testid={`hud-tree-blocks-${id}`}
-        data-lit={lit}
-        data-share={share}
-      >
-        {[0, 1, 2, 3, 4].map((i) => (
-          <rect
-            key={i}
-            x={196 + i * 8.4}
-            y={y - 3}
-            width={6}
-            height={6}
-            fill={i < lit ? color : "#0d1226"}
-            fillOpacity={i < lit ? 1 : 0.55}
-            stroke={color}
-            strokeWidth="0.5"
-          />
-        ))}
-      </g>
-    );
-  };
-
   /* ---- radar polygon: axes scaled to count/13 (mockup caliber) ---- */
   const RC: [number, number] = [79, 84];
   const RV: [number, number][] = [
@@ -1155,6 +1107,40 @@ export function NeuralLanding({
   const [palOpen, setPalOpen] = React.useState(false);
   const [palQuery, setPalQuery] = React.useState("");
   const [palIdx, setPalIdx] = React.useState(0);
+  /* ── ticker slogan editor (2026-10-22, hud-ux-dock) ──
+   * Two entrances, one editor: the radial wheel's 编辑标语 sector
+   * and the palette's 编辑顶部标语 item both open this overlay.
+   * Save applies + persists at once; an empty draft restores the
+   * default slogan instead of blanking the ticker. */
+  const [marquee, setMarquee] = React.useState<string>(loadMarquee);
+  const [marqueeOpen, setMarqueeOpen] = React.useState(false);
+  const [marqueeDraft, setMarqueeDraft] = React.useState("");
+  const marqueeAreaRef = React.useRef<HTMLTextAreaElement | null>(null);
+  const openMarqueeEditor = React.useCallback(() => {
+    setMarqueeDraft(marquee);
+    setMarqueeOpen(true);
+  }, [marquee]);
+  const saveMarquee = React.useCallback(() => {
+    const next = marqueeDraft.trim() || MARQUEE_DEFAULT;
+    try {
+      window.localStorage.setItem(MARQUEE_KEY, next);
+    } catch {
+      /* storage unavailable → the slogan lasts for this session only */
+    }
+    setMarquee(next);
+    setMarqueeOpen(false);
+  }, [marqueeDraft]);
+  React.useEffect(() => {
+    if (marqueeOpen) marqueeAreaRef.current?.focus();
+  }, [marqueeOpen]);
+  React.useEffect(() => {
+    if (!marqueeOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMarqueeOpen(false);
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [marqueeOpen]);
   const palInputRef = React.useRef<HTMLInputElement | null>(null);
   /* ── 脑机快照（Local-First 持久化层，snapshot.ts）：导出/导入/撤销 ──
    * 导入两步确认（InlineConfirmButton 式）：先选文件，按钮变
@@ -1273,6 +1259,14 @@ export function NeuralLanding({
         if (view) backToOverview();
         else setSel(null);
       },
+    },
+    {
+      tid: "marquee",
+      kind: "导航",
+      label: "编辑顶部标语",
+      en: "MARQUEE",
+      hint: "自定义跑马灯标语",
+      run: () => openMarqueeEditor(),
     },
     ...modules.map((m) => ({
       tid: `mod-${m.id}`,
@@ -1716,6 +1710,10 @@ export function NeuralLanding({
       });
     }
     if (!mobile) {
+      /* tree-row anchors retired with the tree panel (hud-ux-dock):
+       * this query now matches nothing — kept so a future left-panel
+       * rebuild can re-offer rows as drop targets without engine
+       * surgery. Zero matches is the normal state, never an error. */
       document
         .querySelectorAll<SVGRectElement>("[data-testid^='hud-tree-row-']")
         .forEach((el) => {
@@ -2092,7 +2090,9 @@ export function NeuralLanding({
         const now = new Date();
         const item: ExecLogItem = {
           ts: now.getTime(),
-          text: `[${fmtExecStamp(now)}] EXEC: ${ev.type} -> SUCCESS`,
+          type: ev.type,
+          module: ev.moduleId,
+          detail: ev.detail,
         };
         const next = [...execLogRef.current, item].slice(-EXEC_LOG_MAX);
         execLogRef.current = next;
@@ -2147,13 +2147,18 @@ export function NeuralLanding({
   const commitManualHealth = React.useCallback((m: ManualHealth) => {
     saveManualHealth(m);
     setManualHealth(m);
-    busEmit("HEALTH_SYNC", "health");
+    /* detail = 归一摘要（hud-ux-dock）：日期 + 有什么写什么，
+     * 供终端拼「[健康] 数据同步：2026-10-20 · 睡眠 6.65h · 步数 2240」。 */
+    const parts = [m.date];
+    if (m.sleepHours !== undefined) parts.push(`睡眠 ${m.sleepHours}h`);
+    if (m.steps !== undefined) parts.push(`步数 ${m.steps}`);
+    busEmit("HEALTH_SYNC", "health", parts.join(" · "));
   }, []);
   const applyHealthText = React.useCallback(
     (text: string) => {
       const r = parseHealthClipboard(text);
       if (!r.ok) {
-        pushTermNote(`EXEC: HEALTH_SYNC -> ERROR · ${r.error}`, "error");
+        pushTermNote(`[健康] 同步失败：${r.error}`, "error");
         return r;
       }
       commitManualHealth(r.value);
@@ -2170,7 +2175,7 @@ export function NeuralLanding({
       text = null;
     }
     if (text === null) {
-      pushTermNote("HEALTH SYNC · 剪贴板读取不可用，改用粘贴同步", "info");
+      pushTermNote("[健康] 剪贴板读取不可用 · 改用粘贴同步", "info");
       setPasteError(null);
       setPasteText("");
       setPasteOpen(true);
@@ -2412,8 +2417,9 @@ export function NeuralLanding({
             <div className="hud-track-inner">
               {[0, 1].map((k) => (
                 <span className="hud-txt" key={k} aria-hidden={k === 1 || undefined}>
-                  九大模块 <i>·</i> 一个第二大脑 <i>·</i> NINE MODULES <u>·</u>{" "}
-                  ONE SECOND BRAIN <i>·</i>{" "}
+                  {/* 标语段（用户可编辑，studio_marquee_v1）+ 状态段
+                   *（实时数据驱动，永不写进标语） */}
+                  {marquee} <i>·</i>{" "}
                   {effHealth.ok ? "HEALTH-SYNC OK" : "HEALTH-SYNC STALE"} <u>·</u>{" "}
                   EP001 PENDING PUBLISH <i>·</i> X PAUSED <u>·</u> XHS PAUSED{" "}
                   <i>·</i>
@@ -2423,19 +2429,32 @@ export function NeuralLanding({
           </div>
         </div>
 
-        {viewMod ? (
-          <HudModuleContent
-            id={viewMod.id}
-            label={viewMod.label}
-            en={viewMod.en}
-            color={viewMod.color}
-            count={viewMod.count}
-            countText={viewMod.countText}
-            onBack={backToOverview}
-            onOpen={openModule}
-          />
-        ) : noteKind ? (
-          <HudDecisionNote kind={noteKind} onBack={backToOverview} />
+        {viewMod || noteKind ? (
+          /* module / note view row (hud-ux-dock): the Dock owns the
+           * left edge, the view panel yields its width (desktop) or
+           * its height (≤1100px horizontal strip) via .hud-viewrow. */
+          <div className="hud-viewrow">
+            <HudDock
+              modules={modules}
+              current={viewMod?.id ?? null}
+              onHome={backToOverview}
+              onOpen={openModule}
+            />
+            {viewMod ? (
+              <HudModuleContent
+                id={viewMod.id}
+                label={viewMod.label}
+                en={viewMod.en}
+                color={viewMod.color}
+                count={viewMod.count}
+                countText={viewMod.countText}
+                onBack={backToOverview}
+                onOpen={openModule}
+              />
+            ) : noteKind ? (
+              <HudDecisionNote kind={noteKind} onBack={backToOverview} />
+            ) : null}
+          </div>
         ) : (
           <>
         {/* ══ MAIN ══ */}
@@ -2462,198 +2481,32 @@ export function NeuralLanding({
               </div>
             </div>
             <div className="hud-treebody">
-              <svg viewBox="0 0 276 472" role="img" aria-label="模块树">
-                <defs>
-                  <filter id="hud-glow" x="-60%" y="-60%" width="220%" height="220%">
-                    <feGaussianBlur stdDeviation="2.2" result="b" />
-                    <feMerge>
-                      <feMergeNode in="b" />
-                      <feMergeNode in="SourceGraphic" />
-                    </feMerge>
-                  </filter>
-                </defs>
-                {[hov, sel].map((id, i) => {
-                  if (!id) return null;
-                  const m = modById(id);
-                  if (!m) return null;
-                  return (
-                    <rect
-                      key={`${i}-${id}`}
-                      x="4"
-                      y={treeRowY(id) - 14}
-                      width="268"
-                      height="28"
-                      fill={m.color}
-                      opacity={i === 1 ? 0.13 : 0.06}
-                      stroke={m.color}
-                      strokeOpacity={i === 1 ? 0.55 : 0.25}
-                    />
-                  );
-                })}
-                <line x1="14" y1="24" x2="14" y2="426" stroke="#3d5a86" strokeWidth="1.6" strokeLinecap="square" />
-                <line x1="14" y1="24" x2="14" y2="426" stroke="#00FFFF" strokeWidth="2" className="hud-flow-line" />
-                <circle cx="14" cy="24" r="6.5" fill="#FFEA00" filter="url(#hud-glow)" />
-                <circle cx="14" cy="24" r="5.5" fill="none" stroke="#FFEA00" strokeWidth="1" className="hud-wave-circle" />
-                <text x="27" y="28" fontSize="11.5" fill="#ffffff" letterSpacing="1">第二大脑</text>
-                <text x="86" y="28" fontSize="8.5" fill="#5f7194" letterSpacing="1">SECOND BRAIN</text>
-                <text x="266" y="28" fontSize="13" fill="#FF007F" textAnchor="end">{total}</text>
-                <line x1="14" y1="56" x2="34" y2="56" stroke="#FF007F" strokeWidth="1.5" strokeLinecap="square" />
-                <line x1="14" y1="56" x2="34" y2="56" stroke="#FF007F" strokeWidth="2" className="hud-flow-line" />
-                <circle cx="34" cy="56" r="5.2" fill="#FF007F" filter="url(#hud-glow)" />
-                <circle cx="34" cy="56" r="5.2" fill="none" stroke="#FF007F" strokeWidth="0.7" className="hud-wave-circle" style={{ animationDelay: ".6s" }} />
-                <text x="46" y="60" fontSize="10.5" fill="#ffb3d6" data-treegroup="create">创作</text>
-                <text x="74" y="60" fontSize="8.5" fill="#5f7194" letterSpacing="1" data-treegroup="create">CREATE</text>
-                <line x1="34" y1="56" x2="34" y2="146" stroke="#7a2b52" strokeWidth="1.5" strokeLinecap="square" />
-                <line x1="34" y1="86" x2="56" y2="86" stroke="#00FFFF" strokeWidth="1.5" strokeLinecap="square" />
-                <circle cx="56" cy="86" r="3.4" fill="#00FFFF" filter="url(#hud-glow)" />
-                <text x="67" y="90" fontSize="10.5" fill="#e8f4ff" className="hud-tree-label" ref={scramble.register("studio")} data-testid="hud-tree-label-studio">创作空间</text>
-                <text x="120" y="90" fontSize="8" fill="#5f7194">STUDIO</text>
-                <text x="266" y="90" fontSize="11" fill="#00FFFF" textAnchor="end">HUB</text>
-                <line x1="34" y1="116" x2="56" y2="116" stroke="#FF007F" strokeWidth="1.5" strokeLinecap="square" />
-                <circle cx="56" cy="116" r="3.4" fill="#FF007F" filter="url(#hud-glow)" />
-                <text x="67" y="120" fontSize="10.5" fill="#e8f4ff" className="hud-tree-label" ref={scramble.register("works")} data-testid="hud-tree-label-works">作品库</text>
-                <text x="110" y="120" fontSize="8" fill="#5f7194">WORKS</text>
-                {treeBlocks("works", worksN, 116, "#FF007F")}
-                <text x="266" y="120" fontSize="11" fill={cntFill(worksN)} textAnchor="end">{worksN}</text>
-                <line x1="34" y1="146" x2="56" y2="146" stroke="#B200FF" strokeWidth="1.5" strokeLinecap="square" />
-                <circle cx="56" cy="146" r="3.4" fill="#B200FF" filter="url(#hud-glow)" />
-                <text x="67" y="150" fontSize="10.5" fill="#e8f4ff" className="hud-tree-label" ref={scramble.register("skills")} data-testid="hud-tree-label-skills">技能库</text>
-                <text x="110" y="150" fontSize="8" fill="#5f7194">SKILLS</text>
-                {treeBlocks("skills", skillsN, 146, "#B200FF")}
-                <text x="266" y="150" fontSize="11" fill={cntFill(skillsN)} textAnchor="end">{skillsN}</text>
-                <line x1="14" y1="196" x2="34" y2="196" stroke="#B200FF" strokeWidth="1.5" strokeLinecap="square" />
-                <line x1="14" y1="196" x2="34" y2="196" stroke="#B200FF" strokeWidth="2" className="hud-flow-line" />
-                <circle cx="34" cy="196" r="5.2" fill="#B200FF" filter="url(#hud-glow)" />
-                <circle cx="34" cy="196" r="5.2" fill="none" stroke="#B200FF" strokeWidth="0.7" className="hud-wave-circle" style={{ animationDelay: "1.2s" }} />
-                <text x="46" y="200" fontSize="10.5" fill="#e3c2ff" data-treegroup="knowledge">知识</text>
-                <text x="74" y="200" fontSize="8.5" fill="#5f7194" letterSpacing="1" data-treegroup="knowledge">KNOWLEDGE</text>
-                <line x1="34" y1="196" x2="34" y2="256" stroke="#4d2680" strokeWidth="1.5" strokeLinecap="square" />
-                <line x1="34" y1="226" x2="56" y2="226" stroke="#00FFFF" strokeWidth="1.5" strokeLinecap="square" />
-                <circle cx="56" cy="226" r="3.4" fill="#00FFFF" filter="url(#hud-glow)" />
-                <text x="67" y="230" fontSize="10.5" fill="#e8f4ff" className="hud-tree-label" ref={scramble.register("database")} data-testid="hud-tree-label-database">数据库</text>
-                <text x="110" y="230" fontSize="8" fill="#5f7194">DATABASE</text>
-                {treeBlocks("database", dbN, 226, "#00FFFF")}
-                <text x="266" y="230" fontSize="11" fill={cntFill(dbN)} textAnchor="end">{dbN}</text>
-                <line x1="34" y1="256" x2="56" y2="256" stroke="#54678a" strokeWidth="1.5" strokeLinecap="square" />
-                <circle cx="56" cy="256" r="3.4" fill="#54678a" filter="url(#hud-glow)" />
-                <text x="67" y="260" fontSize="10.5" fill="#e8f4ff" className="hud-tree-label" ref={scramble.register("ontology")} data-testid="hud-tree-label-ontology">本体知识库</text>
-                <text x="132" y="260" fontSize="8" fill="#5f7194">ONTOLOGY</text>
-                <text x="266" y="260" fontSize="11" fill={cntFill(ontoN)} textAnchor="end">{ontoN}</text>
-                {treeBlocks("ontology", ontoN, 256, "#54678a")}
-                <line x1="14" y1="306" x2="34" y2="306" stroke="#00FFFF" strokeWidth="1.5" strokeLinecap="square" />
-                <line x1="14" y1="306" x2="34" y2="306" stroke="#00FFFF" strokeWidth="2" className="hud-flow-line" />
-                <circle cx="34" cy="306" r="5.2" fill="#00FFFF" filter="url(#hud-glow)" />
-                <circle cx="34" cy="306" r="5.2" fill="none" stroke="#00FFFF" strokeWidth="0.7" className="hud-wave-circle" style={{ animationDelay: "1.8s" }} />
-                <text x="46" y="310" fontSize="10.5" fill="#b3f7ff" data-treegroup="life">生活</text>
-                <text x="74" y="310" fontSize="8.5" fill="#5f7194" letterSpacing="1" data-treegroup="life">LIFE</text>
-                <line x1="34" y1="306" x2="34" y2="426" stroke="#1f5f6b" strokeWidth="1.5" strokeLinecap="square" />
-                <line x1="34" y1="336" x2="56" y2="336" stroke="#54678a" strokeWidth="1.5" strokeLinecap="square" />
-                <circle cx="56" cy="336" r="3.4" fill="#54678a" filter="url(#hud-glow)" />
-                <text x="67" y="340" fontSize="10.5" fill="#e8f4ff" className="hud-tree-label" ref={scramble.register("inspiration")} data-testid="hud-tree-label-inspiration">灵感池</text>
-                <text x="110" y="340" fontSize="8" fill="#5f7194">INSPIRATION</text>
-                <text x="266" y="340" fontSize="11" fill={cntFill(ideasN)} textAnchor="end">{ideasN}</text>
-                {treeBlocks("inspiration", ideasN, 336, "#54678a")}
-                <line x1="34" y1="366" x2="56" y2="366" stroke="#54678a" strokeWidth="1.5" strokeLinecap="square" />
-                <circle cx="56" cy="366" r="3.4" fill="#54678a" filter="url(#hud-glow)" />
-                <text x="67" y="370" fontSize="10.5" fill="#e8f4ff" className="hud-tree-label" ref={scramble.register("calendar")} data-testid="hud-tree-label-calendar">日历表</text>
-                <text x="110" y="370" fontSize="8" fill="#5f7194">CALENDAR</text>
-                <text x="266" y="370" fontSize="11" fill={cntFill(calN)} textAnchor="end">{calN}</text>
-                {treeBlocks("calendar", calN, 366, "#54678a")}
-                <line x1="34" y1="396" x2="56" y2="396" stroke="#ffb03a" strokeWidth="1.5" strokeLinecap="square" />
-                <circle cx="56" cy="396" r="3.4" fill="#ffb03a" filter="url(#hud-glow)" />
-                <text x="67" y="400" fontSize="10.5" fill="#e8f4ff" className="hud-tree-label" ref={scramble.register("health")} data-testid="hud-tree-label-health">身体健康</text>
-                <text x="120" y="400" fontSize="8" fill="#5f7194">HEALTH</text>
-                <text x="266" y="400" fontSize="11" fill="#ffb03a" textAnchor="end">{healthN}</text>
-                {treeBlocks("health", healthN, 396, "#ffb03a")}
-                <line x1="34" y1="426" x2="56" y2="426" stroke="#FFEA00" strokeWidth="1.5" strokeLinecap="square" />
-                <circle cx="56" cy="426" r="3.4" fill="#FFEA00" filter="url(#hud-glow)" />
-                <text x="67" y="430" fontSize="10.5" fill="#e8f4ff" className="hud-tree-label" ref={scramble.register("finance")} data-testid="hud-tree-label-finance">财务系统</text>
-                <text x="120" y="430" fontSize="8" fill="#5f7194">FINANCE</text>
-                {treeBlocks("finance", finN, 426, "#FFEA00")}
-                <text x="266" y="430" fontSize="11" fill={cntFill(finN)} textAnchor="end">{finN}</text>
-                <text x="14" y="462" fontSize="8.5" fill="#41516e" letterSpacing="1">[ DEPTH 3 · NODES 13 · BLOCKS = SHARE ]</text>
-                {/* hover decode marks: SVG <text> has no ::before/::after,
-                 * so the > < pair are real text nodes flanking the label,
-                 * lit while the row is hovered. The group is display:none
-                 * unless (hover:hover) and (pointer:fine) — see globals. */}
-                <g className="hud-tree-marks" aria-hidden>
-                  {treeRows.map((r) => {
-                    const m = modById(r.id);
-                    if (!m) return null;
-                    return (
-                      <React.Fragment key={r.id}>
-                        <text
-                          className="hud-tree-mark"
-                          x={60.5}
-                          y={r.y + 4}
-                          fontSize="9"
-                          style={{ opacity: hov === r.id ? 1 : 0 }}
-                        >
-                          {">"}
-                        </text>
-                        <text
-                          className="hud-tree-mark"
-                          x={67 + m.label.length * 10.5 + 3}
-                          y={r.y + 4}
-                          fontSize="9"
-                          style={{ opacity: hov === r.id ? 1 : 0 }}
-                        >
-                          {"<"}
-                        </text>
-                      </React.Fragment>
-                    );
-                  })}
-                </g>
-                {treeRows.map((r) => (
-                  <rect
-                    key={r.id}
-                    x="0"
-                    y={r.y - 14}
-                    width="276"
-                    height="28"
-                    fill="transparent"
-                    className="hud-tree-hit"
-                    style={{ cursor: "pointer" }}
-                    data-testid={`hud-tree-row-${r.id}`}
-                    onPointerDown={(e) =>
-                      startDrag(e, {
-                        id: r.id,
-                        color: modById(r.id)?.color ?? "#00FFFF",
-                      })
-                    }
-                    onClick={() => {
-                      if (consumeDragSuppress()) return;
-                      scramble.tap(r.id, modById(r.id)?.label ?? "");
-                      focusOrOpen(r.id);
-                    }}
-                    onMouseEnter={() => {
-                      setHov(r.id);
-                      scramble.start(r.id, modById(r.id)?.label ?? "");
-                    }}
-                    onMouseLeave={() => {
-                      setHov(null);
-                      scramble.stop(r.id, modById(r.id)?.label ?? "");
-                    }}
-                  >
-                    <title>{modById(r.id)?.label}</title>
-                  </rect>
-                ))}
-              </svg>
+              {/* 左侧概览面板（hud-ux-dock）：树行/块格/连接线整体
+               * 退役——模块跳转由 Dock、底部卡轨与移动导航承接，
+               * 树行作为拖拽源/投放目标同步退役（引擎测不到锚点
+               * 即无锚点，不报错）。重构方案待用户拍板，先占位，
+               * 不许编造任何统计数字。 */}
+              <div
+                className="hud-tree-placeholder"
+                data-testid="hud-tree-placeholder"
+              >
+                概览面板 · 重构中
+              </div>
             </div>
             <div className="hud-log">
               <div className="hud-log-head">
-                <span>&gt; TERMINAL_LOG</span>
+                <span>&gt; 终端日志</span>
                 <span className="hud-led hud-led-g" />
               </div>
               <div className="hud-log-lines" ref={logLinesRef}>
                 <div style={{ color: "#8fa3c4" }}>
                   {manualSleepApplies
-                    ? `[${(manualHealth as ManualHealth).date.slice(5)}] MANUAL HEALTH SYNC · 剪贴板解析口`
+                    ? `[${(manualHealth as ManualHealth).date.slice(5)}] 健康手动同步 · 剪贴板解析口`
                     : health.ok
-                      ? `[${health.syncTime ?? "--:--"}] SYNC health-sync.json → MAIN · OK`
-                      : "[--:--] SYNC health-sync.json · STALE"}
+                      ? `[${health.syncTime ?? "--:--"}] 健康数据同步完成`
+                      : "[--:--] 健康数据 · 同步过期"}
                 </div>
-                <div>[BOOT] SKILLS LOADED · {skillsN} ENTRIES</div>
+                <div>[启动] 技能库已加载 · {skillsN} 个</div>
                 {HUD_LOG_FACTS.map((l, li) =>
                   li === HUD_LOG_FACTS.length - 1 && latestKind === "fact" ? (
                     /* newest real event line: typewriter reveal
@@ -2673,9 +2526,9 @@ export function NeuralLanding({
                     </div>
                   ),
                 )}
-                {/* EXEC lines (hud-bus-pulse): one per completed
-                 * business action, appended in time order after the
-                 * fact lines; the newest types itself in. */}
+                {/* 业务播报行（hud-bus-pulse → hud-ux-dock 中文化）：
+                 * 每条已完成的业务动作一行，结构化项渲染时拼中文，
+                 * 旧 {ts,text} 项原样显示；最新一行走打字机。 */}
                 {execLog.map((item, i) => {
                   const isTyped =
                     i === execLog.length - 1 && latestKind === "exec";
@@ -2684,14 +2537,16 @@ export function NeuralLanding({
                       key={`${item.ts}-${i}`}
                       data-exec-line="1"
                       data-type={
-                        /EXEC: (\S+)/.exec(item.text)?.[1] ?? ""
+                        "type" in item
+                          ? item.type
+                          : (/EXEC: (\S+)/.exec(item.text)?.[1] ?? "")
                       }
                       {...(isTyped
                         ? { "data-testid": "hud-term-latest" }
                         : {})}
                       style={{ color: "#c8e6ff" }}
                     >
-                      {isTyped ? typedTermLatest : item.text}
+                      {isTyped ? typedTermLatest : execLineText(item)}
                     </div>
                   );
                 })}
@@ -2722,7 +2577,7 @@ export function NeuralLanding({
                   );
                 })}
                 <div style={{ color: "var(--hud-yellow)" }}>
-                  [NOW] AWAITING COMMAND{" "}
+                  [当前] 等待指令{" "}
                   <span className="hud-term-caret" data-testid="hud-term-caret">
                     &gt;_
                   </span>
@@ -3275,7 +3130,10 @@ export function NeuralLanding({
       {/* ══ MIND-MAP STAGE — z 68: above the drag canvas (65),
           below the command palette (70) ══ */}
       {mmOpen && (
-        <MindMap siblingOpen={palOpen} onClose={() => setMmOpen(false)} />
+        <MindMap
+          siblingOpen={palOpen || marqueeOpen}
+          onClose={() => setMmOpen(false)}
+        />
       )}
 
       {/* ══ HEALTH PASTE FALLBACK (hud-health-sync) — same z tier as
@@ -3340,7 +3198,7 @@ export function NeuralLanding({
                 onClick={() => {
                   const r = applyHealthText(pasteText);
                   if (!r.ok) {
-                    setPasteError(`ERROR · ${r.error}`);
+                    setPasteError(`同步失败 · ${r.error}`);
                     return;
                   }
                   setPasteOpen(false);
@@ -3354,15 +3212,73 @@ export function NeuralLanding({
         </div>
       )}
 
+      {/* ══ MARQUEE EDITOR (hud-ux-dock) — same z tier as the
+          palette (70): edits the ticker's slogan segment only; the
+          status segment stays data-driven. Empty save → default. ══ */}
+      {marqueeOpen && (
+        <div
+          className="hud-pal-mask"
+          data-testid="hud-marquee-mask"
+          onClick={() => setMarqueeOpen(false)}
+        >
+          <div
+            className="hud-pal hud-marquee-edit"
+            role="dialog"
+            aria-modal="true"
+            aria-label="编辑顶部标语"
+            data-testid="hud-marquee-editor"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="hud-health-paste-head">
+              <span>编辑标语 · MARQUEE</span>
+              <span className="hud-health-paste-sub">
+                只改跑马灯的标语段；健康 / EP001 / X 等实时状态段保持自动播报
+              </span>
+            </div>
+            <textarea
+              ref={marqueeAreaRef}
+              className="hud-health-paste-area"
+              data-testid="hud-marquee-area"
+              value={marqueeDraft}
+              onChange={(e) => setMarqueeDraft(e.target.value)}
+              placeholder={MARQUEE_DEFAULT}
+              aria-label="顶部标语文本"
+              rows={3}
+              maxLength={200}
+              spellCheck={false}
+            />
+            <div className="hud-health-paste-actions">
+              <button
+                type="button"
+                className="hud-health-paste-btn"
+                data-testid="hud-marquee-cancel"
+                onClick={() => setMarqueeOpen(false)}
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                className="hud-health-paste-btn is-go"
+                data-testid="hud-marquee-save"
+                onClick={saveMarquee}
+              >
+                保存
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ══ RADIAL MENU — right-click (desktop) / long-press (touch) ══ */}
       <RadialMenu
         zenActive={zen}
-        siblingOpen={palOpen || pasteOpen}
+        siblingOpen={palOpen || pasteOpen || marqueeOpen}
         onOpenChange={(o) => {
           radialOpenRef.current = o;
           if (o) {
             setPalOpen(false);
             setPasteOpen(false);
+            setMarqueeOpen(false);
           }
         }}
         onLongPressSummon={cancelPendingDrag}
@@ -3378,6 +3294,7 @@ export function NeuralLanding({
           syncHealth: () => {
             void syncHealth();
           },
+          editMarquee: () => openMarqueeEditor(),
         }}
       />
     </div>

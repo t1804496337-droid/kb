@@ -40,6 +40,7 @@
  */
 
 import * as React from "react";
+import { emit as busEmit } from "@/components/studio/bus";
 
 export type MMNode = { id: string; x: number; y: number; text: string };
 export type MMEdge = { id: string; from: string; to: string };
@@ -411,6 +412,9 @@ export function MindMap({
         ...st,
         nodes: st.nodes.map((n) => (n.id === id ? { ...n, text: t } : n)),
       }));
+      /* 业务总线（hud-ux-dock）：只有「新建节点 + 写下文字」算一次
+       * 建节点成功——改已有节点的文字不发，空文本删节点也不发。 */
+      if (fresh) busEmit("MINDMAP_NODE", "inspiration", t);
     },
     [deleteNode],
   );
@@ -678,6 +682,9 @@ export function MindMap({
           const edge: MMEdge = { id: uid(), from: from.id, to: target.id };
           setState({ ...st, edges: [...st.edges, edge] });
           addPulse(from, target);
+          /* 业务总线（hud-ux-dock）：连边真正落盘后发，detail 带
+           * 两端节点文字，终端拼成「[图谱] 灵感节点已连接：A ↔ B」。 */
+          busEmit("MINDMAP_EDGE", "inspiration", `${from.text} ↔ ${target.text}`);
         }
       }
       draw(performance.now());

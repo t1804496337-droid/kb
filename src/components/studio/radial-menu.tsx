@@ -27,6 +27,8 @@ export type RadialActions = {
   openPalette: () => void;
   /** 拼图三（hud-health-sync）：剪贴板健康解析口，宿主异步执行。 */
   syncHealth: () => void;
+  /** UX 整改（hud-ux-dock）：打开顶部标语编辑浮层。 */
+  editMarquee: () => void;
 };
 
 type Sector = {
@@ -46,12 +48,13 @@ const SECTORS: Sector[] = [
   { key: "palette", label: "命令面板", short: "面板", act: "openPalette" },
   { key: "ticket", label: "新建待办", short: "待办", act: "newTicket" },
   { key: "health", label: "同步健康 · SYNC HEALTH", short: "健康", act: "syncHealth" },
+  { key: "marquee", label: "编辑标语", short: "标语", act: "editMarquee" },
 ];
 
 const R0 = 36;
 const R1 = 106;
 const GAP = 4; /* degrees of dead angle between neighbouring sectors */
-const STEP = 360 / SECTORS.length; /* 60° at six sectors */
+const STEP = 360 / SECTORS.length; /* ≈51.4° at seven sectors */
 const LONG_PRESS_MS = 450;
 const EDGE = 126; /* wheel radius 118 + 8px safety, for centre clamping */
 
@@ -223,6 +226,9 @@ export function RadialMenu({
             break;
           case "syncHealth":
             a.syncHealth();
+            break;
+          case "editMarquee":
+            a.editMarquee();
             break;
         }
       } finally {

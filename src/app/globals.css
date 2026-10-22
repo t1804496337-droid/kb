@@ -3033,6 +3033,16 @@ div.studio-orb.studio-orb-bg,
   /* module empowerment (2026-10-22, hud-empower): skill copy
    * feedback states, obsidian vault hint, pipeline board lanes and
    * the dragged chip's lift. */
+  /* UX overhaul (2026-10-22, hud-ux-dock): module dock (desktop
+   * vertical bar / ≤1100px horizontal strip), the retired tree
+   * panel's placeholder, and the marquee editor's width. */
+  --hud-int-dock-w: 52px;
+  --hud-int-dock-bg: rgba(7, 10, 18, 0.88);
+  --hud-int-dock-border: rgba(0, 255, 255, 0.22);
+  --hud-int-dock-btn-h: 46px;
+  --hud-int-dock-strip-h: 44px;
+  --hud-int-tree-ph-border: rgba(140, 180, 255, 0.35);
+  --hud-int-tree-ph-fg: #5f7194;
   --hud-int-copy-ok: #37ffb0;
   --hud-int-copy-ok-bg: rgba(55, 255, 176, 0.12);
   --hud-int-copy-fail: #ff7ab8;
@@ -5293,4 +5303,124 @@ div.studio-orb.studio-orb-bg,
   .hud-board-lane { min-height: 64px; }
   .hud-board-chip { box-shadow: none; }
   .hud-board-chip-drag { box-shadow: 0 6px 16px rgba(0, 0, 0, 0.55); }
+}
+
+/* ══════════════════════════════════════════════════════════════════
+ * UX overhaul (2026-10-22, hud-ux-dock)
+ *  · .hud-viewrow + .hud-dock — persistent module navigation inside
+ *    a module view (desktop: 52px vertical bar at the row's left;
+ *    ≤1100px: horizontal scrollable strip on top of the view).
+ *  · .hud-tree-placeholder — the retired left tree panel's honest
+ *    empty state (dashed frame + one line, no invented numbers).
+ *  · .hud-marquee-edit — the ticker slogan editor, on the palette
+ *    shell (z 70 comes from .hud-pal-mask / .hud-pal).
+ * ══════════════════════════════════════════════════════════════════ */
+.hud-viewrow {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: 8px;
+}
+.hud-dock {
+  width: var(--hud-int-dock-w);
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 5px;
+  border: 1px solid var(--hud-int-dock-border);
+  background: var(--hud-int-dock-bg);
+  box-shadow: inset 0 0 24px rgba(0, 0, 0, 0.45);
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: none;
+}
+.hud-dock::-webkit-scrollbar { width: 0; height: 0; }
+.hud-dock-btn {
+  font: inherit;
+  flex: none;
+  height: var(--hud-int-dock-btn-h);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  padding: 2px 0;
+  color: #8fa3c4;
+  background: rgba(0, 255, 255, 0.03);
+  border: 1px solid rgba(140, 180, 255, 0.14);
+  border-left: 2px solid var(--beam, rgba(140, 180, 255, 0.3));
+  cursor: pointer;
+}
+.hud-dock-btn:hover {
+  color: #e8f4ff;
+  background: var(--hud-int-chip-bg-hover);
+}
+.hud-dock-home {
+  color: var(--hud-yellow);
+  border-left-color: var(--hud-yellow);
+}
+.hud-dock-on {
+  color: #ffffff;
+  background: var(--hud-int-item-on-bg);
+  border-color: var(--hud-int-item-on-border);
+  border-left: 2px solid var(--beam, var(--hud-cyan));
+  box-shadow: 0 0 10px rgba(0, 255, 255, 0.18), inset 0 0 12px rgba(0, 255, 255, 0.06);
+  text-shadow: 0 0 8px var(--beam, rgba(0, 255, 255, 0.7));
+}
+.hud-dock-ch {
+  font-size: 15px;
+  line-height: 1.1;
+  font-weight: 600;
+}
+.hud-dock-en {
+  font-size: 6.5px;
+  letter-spacing: 0.06em;
+  color: var(--hud-dim);
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.hud-dock-on .hud-dock-en { color: #cfe0ff; }
+
+.hud-tree-placeholder {
+  border: 1px dashed var(--hud-int-tree-ph-border);
+  color: var(--hud-int-tree-ph-fg);
+  font-size: 10.5px;
+  letter-spacing: 0.22em;
+  text-align: center;
+  padding: 44px 10px;
+  margin: 6px 2px;
+  user-select: none;
+}
+
+.hud-marquee-edit { max-width: min(520px, calc(100vw - 32px)); }
+
+@media (max-width: 1100px) {
+  .hud-viewrow { flex-direction: column; }
+  .hud-dock {
+    width: auto;
+    height: var(--hud-int-dock-strip-h);
+    flex-direction: row;
+    align-items: stretch;
+    padding: 5px 6px;
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+  .hud-dock-btn {
+    width: 46px;
+    height: auto;
+    border-left: 1px solid rgba(140, 180, 255, 0.14);
+    border-bottom: 2px solid var(--beam, rgba(140, 180, 255, 0.3));
+  }
+  .hud-dock-home { border-bottom-color: var(--hud-yellow); }
+  .hud-dock-on {
+    border-bottom: 2px solid var(--beam, var(--hud-cyan));
+  }
+  .hud-dock-en { display: none; }
+}
+@media (max-width: 768px) {
+  /* performance tier: the dock keeps its shape, loses its glow */
+  .hud-dock { box-shadow: none; }
+  .hud-dock-on { box-shadow: none; text-shadow: none; }
 }
