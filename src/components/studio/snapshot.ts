@@ -70,7 +70,21 @@ const okFinanceAsset = (a: unknown): boolean =>
 const okCalItem = (i: unknown): boolean =>
   isPlainObject(i) &&
   typeof i.date === "string" &&
-  typeof i.title === "string";
+  typeof i.title === "string" &&
+  /* note / done 是加性可选字段（done 为 hud-crud-p12 的完成状态）：
+   * 缺省合法，出现时须为对应类型，坏值整片拒收不吞。 */
+  (i.note === undefined || typeof i.note === "string") &&
+  (i.done === undefined || typeof i.done === "boolean");
+
+/* 本体站内笔记（2026-10-22, hud-crud-p12）：id/title/tag/createdAt
+ * 必备字符串，body 为加性可选字符串。 */
+const okOntoNote = (n: unknown): boolean =>
+  isPlainObject(n) &&
+  typeof n.id === "string" &&
+  typeof n.title === "string" &&
+  typeof n.tag === "string" &&
+  typeof n.createdAt === "string" &&
+  (n.body === undefined || typeof n.body === "string");
 
 const okFlowStep = (s: unknown): boolean =>
   isPlainObject(s) &&
@@ -275,6 +289,9 @@ export const SLICES: SliceDef[] = [
     kind: "raw",
     validate: (v) => typeof v === "string" && v.length >= 1 && v.length <= 200,
   },
+  /* 本体站内笔记（2026-10-22, hud-crud-p12）：OntologyBody 的本机
+   * 可变条目，与上方库名、库内文件镜像是三回事。 */
+  jsonSlice("ontologyNotes", "studio_ontology_notes_v1", "本体·站内笔记", arrayOf(okOntoNote)),
   /* UI 临时态（旧工作台层：抽屉/分区开合记忆） */
   jsonSlice("skillsOpen", "studio_skills_open_v1", "技能库开合·UI态", isBoolRecord),
   jsonSlice("dbOpen", "studio_db_open_v1", "数据库开合·UI态", isBoolRecord),

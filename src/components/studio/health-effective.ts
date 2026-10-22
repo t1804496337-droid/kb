@@ -172,6 +172,17 @@ export function saveManualHealth(m: ManualHealth): void {
   window.dispatchEvent(new CustomEvent(HEALTH_MANUAL_EVENT));
 }
 
+/** 清除手动记录（2026-10-22, hud-crud-p12）：删除落盘键并广播——
+ * 消费端重读得到 null，manualWins 自然失效，视图回落文件口径。 */
+export function clearManualHealth(): void {
+  try {
+    window.localStorage.removeItem(HEALTH_MANUAL_KEY);
+  } catch {
+    /* 存储不可用：仍广播，消费端重读时自会处理 */
+  }
+  window.dispatchEvent(new CustomEvent(HEALTH_MANUAL_EVENT));
+}
+
 /** 订阅 manual 变更（同页事件 + 跨标签页 storage），返回取消函数。 */
 export function onManualHealthChange(handler: () => void): () => void {
   const onStorage = (e: StorageEvent) => {

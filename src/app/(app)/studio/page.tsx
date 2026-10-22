@@ -584,6 +584,45 @@ export default function StudioPage() {
   const [query, setQuery] = React.useState("");
   const [newTitle, setNewTitle] = React.useState("");
   const [tickets, setTickets] = React.useState(PENDING_TICKETS);
+  /* 总览待办票计数派生（2026-10-22, hud-crud-p12）：landingStats 的
+   * tickets 不再取旧层 tickets 状态（恒为写死 1 张），改由真实数据
+   * 现算——作品库 studio_works_items_v1 中待发布/待公开的件数（键
+   * 未落盘时按播种 2 件计）+ 日历 studio_calendar_items_v1 未完成
+   * 事项数，与 HUD 侧 derivePendingTickets 同一口径。旧层 tickets
+   * 状态本身（旧工作台待办票区）不在本轮作用域，保持原样。 */
+  const [derivedTicketsN, setDerivedTicketsN] = React.useState<number | null>(null);
+  React.useEffect(() => {
+    const compute = () => {
+      try {
+        let n = 0;
+        const rawW = window.localStorage.getItem("studio_works_items_v1");
+        const wParsed: unknown = rawW ? JSON.parse(rawW) : null;
+        const wList: { status?: unknown }[] = Array.isArray(wParsed)
+          ? (wParsed as { status?: unknown }[])
+          : [{ status: "待公开" }, { status: "待发布" }];
+        n += wList.filter(
+          (w) => w && (w.status === "待发布" || w.status === "待公开"),
+        ).length;
+        const rawC = window.localStorage.getItem("studio_calendar_items_v1");
+        const cParsed: unknown = rawC ? JSON.parse(rawC) : null;
+        if (Array.isArray(cParsed)) {
+          n += cParsed.filter(
+            (i) =>
+              i &&
+              typeof i === "object" &&
+              typeof (i as { title?: unknown }).title === "string" &&
+              !(i as { done?: unknown }).done,
+          ).length;
+        }
+        setDerivedTicketsN(n);
+      } catch {
+        /* storage unavailable → 保持旧口径回退值 */
+      }
+    };
+    compute();
+    window.addEventListener("storage", compute);
+    return () => window.removeEventListener("storage", compute);
+  }, []);
   const [hubs, setHubs] = React.useState<WsHub[]>(() => WS_HUBS.map((h) => ({ ...h, rows: [...h.rows] })));
   // Create-task target: a built-in hub key, or a custom module id.
   const [activeHubKey, setActiveHubKey] = React.useState<string>("ll");
@@ -1637,12 +1676,13 @@ export default function StudioPage() {
     setSection(item.id as SectionId);
   };
   // Landing reads live state (not the module-level constants):
-  // stats — Skills/Steps/Slots from their data sources, Tickets from state;
+  // stats — Skills/Steps/Slots from their data sources, Tickets derived
+  // from the works + calendar stores (hud-crud-p12, derivedTicketsN);
   // node counts — each node's hub rows in state; calendar sub shows live tickets.
   const landingStats = [
     { key: "skills", value: skillTotal, label: "已装 Skill", en: "Skills" },
     { key: "steps", value: flowCount, label: "流水线步", en: "Steps" },
-    { key: "tickets", value: tickets.length, label: "待办票", en: "Tickets" },
+    { key: "tickets", value: derivedTicketsN ?? tickets.length, label: "待办票", en: "Tickets" },
     { key: "slots", value: WORK_SLOTS.length, label: "成片槽", en: "Slots" },
   ];
   // Works-section metric cards — same sources as the landing stats.
