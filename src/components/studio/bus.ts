@@ -16,7 +16,7 @@ export type BusEventType =
   | "DECISION_RESTORE"
   | "DECISION_PICK"
   | "SNAPSHOT_IMPORT"
-  /* 预留（拼图三·健康剪贴板解析口接入时挂发射点，本轮不发） */
+  /* 拼图三（hud-health-sync）：剪贴板解析口校验通过、manual 落盘后发 */
   | "HEALTH_SYNC";
 
 export type BusEvent = {
