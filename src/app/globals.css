@@ -5266,6 +5266,18 @@ div.studio-orb.studio-orb-bg,
   flex-wrap: wrap;
   margin-bottom: var(--hud-sp-12);
 }
+/* CRUD 表单件（2026-10-22, hud-crud-p0）：灵感池步骤 / 作品库条目的
+ * 行内新增与编辑表单——select 复用 hud-module-input 皮肤只改布局，
+ * 编辑框与表单同色系，颜色全走既有变量、无新字面量。 */
+.hud-module-select { width: auto; flex: none; margin-bottom: 0; }
+.hud-module-flabel { display: flex; align-items: center; gap: var(--hud-sp-6); }
+.hud-module-editbox {
+  border: var(--hud-sp-1) solid var(--hud-c-00ffff-a30);
+  background: var(--hud-c-0d1222-a66);
+  padding: var(--hud-sp-10);
+  margin-bottom: var(--hud-sp-8);
+}
+.hud-module-editbox .hud-module-form:last-child { margin-bottom: 0; }
 .hud-module-toggle {
   font: inherit;
   font-size: var(--hud-sp-10);
