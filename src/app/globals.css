@@ -2934,6 +2934,9 @@ div.studio-orb.studio-orb-bg,
  * stock values until a dedicated migration pass. */
 :root {
   --hud-int-dim-opacity: 0.25;
+  --hud-int-stale-opacity: 0.4;
+  --hud-int-stale: #ffb03a;
+  --hud-int-flip-dur: 0.3s;
   --hud-int-slide-dur: 0.25s;
   --hud-int-pal-dur: 0.26s;
   --hud-int-sheet-dur: 0.3s;
@@ -3523,6 +3526,18 @@ div.studio-orb.studio-orb-bg,
   transition: opacity 0.2s ease, filter 0.2s ease, background 0.15s ease;
 }
 .hud-srow.is-dim { opacity: var(--hud-int-dim-opacity); filter: saturate(0.3); }
+/* decision-stack algorithmic decay (2026-10-22, hud-decision-algo):
+ * rows untouched > 3 Shanghai calendar days sink to the decayed
+ * layer at 40% opacity with an amber STALE · n 天未动 marker. A row
+ * that is ALSO linkage-dimmed takes the darker value (.25), never a
+ * product of the two. */
+.hud-srow.is-stale { opacity: var(--hud-int-stale-opacity); }
+.hud-srow.is-stale.is-dim { opacity: var(--hud-int-dim-opacity); }
+.hud-srow .hud-stale {
+  color: var(--hud-int-stale);
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+}
 .hud-srow-rel {
   background: var(--hud-int-rel-bg);
   box-shadow: inset 2px 0 0 var(--hud-cyan), var(--hud-int-rel-glow);
