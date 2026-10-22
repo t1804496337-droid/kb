@@ -524,6 +524,8 @@ export function NeuralLanding({
    * factual only — the decorative progress percentages of the frozen
    * mockup were removed (no real source). */
   const decisions: {
+    /** Stable slug — the drag engine's source id (onDrop sourceId). */
+    id: string;
     led: HudModule["led"] | "p";
     name: string;
     en: string;
@@ -539,36 +541,42 @@ export function NeuralLanding({
     module?: string;
   }[] = [
     {
+      id: "ep001",
       led: "p", name: "EP001 公开", en: "YOUTUBE PUBLISH", tag: "待公开",
       tagCls: "hud-c-pink", target: "works", module: "works",
       fact: "已上传 · 待手机端改公开",
       wait: "等你 · 手机操作",
     },
     {
+      id: "health-sync",
       led: "a", name: "健康数据同步", en: "HEALTH SYNC", tag: healthTag,
       tagCls: healthTagCls, target: "health", module: "health",
       fact: healthFact,
       wait: "等数据 · 手机同步",
     },
     {
+      id: "calendar-tickets",
       led: "g", name: `待办票 ×${ticketsN}`, en: "CALENDAR TICKETS", tag: "待清",
       tagCls: "hud-c-cyan", target: "calendar", module: "calendar",
       fact: "日历模块待办票未清",
       wait: "等你 · 随手清",
     },
     {
+      id: "xhs-decision",
       led: "p", name: "小红书去向", en: "XHS DECISION A/B/C", tag: "待拍板",
       tagCls: "hud-c-pur", note: "xhs",
       fact: "申诉 / 换号 / 搁置 · 待拍板",
       wait: "等你 · 三选一",
     },
     {
+      id: "ontology-build",
       led: "d", name: "本体知识库填充", en: "ONTOLOGY BUILD", tag: "建设中",
       tagCls: "hud-c-pur", target: "ontology", module: "ontology",
       fact: "空壳已上线 · 条目 0 · 细节待排期",
       wait: "等排期",
     },
     {
+      id: "x-resume",
       led: "d", name: "X 账号恢复", en: "X OPS RESUME", tag: "已暂停",
       tagCls: "hud-c-pink", note: "x",
       fact: "8 个定时任务停用 · 待指令",
@@ -744,6 +752,454 @@ export function NeuralLanding({
     const y1 = e.changedTouches[0]?.clientY ?? y0;
     if (y1 - y0 > 56) setPalOpen(false);
   };
+
+  /* ── drag & drop engine (2026-10-22, hud-drag-engine) ──
+   * Press-and-drag a decision row or a tree row: past a 10px
+   * threshold the press becomes a drag — a full-screen canvas
+   * overlay draws a glass rail + flowing energy line from the grab
+   * point to the cursor, module anchors (console cards, tree rows,
+   * nine design hotspots on the sphere disc) magnetise within
+   * 90px, and releasing over an anchor runs a 600ms comet pulse
+   * along the curve and dispatches onDrop(sourceId, targetId).
+   * The drop is event-only: nothing is persisted, no data
+   * ownership changes, no "bound" copy appears. Below the
+   * threshold the press stays a plain click; the suppression flag
+   * only ever eats the single click that trails a completed drag. */
+  type DragAnchor = {
+    id: string;
+    kind: "card" | "tree" | "orb";
+    cx: number;
+    cy: number;
+    color: string;
+    el: Element | null;
+  };
+  type DragCurve = {
+    x0: number; y0: number; cx: number; cy: number; x1: number; y1: number;
+  };
+  type DragState = {
+    pointerId: number;
+    srcId: string;
+    srcEl: Element;
+    color: string;
+    originX: number;
+    originY: number;
+    x: number;
+    y: number;
+    endX: number;
+    endY: number;
+    active: boolean;
+    anchors: DragAnchor[];
+    hot: DragAnchor | null;
+    phase: "drag" | "pulse" | "fade";
+    pulseStart: number;
+    fadeStart: number;
+    pulseTarget: DragAnchor | null;
+    curve: DragCurve | null;
+    lowFx: boolean;
+    cleanup: () => void;
+  };
+  const dragCanvasRef = React.useRef<HTMLCanvasElement | null>(null);
+  const dragRef = React.useRef<DragState | null>(null);
+  const dragRafRef = React.useRef(0);
+  const dragSuppressRef = React.useRef(false);
+  const DRAG_THRESHOLD = 10;
+  const DRAG_SNAP_R = 90;
+  const dragPulseMs = () => {
+    /* QA may stretch the pulse to catch a mid-flight screenshot;
+     * production value is 600ms. */
+    const w = window as unknown as { __hudPulseMs?: unknown };
+    return typeof w.__hudPulseMs === "number" && w.__hudPulseMs > 0
+      ? w.__hudPulseMs
+      : 600;
+  };
+  const dragCurveFor = (
+    x0: number, y0: number, x1: number, y1: number,
+  ): DragCurve => {
+    const d = Math.hypot(x1 - x0, y1 - y0);
+    const sag = Math.min(80, d * 0.16);
+    return { x0, y0, cx: (x0 + x1) / 2, cy: (y0 + y1) / 2 + sag, x1, y1 };
+  };
+  const dragBezPt = (c: DragCurve, t: number) => {
+    const u = 1 - t;
+    return {
+      x: u * u * c.x0 + 2 * u * t * c.cx + t * t * c.x1,
+      y: u * u * c.y0 + 2 * u * t * c.cy + t * t * c.y1,
+    };
+  };
+  const consumeDragSuppress = () => {
+    if (dragSuppressRef.current) {
+      dragSuppressRef.current = false;
+      return true;
+    }
+    return false;
+  };
+  const sizeDragCanvas = () => {
+    const c = dragCanvasRef.current;
+    if (!c) return;
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    c.width = Math.round(window.innerWidth * dpr);
+    c.height = Math.round(window.innerHeight * dpr);
+    c.getContext("2d")?.setTransform(dpr, 0, 0, dpr, 0, 0);
+  };
+  const clearDragCanvas = () => {
+    const c = dragCanvasRef.current;
+    const ctx = c?.getContext("2d");
+    if (c && ctx) ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+  };
+  const fireDrop = (sourceId: string, targetId: string) => {
+    const w = window as unknown as {
+      __hudLastDrop?: {
+        sourceId: string; targetId: string; source: string; target: string;
+      };
+      __hudOnDrop?: (sourceId: string, targetId: string) => void;
+    };
+    w.__hudLastDrop = { sourceId, targetId, source: sourceId, target: targetId };
+    try {
+      w.__hudOnDrop?.(sourceId, targetId);
+    } catch {
+      /* a registered listener must never break the drop itself */
+    }
+  };
+  const finishDragPulse = () => {
+    const s = dragRef.current;
+    if (!s) return;
+    const target = s.pulseTarget;
+    dragRef.current = null;
+    clearDragCanvas();
+    if (target) {
+      if (target.el) {
+        const el = target.el;
+        el.classList.add("hud-drop-done");
+        window.setTimeout(() => el.classList.remove("hud-drop-done"), 340);
+      }
+      fireDrop(s.srcId, target.id);
+    }
+  };
+  const drawDragFrame = (now: number) => {
+    const canvas = dragCanvasRef.current;
+    const s = dragRef.current;
+    if (!canvas || !s) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+
+    if (s.phase === "pulse" && s.curve && s.pulseTarget) {
+      /* comet pulse: white-hot head, beam-colour trail of fading
+       * samples behind it along the same curve (fibre afterglow). */
+      const c = s.curve;
+      const t = Math.min(1, Math.max(0, (now - s.pulseStart) / dragPulseMs()));
+      const ease = 1 - (1 - t) * (1 - t);
+      const col = s.pulseTarget.color;
+      const trailN = s.lowFx ? 7 : 14;
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(c.x0, c.y0);
+      ctx.quadraticCurveTo(c.cx, c.cy, c.x1, c.y1);
+      ctx.strokeStyle = "rgba(0, 255, 255, 0.12)";
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      for (let i = trailN; i >= 1; i -= 1) {
+        const tt = ease - i * 0.026;
+        if (tt < 0) continue;
+        const p = dragBezPt(c, tt);
+        const f = 1 - i / (trailN + 1);
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 0.6 + 4.4 * f, 0, Math.PI * 2);
+        ctx.globalAlpha = 0.75 * f * f;
+        ctx.fillStyle = col;
+        ctx.fill();
+      }
+      const head = dragBezPt(c, ease);
+      ctx.globalAlpha = 1;
+      ctx.beginPath();
+      ctx.arc(head.x, head.y, 7, 0, Math.PI * 2);
+      ctx.fillStyle = col;
+      if (!s.lowFx) {
+        ctx.shadowColor = col;
+        ctx.shadowBlur = 16;
+      }
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.beginPath();
+      ctx.arc(head.x, head.y, 2.8, 0, Math.PI * 2);
+      ctx.fillStyle = "#ffffff";
+      ctx.fill();
+      ctx.restore();
+      return;
+    }
+    if (s.phase !== "drag" && s.phase !== "fade") return;
+    let alpha = 1;
+    if (s.phase === "fade") {
+      alpha = Math.max(0, 1 - (now - s.fadeStart) / 100);
+    }
+    if (alpha <= 0) return;
+    const c = dragCurveFor(s.originX, s.originY, s.endX, s.endY);
+    ctx.save();
+    /* sphere hotspots fade in while dragging — the disc reads as a
+     * drop surface too, not just the cards and tree rows. */
+    for (const a of s.anchors) {
+      if (a.kind !== "orb") continue;
+      ctx.globalAlpha = alpha * 0.4;
+      ctx.beginPath();
+      ctx.arc(a.cx, a.cy, 8, 0, Math.PI * 2);
+      ctx.strokeStyle = a.color;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(a.cx, a.cy, 1.8, 0, Math.PI * 2);
+      ctx.fillStyle = a.color;
+      ctx.fill();
+    }
+    ctx.globalAlpha = alpha;
+    /* 1 · glass rail: a 1px near-invisible solid line under the
+     * flow, so the dashes read as light inside a physical pipe. */
+    ctx.beginPath();
+    ctx.moveTo(c.x0, c.y0);
+    ctx.quadraticCurveTo(c.cx, c.cy, c.x1, c.y1);
+    ctx.strokeStyle = "rgba(0, 255, 255, 0.14)";
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    /* 2 · energy flow: flowing dashes in the target beam colour */
+    const flowCol = s.hot ? s.hot.color : s.color;
+    ctx.beginPath();
+    ctx.moveTo(c.x0, c.y0);
+    ctx.quadraticCurveTo(c.cx, c.cy, c.x1, c.y1);
+    ctx.strokeStyle = flowCol;
+    ctx.lineWidth = 2;
+    ctx.setLineDash([10, 8]);
+    ctx.lineDashOffset = -now / 16;
+    if (!s.lowFx) {
+      ctx.shadowColor = flowCol;
+      ctx.shadowBlur = 8;
+    }
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+    ctx.setLineDash([]);
+    /* grab point */
+    ctx.beginPath();
+    ctx.arc(s.originX, s.originY, 3, 0, Math.PI * 2);
+    ctx.fillStyle = s.color;
+    ctx.fill();
+    /* snapped sphere hotspot: breathing alert ring */
+    if (s.hot && s.hot.kind === "orb") {
+      ctx.beginPath();
+      ctx.arc(s.hot.cx, s.hot.cy, 17 + 5 * Math.sin(now / 150), 0, Math.PI * 2);
+      ctx.strokeStyle = "#ff007f";
+      ctx.lineWidth = 2;
+      if (!s.lowFx) {
+        ctx.shadowColor = "#ff007f";
+        ctx.shadowBlur = 12;
+      }
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+    }
+    ctx.restore();
+  };
+  const dragLoop = (now: number) => {
+    dragRafRef.current = 0;
+    const s = dragRef.current;
+    if (!s) return;
+    drawDragFrame(now);
+    if (s.phase === "pulse" && now - s.pulseStart >= dragPulseMs()) {
+      finishDragPulse();
+      return;
+    }
+    if (s.phase === "fade" && now - s.fadeStart >= 100) {
+      clearDragCanvas();
+      dragRef.current = null;
+      return;
+    }
+    dragRafRef.current = requestAnimationFrame(dragLoop);
+  };
+  const ensureDragLoop = () => {
+    if (!dragRafRef.current) {
+      dragRafRef.current = requestAnimationFrame(dragLoop);
+    }
+  };
+  React.useEffect(
+    () => () => {
+      dragRef.current?.cleanup();
+      dragRef.current = null;
+      if (dragRafRef.current) cancelAnimationFrame(dragRafRef.current);
+      dragRafRef.current = 0;
+    },
+    [],
+  );
+  /* Anchors are measured once per press (at pointerdown) and
+   * cached for the whole gesture — no layout reads while moving. */
+  const measureDragAnchors = (): DragAnchor[] => {
+    const out: DragAnchor[] = [];
+    document
+      .querySelectorAll<HTMLElement>(".hud-card[data-module]")
+      .forEach((el) => {
+        const m = modById(el.dataset.module ?? "");
+        if (!m) return;
+        const r = el.getBoundingClientRect();
+        out.push({
+          id: m.id, kind: "card",
+          cx: r.left + r.width / 2, cy: r.top + r.height / 2,
+          color: m.color, el,
+        });
+      });
+    document
+      .querySelectorAll<SVGRectElement>("[data-testid^='hud-tree-row-']")
+      .forEach((el) => {
+        const m = modById((el.dataset.testid ?? "").replace("hud-tree-row-", ""));
+        if (!m) return;
+        const r = el.getBoundingClientRect();
+        out.push({
+          id: m.id, kind: "tree",
+          cx: r.left + r.width / 2, cy: r.top + r.height / 2,
+          color: m.color, el,
+        });
+      });
+    const sphere = document.querySelector(".hud-sphere");
+    if (sphere) {
+      /* design anchors on the disc: the eight ring modules around,
+       * the HUB (modules[8], 创作空间) at the centre. */
+      const r = sphere.getBoundingClientRect();
+      const cx = r.left + r.width / 2;
+      const cy = r.top + r.height / 2;
+      const rad = Math.min(r.width, r.height) / 2;
+      modules.slice(0, 9).forEach((m, i) => {
+        const spot =
+          i === 8
+            ? { dx: 0, dy: 0 }
+            : {
+                dx: Math.cos((i * Math.PI) / 4 - Math.PI / 2) * 0.58,
+                dy: Math.sin((i * Math.PI) / 4 - Math.PI / 2) * 0.58,
+              };
+        out.push({
+          id: m.id, kind: "orb",
+          cx: cx + spot.dx * rad, cy: cy + spot.dy * rad,
+          color: m.color, el: null,
+        });
+      });
+    }
+    return out;
+  };
+  const onDragMove = (ev: PointerEvent) => {
+    const s = dragRef.current;
+    if (!s || ev.pointerId !== s.pointerId) return;
+    s.x = ev.clientX;
+    s.y = ev.clientY;
+    if (!s.active) {
+      if (Math.hypot(s.x - s.originX, s.y - s.originY) < DRAG_THRESHOLD) return;
+      s.active = true;
+      document
+        .querySelector(".hud-root")
+        ?.classList.add("hud-dragging");
+      sizeDragCanvas();
+      ensureDragLoop();
+    }
+    let best: DragAnchor | null = null;
+    let bestD = DRAG_SNAP_R;
+    for (const a of s.anchors) {
+      if (a.el && a.el === s.srcEl) continue;
+      const d = Math.hypot(s.x - a.cx, s.y - a.cy);
+      if (d < bestD) {
+        bestD = d;
+        best = a;
+      }
+    }
+    if (best !== s.hot) {
+      s.hot?.el?.classList.remove("hud-drop-hot");
+      s.hot = best;
+      best?.el?.classList.add("hud-drop-hot");
+    }
+    if (best) {
+      /* magnetic pull: the closer the cursor, the harder the line
+       * end is drawn onto the anchor centre (1 at contact). */
+      const k = 1 - bestD / DRAG_SNAP_R;
+      s.endX = s.x + (best.cx - s.x) * k;
+      s.endY = s.y + (best.cy - s.y) * k;
+    } else {
+      s.endX = s.x;
+      s.endY = s.y;
+    }
+  };
+  const onDragUp = (ev: PointerEvent) => {
+    const s = dragRef.current;
+    if (!s || ev.pointerId !== s.pointerId) return;
+    if (!s.active) {
+      /* below the threshold: a plain click — leave it to the
+       * element's own onClick, untouched. */
+      dragRef.current = null;
+      return;
+    }
+    dragSuppressRef.current = true;
+    /* a missed click event must not eat a later genuine click */
+    window.setTimeout(() => {
+      dragSuppressRef.current = false;
+    }, 400);
+    document.querySelector(".hud-root")?.classList.remove("hud-dragging");
+    s.hot?.el?.classList.remove("hud-drop-hot");
+    if (s.hot) {
+      s.phase = "pulse";
+      s.pulseStart = performance.now();
+      s.pulseTarget = s.hot;
+      s.curve = dragCurveFor(s.originX, s.originY, s.hot.cx, s.hot.cy);
+      s.hot = null;
+      ensureDragLoop();
+    } else {
+      s.phase = "fade";
+      s.fadeStart = performance.now();
+      ensureDragLoop();
+    }
+  };
+  const startDrag = (
+    e: React.PointerEvent,
+    src: { id: string; color: string },
+  ) => {
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    if (dragRef.current) return;
+    const el = e.currentTarget as Element;
+    try {
+      el.setPointerCapture(e.pointerId);
+    } catch {
+      /* synthetic pointers may not be capturable; the window
+       * listeners below still receive the whole gesture. */
+    }
+    const s: DragState = {
+      pointerId: e.pointerId,
+      srcId: src.id,
+      srcEl: el,
+      color: src.color,
+      originX: e.clientX,
+      originY: e.clientY,
+      x: e.clientX,
+      y: e.clientY,
+      endX: e.clientX,
+      endY: e.clientY,
+      active: false,
+      anchors: measureDragAnchors(),
+      hot: null,
+      phase: "drag",
+      pulseStart: 0,
+      fadeStart: 0,
+      pulseTarget: null,
+      curve: null,
+      lowFx: window.matchMedia("(max-width: 768px)").matches,
+      cleanup: () => undefined,
+    };
+    const move = (ev: PointerEvent) => onDragMove(ev);
+    const up = (ev: PointerEvent) => {
+      s.cleanup();
+      onDragUp(ev);
+    };
+    s.cleanup = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
+    };
+    dragRef.current = s;
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
+  };
+  const decisionDragColor = (d: (typeof decisions)[number]) =>
+    (d.module ? modById(d.module)?.color : undefined) ??
+    (d.note === "xhs" ? "#B200FF" : d.note === "x" ? "#FF007F" : "#00FFFF");
 
   return (
     <div
@@ -1013,9 +1469,17 @@ export function NeuralLanding({
                     width="276"
                     height="28"
                     fill="transparent"
+                    className="hud-tree-hit"
                     style={{ cursor: "pointer" }}
                     data-testid={`hud-tree-row-${r.id}`}
+                    onPointerDown={(e) =>
+                      startDrag(e, {
+                        id: r.id,
+                        color: modById(r.id)?.color ?? "#00FFFF",
+                      })
+                    }
                     onClick={() => {
+                      if (consumeDragSuppress()) return;
                       scramble.tap(r.id, modById(r.id)?.label ?? "");
                       focusOrOpen(r.id);
                     }}
@@ -1302,7 +1766,15 @@ export function NeuralLanding({
                     style={
                       related ? { animationDelay: `${i * 45}ms` } : undefined
                     }
-                    onClick={() => openDecision(d)}
+                    draggable={false}
+                    onDragStart={(e) => e.preventDefault()}
+                    onPointerDown={(e) =>
+                      startDrag(e, { id: d.id, color: decisionDragColor(d) })
+                    }
+                    onClick={() => {
+                      if (consumeDragSuppress()) return;
+                      openDecision(d);
+                    }}
                   >
                     <div className="hud-r1">
                       <span className={`hud-led hud-led-${d.led}`} />
@@ -1432,6 +1904,14 @@ export function NeuralLanding({
           </div>
         )}
       </div>
+
+      {/* drag engine overlay: line + comet pulse only; idle = empty */}
+      <canvas
+        ref={dragCanvasRef}
+        className="hud-drag-canvas"
+        data-testid="hud-drag-canvas"
+        aria-hidden
+      />
     </div>
   );
 }

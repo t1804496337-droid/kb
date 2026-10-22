@@ -2960,6 +2960,8 @@ div.studio-orb.studio-orb-bg,
   --hud-int-grip-bg: rgba(0, 255, 255, 0.45);
   --hud-int-mark-glow: drop-shadow(0 0 3px rgba(0, 255, 255, 0.8));
   --hud-int-corner-glow: drop-shadow(0 0 4px var(--hud-cyan));
+  --hud-int-alert: #ff007f;
+  --hud-int-drag-done-dur: 0.3s;
   --hud-int-panel-shadow-mobile: 0 0 14px rgba(0, 255, 255, 0.05);
   --hud-int-panel-pink-shadow-mobile: 0 0 14px rgba(255, 0, 127, 0.08);
   --hud-int-panel-purple-shadow-mobile: 0 0 14px rgba(178, 0, 255, 0.09);
@@ -4301,6 +4303,47 @@ div.studio-orb.studio-orb-bg,
 }
 
 /* ══════════════════════════════════════════════════════════════════
+ * DRAG ENGINE (2026-10-22, hud-drag-engine)
+ * Full-screen canvas overlay for the drag line + comet pulse: above
+ * the overview, below the command palette (z 70); the CRT layer
+ * (.hud-root::after, z 90) still washes over it. Drag sources opt
+ * out of touch scrolling so a touch drag never becomes a scroll.
+ * ══════════════════════════════════════════════════════════════════ */
+.hud-drag-canvas {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 65;
+  pointer-events: none;
+}
+.hud-root.hud-dragging,
+.hud-root.hud-dragging * { cursor: grabbing !important; }
+.hud-root.hud-dragging { user-select: none; -webkit-user-select: none; }
+.hud-srow-btn { touch-action: none; }
+.hud-tree-hit { touch-action: none; }
+/* snapped target: alert edge + beam-coloured glow, layout untouched */
+.hud-card.hud-drop-hot {
+  transform: translateY(-2px) scale(1.045);
+  border-color: var(--hud-int-alert);
+  box-shadow:
+    0 0 0 1px var(--hud-int-alert),
+    0 0 22px rgba(255, 0, 127, 0.4),
+    inset 0 0 16px rgba(255, 0, 127, 0.16);
+}
+.hud-tree-hit.hud-drop-hot {
+  fill: rgba(255, 0, 127, 0.16);
+  stroke: var(--hud-int-alert);
+  stroke-width: 1.2;
+}
+/* drop delivered: one bright flash, then back to normal */
+.hud-drop-done { animation: hud-drop-done var(--hud-int-drag-done-dur) ease-out; }
+@keyframes hud-drop-done {
+  0% { filter: brightness(2.2); }
+  100% { filter: brightness(1); }
+}
+
+/* ══════════════════════════════════════════════════════════════════
  * PERFORMANCE TIER · max-width:768px (2026-10-22, hud-interactions)
  * Mobile filter budget (user rule 2026-10-22 · 性能分级）: the new
  * interaction elements and the overview's heaviest surfaces drop
@@ -4331,4 +4374,8 @@ div.studio-orb.studio-orb-bg,
   }
   /* decision linkage highlight: single inset edge, no outer glow */
   .hud-srow-rel { box-shadow: inset 2px 0 0 var(--hud-cyan); }
+  /* drag target: glow collapses to a single layer (the canvas side
+   * of the tier — fewer trail samples, no shadowBlur — is in the
+   * engine's lowFx flag, keyed on the same 768px width). */
+  .hud-card.hud-drop-hot { box-shadow: 0 0 10px rgba(255, 0, 127, 0.35); }
 }
