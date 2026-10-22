@@ -2987,6 +2987,9 @@ div.studio-orb.studio-orb-bg,
   --hud-int-panel-purple-shadow-mobile: 0 0 14px rgba(178, 0, 255, 0.09);
   /* radial menu (2026-10-22, hud-radial) */
   --hud-int-yellow: #ffea00;
+  /* terminal EXEC log (2026-10-22, hud-bus-pulse): the log line box
+   * caps here and scrolls — the newest line stays pinned visible. */
+  --hud-int-log-max-h: 172px;
   /* mind-map stage (2026-10-22, hud-mindmap): z 68 sits between
    * the drag canvas (65) and the command palette (70). */
   --hud-int-mm-z: 68;
@@ -3320,7 +3323,17 @@ div.studio-orb.studio-orb-bg,
   color: var(--hud-dim);
   line-height: 1.58;
   letter-spacing: 0.04em;
+  /* hud-bus-pulse: fact lines + up to 20 EXEC lines outgrow the
+   * panel slot — cap and scroll internally (the component pins the
+   * scroll to the bottom so the newest line is always on screen). */
+  max-height: var(--hud-int-log-max-h);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
 }
+.hud-log-lines::-webkit-scrollbar { width: 4px; }
+.hud-log-lines::-webkit-scrollbar-thumb { background: rgba(0, 255, 255, 0.35); }
+.hud-log-lines::-webkit-scrollbar-track { background: transparent; }
 .hud-tree .hud-foot {
   flex: none;
   padding: 6px 10px;
