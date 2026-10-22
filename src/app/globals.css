@@ -2962,6 +2962,19 @@ div.studio-orb.studio-orb-bg,
   --hud-int-corner-glow: drop-shadow(0 0 4px var(--hud-cyan));
   --hud-int-alert: #ff007f;
   --hud-int-drag-done-dur: 0.3s;
+  /* mobile nav / sheets / drag rail (2026-10-22, hud-mobile-nav) */
+  --hud-int-mnav-h: 56px;
+  --hud-int-mnav-bg: rgba(7, 10, 18, 0.97);
+  --hud-int-mnav-border: rgba(0, 255, 255, 0.35);
+  --hud-int-sheet-bg: rgba(7, 10, 18, 0.98);
+  --hud-int-sheet-shadow: 0 -10px 28px rgba(0, 0, 0, 0.55);
+  --hud-int-sheet-min-h: 44px;
+  --hud-int-grip-w: 44px;
+  --hud-int-grip-h: 3px;
+  --hud-int-rail-h: 64px;
+  --hud-int-rail-bg: rgba(7, 10, 18, 0.97);
+  --hud-int-badge-bg: #ff007f;
+  --hud-int-badge-glow: 0 0 8px rgba(255, 0, 127, 0.6);
   --hud-int-panel-shadow-mobile: 0 0 14px rgba(0, 255, 255, 0.05);
   --hud-int-panel-pink-shadow-mobile: 0 0 14px rgba(255, 0, 127, 0.08);
   --hud-int-panel-purple-shadow-mobile: 0 0 14px rgba(178, 0, 255, 0.09);
@@ -4344,6 +4357,199 @@ div.studio-orb.studio-orb-bg,
 }
 
 /* ══════════════════════════════════════════════════════════════════
+ * MOBILE NAV + SHEETS + DRAG RAIL (2026-10-22, hud-mobile-nav)
+ * At the 1100px stacking breakpoint the module tree and the
+ * decision stack stop stacking and become bottom sheets, driven by
+ * [data-msheet] on .hud-root; a fixed five-segment bottom nav opens
+ * them, and the console cards hand their entry-point role to it.
+ * Same DOM, new form — desktop (>1100px) is byte-identical: the nav,
+ * rail and sheet grips are display:none there. Layer order inside
+ * the HUD: sheets 55 < drag rail 60 < drag canvas 65 < palette 70
+ * (the CRT wash ::after at 90 still sits above all of them).
+ * ══════════════════════════════════════════════════════════════════ */
+.hud-mnav { display: none; }
+.hud-drag-rail { display: none; }
+.hud-sheet-grip { display: none; }
+
+@media (max-width: 1100px) {
+  /* room for the fixed nav at the end of the scroll */
+  .hud-wrap { padding-bottom: calc(var(--hud-int-mnav-h) + 16px); }
+  /* the nav takes over the console's entry-point role */
+  .hud-console { display: none; }
+
+  /* page scroll locks while a sheet is open (the root is the
+   * scroller at this breakpoint) */
+  .hud-root[data-msheet="tree"],
+  .hud-root[data-msheet="decisions"] { overflow-y: hidden; }
+
+  /* ── sheets: the tree + decision panels, same DOM ── */
+  .hud-tree,
+  .hud-stack {
+    position: fixed;
+    left: 8px;
+    right: 8px;
+    bottom: calc(var(--hud-int-mnav-h) + 6px);
+    width: auto;
+    max-height: 62vh;
+    z-index: 55;
+    background: var(--hud-int-sheet-bg);
+    box-shadow: var(--hud-int-sheet-shadow);
+    /* hidden: fully below the fold (own height + bottom offset) */
+    transform: translateY(calc(100% + var(--hud-int-mnav-h) + 14px));
+    transition: transform var(--hud-int-sheet-dur) cubic-bezier(0.2, 0.9, 0.25, 1);
+    pointer-events: none;
+    overscroll-behavior: contain;
+  }
+  .hud-stack { overflow-y: auto; }
+  .hud-root[data-msheet="tree"] .hud-tree,
+  .hud-root[data-msheet="decisions"] .hud-stack {
+    transform: translateY(0);
+    pointer-events: auto;
+  }
+  /* mid-drag from inside a sheet: the open sheet collapses to its
+   * 44px title strip so the drag rail is reachable; it restores
+   * when the drag (and any delivery pulse) ends. */
+  .hud-root.hud-dragging[data-msheet="tree"] .hud-tree,
+  .hud-root.hud-drop-pulse[data-msheet="tree"] .hud-tree,
+  .hud-root.hud-dragging[data-msheet="decisions"] .hud-stack,
+  .hud-root.hud-drop-pulse[data-msheet="decisions"] .hud-stack {
+    transform: translateY(calc(100% - var(--hud-int-sheet-min-h)));
+  }
+  /* the grip + panel head form one sticky unit inside the sheet:
+   * scrolling the sheet's content never loses the close gesture
+   * zone or the panel title. */
+  .hud-sheet-head {
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    background: var(--hud-int-sheet-bg);
+  }
+  /* FUI sheet handle: a hard cyan bar, iOS-home-indicator shaped
+   * but squared. (A dedicated element, not ::before — the panels'
+   * pseudo elements are the corner brackets.) */
+  .hud-sheet-grip {
+    display: block;
+    flex: none;
+    width: var(--hud-int-grip-w);
+    height: var(--hud-int-grip-h);
+    margin: 7px auto 3px;
+    background: var(--hud-cyan);
+    box-shadow: 0 0 6px rgba(0, 255, 255, 0.55);
+  }
+  /* group jump feedback: the label the nav scrolled to flashes once */
+  .hud-tree[data-flash="create"] [data-treegroup="create"],
+  .hud-tree[data-flash="knowledge"] [data-treegroup="knowledge"],
+  .hud-tree[data-flash="life"] [data-treegroup="life"] {
+    animation: hud-group-flash 0.95s ease;
+  }
+
+  /* ── bottom navigation ── */
+  .hud-mnav {
+    display: flex;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 50;
+    height: calc(var(--hud-int-mnav-h) + env(safe-area-inset-bottom));
+    padding-bottom: env(safe-area-inset-bottom);
+    background: var(--hud-int-mnav-bg);
+    border-top: 1px solid var(--hud-int-mnav-border);
+  }
+  .hud-mnav-seg {
+    flex: 1;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1px;
+    background: none;
+    border: none;
+    border-right: 1px dashed rgba(140, 180, 255, 0.14);
+    font: inherit;
+    color: var(--hud-ink);
+    cursor: pointer;
+    padding: 0;
+  }
+  .hud-mnav-seg:last-child { border-right: none; }
+  .hud-mnav-cn { font-size: 12px; letter-spacing: 0.14em; }
+  .hud-mnav-en { font-size: 7.5px; letter-spacing: 0.18em; color: var(--hud-dim); }
+  .hud-mnav-seg-on {
+    color: var(--hud-cyan);
+    background: var(--hud-int-item-on-bg);
+    box-shadow: inset 0 2px 0 var(--hud-cyan);
+  }
+  .hud-mnav-badge {
+    position: absolute;
+    top: 5px;
+    right: calc(50% - 23px);
+    min-width: 15px;
+    height: 15px;
+    padding: 0 4px;
+    border-radius: 8px;
+    background: var(--hud-int-badge-bg);
+    box-shadow: var(--hud-int-badge-glow);
+    color: #fff;
+    font-size: 9px;
+    line-height: 15px;
+    text-align: center;
+  }
+
+  /* ── drag rail: the mobile drop surface ── */
+  .hud-drag-rail {
+    display: flex;
+    gap: 6px;
+    align-items: stretch;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 60;
+    height: calc(var(--hud-int-rail-h) + env(safe-area-inset-bottom));
+    padding: 8px 8px calc(8px + env(safe-area-inset-bottom));
+    background: var(--hud-int-rail-bg);
+    border-top: 1px solid var(--hud-int-mnav-border);
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+    transform: translateY(110%);
+    transition: transform var(--hud-int-sheet-dur) cubic-bezier(0.2, 0.9, 0.25, 1);
+  }
+  .hud-drag-rail::-webkit-scrollbar { display: none; }
+  .hud-root.hud-dragging .hud-drag-rail,
+  .hud-root.hud-drop-pulse .hud-drag-rail { transform: translateY(0); }
+  .hud-rail-chip {
+    flex: 1 0 auto;
+    min-width: 63px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    border: 1px solid rgba(130, 170, 255, 0.22);
+    background: rgba(10, 14, 26, 0.85);
+    font: inherit;
+    color: var(--hud-ink);
+    cursor: pointer;
+    transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+  }
+  .hud-rail-ic { font-size: 14px; line-height: 1; }
+  .hud-rail-nm { font-size: 9.5px; letter-spacing: 0.08em; white-space: nowrap; }
+  /* snapped chip: same alert language as the desktop cards */
+  .hud-rail-chip.hud-drop-hot {
+    transform: scale(1.07);
+    border-color: var(--hud-int-alert);
+    box-shadow:
+      0 0 0 1px var(--hud-int-alert),
+      0 0 18px rgba(255, 0, 127, 0.4);
+  }
+}
+@keyframes hud-group-flash {
+  35% { fill: #ffffff; filter: drop-shadow(0 0 6px var(--hud-cyan)); }
+}
+
+/* ══════════════════════════════════════════════════════════════════
  * PERFORMANCE TIER · max-width:768px (2026-10-22, hud-interactions)
  * Mobile filter budget (user rule 2026-10-22 · 性能分级）: the new
  * interaction elements and the overview's heaviest surfaces drop
@@ -4378,4 +4584,10 @@ div.studio-orb.studio-orb-bg,
    * of the tier — fewer trail samples, no shadowBlur — is in the
    * engine's lowFx flag, keyed on the same 768px width). */
   .hud-card.hud-drop-hot { box-shadow: 0 0 10px rgba(255, 0, 127, 0.35); }
+  /* mobile nav batch: sheet grip loses its glow, the rail chip's
+   * snap glow collapses to a single layer, sheets drop their lift
+   * shadow (hud-mobile-nav). */
+  .hud-sheet-grip { box-shadow: none; }
+  .hud-rail-chip.hud-drop-hot { box-shadow: 0 0 10px rgba(255, 0, 127, 0.35); }
+  .hud-tree, .hud-stack { box-shadow: none; }
 }

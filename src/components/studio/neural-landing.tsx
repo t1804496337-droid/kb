@@ -198,6 +198,101 @@ function useScramble() {
   return { register, start, tap, stop };
 }
 
+/* ── mobile bottom navigation (2026-10-22, hud-mobile-nav) ──
+ * Rendered at every width but display:none above 1100px (CSS), so
+ * the desktop layout is untouched. Five segments map to the tree's
+ * real groups; the 决策 badge counts the live decision rows. */
+function HudMobileNav({
+  sheet,
+  group,
+  home,
+  pending,
+  onOverview,
+  onGroup,
+  onDecisions,
+}: {
+  sheet: "none" | "tree" | "decisions";
+  group: string;
+  home: boolean;
+  pending: number;
+  onOverview: () => void;
+  onGroup: (g: string) => void;
+  onDecisions: () => void;
+}) {
+  const segs: {
+    tid: string;
+    cn: string;
+    en: string;
+    active: boolean;
+    run: () => void;
+    badge?: number;
+  }[] = [
+    { tid: "overview", cn: "总览", en: "OVERVIEW", active: home && sheet === "none", run: onOverview },
+    { tid: "create", cn: "创作", en: "CREATE", active: sheet === "tree" && group === "create", run: () => onGroup("create") },
+    { tid: "knowledge", cn: "知识", en: "KNOWLEDGE", active: sheet === "tree" && group === "knowledge", run: () => onGroup("knowledge") },
+    { tid: "life", cn: "生活", en: "LIFE", active: sheet === "tree" && group === "life", run: () => onGroup("life") },
+    {
+      tid: "decisions", cn: "决策", en: "DECISIONS",
+      active: sheet === "decisions", run: onDecisions, badge: pending,
+    },
+  ];
+  return (
+    <nav className="hud-mnav" data-testid="hud-mnav" aria-label="移动端导航">
+      {segs.map((s) => (
+        <button
+          key={s.tid}
+          type="button"
+          className={cn("hud-mnav-seg", s.active && "hud-mnav-seg-on")}
+          data-testid={`hud-mnav-seg-${s.tid}`}
+          aria-pressed={s.active}
+          onClick={s.run}
+        >
+          <span className="hud-mnav-cn">{s.cn}</span>
+          <span className="hud-mnav-en">{s.en}</span>
+          {s.badge != null && s.badge > 0 && (
+            <span className="hud-mnav-badge" data-testid="hud-mnav-badge">
+              {s.badge}
+            </span>
+          )}
+        </button>
+      ))}
+    </nav>
+  );
+}
+
+/* ── drag rail (2026-10-22, hud-mobile-nav) ──
+ * The mobile drop surface for the drag engine: nine module chips in
+ * a thumb-scrollable rail, pinned to the bottom while a drag is live
+ * (CSS keys off .hud-dragging / .hud-drop-pulse on the root). The
+ * engine measures these chips as its card anchors in mobile mode. */
+function HudDragRail({
+  modules,
+  onOpen,
+}: {
+  modules: HudModule[];
+  onOpen: (id: string) => void;
+}) {
+  return (
+    <div className="hud-drag-rail" data-testid="hud-drag-rail" aria-hidden>
+      {modules.slice(0, 9).map((m) => (
+        <button
+          key={m.id}
+          type="button"
+          className="hud-rail-chip"
+          style={{ color: m.color }}
+          data-module={m.id}
+          data-testid={`hud-rail-chip-${m.id}`}
+          tabIndex={-1}
+          onClick={() => onOpen(m.id)}
+        >
+          <span className="hud-rail-ic">{m.icon}</span>
+          <span className="hud-rail-nm">{m.label}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export function NeuralLanding({
   nodes,
   leaving,
@@ -400,6 +495,65 @@ export function NeuralLanding({
   const [sel, setSel] = React.useState<string | null>(null);
   const [hov, setHov] = React.useState<string | null>(null);
   const scramble = useScramble();
+  /* ── mobile bottom nav + panel sheets (2026-10-22, hud-mobile-nav) ──
+   * At ≤1100px (the stacking breakpoint) the module tree and the
+   * decision stack become bottom sheets driven by this one state —
+   * the desktop DOM is reused as-is, only its CSS form changes (see
+   * globals.css). Segments of the mobile nav open them: 总览 closes,
+   * 创作/知识/生活 open the tree sheet scrolled to that group,
+   * 决策 opens the decision sheet. */
+  type Msheet = "none" | "tree" | "decisions";
+  const [msheet, setMsheet] = React.useState<Msheet>("none");
+  const treeGroupRef = React.useRef<string>("create");
+  const [treeFlash, setTreeFlash] = React.useState<{
+    group: string;
+    n: number;
+  } | null>(null);
+  const treePanelRef = React.useRef<HTMLDivElement | null>(null);
+  const openTreeGroup = (g: string) => {
+    setView(null);
+    if (msheet === "tree" && treeGroupRef.current === g) {
+      setMsheet("none");
+      return;
+    }
+    treeGroupRef.current = g;
+    setMsheet("tree");
+    setTreeFlash({ group: g, n: Date.now() });
+  };
+  /* after the tree sheet rises: scroll its group label into view and
+   * let the CSS flash on [data-flash] play once. */
+  React.useEffect(() => {
+    if (msheet !== "tree" || !treeFlash) return;
+    const panel = treePanelRef.current;
+    if (!panel) return;
+    const raf = requestAnimationFrame(() => {
+      const el = panel.querySelector(`[data-treegroup="${treeFlash.group}"]`);
+      if (el) {
+        const pr = panel.getBoundingClientRect();
+        const er = el.getBoundingClientRect();
+        panel.scrollTop += er.top - pr.top - 52;
+      }
+    });
+    const t = window.setTimeout(() => setTreeFlash(null), 1050);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.clearTimeout(t);
+    };
+  }, [msheet, treeFlash]);
+  /* sheet head drag-down to close — same gesture as the palette
+   * sheet: a >56px downward swipe on the grip / panel head. */
+  const sheetTouchY = React.useRef<number | null>(null);
+  const onSheetTouchStart = (e: React.TouchEvent) => {
+    sheetTouchY.current = e.touches[0]?.clientY ?? null;
+  };
+  const onSheetTouchEnd = (e: React.TouchEvent) => {
+    const y0 = sheetTouchY.current;
+    sheetTouchY.current = null;
+    if (y0 == null) return;
+    const y1 = e.changedTouches[0]?.clientY ?? y0;
+    if (y1 - y0 > 56) setMsheet("none");
+  };
+
   /* Module content view (2026-10-21): clicking a tree row / console card
    * opens that module's real content in place of the overview; the back
    * button returns. Selection linkage above still applies — opening a
@@ -408,6 +562,7 @@ export function NeuralLanding({
   const openModule = (id: string) => {
     setSel(id);
     setView(id);
+    setMsheet("none");
   };
   /* Overview focus toggle: clicking the already-focused module's tree
    * row / console card again clears the focus (back to the plain
@@ -585,7 +740,10 @@ export function NeuralLanding({
   ];
   const openDecision = (d: (typeof decisions)[number]) => {
     if (d.target) openModule(d.target);
-    else if (d.note) setView(`note:${d.note}`);
+    else if (d.note) {
+      setMsheet("none");
+      setView(`note:${d.note}`);
+    }
   };
 
   /* ── command palette (2026-10-22, hud-interactions) ──
@@ -778,6 +936,12 @@ export function NeuralLanding({
   };
   type DragState = {
     pointerId: number;
+    pointerType: string;
+    /** ≤1100px mobile mode: anchors are the drag-rail chips + orb
+     * hotspots (desktop cards are display:none there), the open
+     * sheet minimises while dragging, and haptics may fire. */
+    mobile: boolean;
+    railTimer: number;
     srcId: string;
     srcEl: Element;
     color: string;
@@ -860,13 +1024,27 @@ export function NeuralLanding({
       /* a registered listener must never break the drop itself */
     }
   };
+  /* Haptic tick (2026-10-22, hud-mobile-nav): touch drags — and
+   * any drag in mobile mode — get a 10ms vibrate on snap acquisition
+   * and on delivery. Desktop mouse drags stay silent; unsupported
+   * APIs are skipped quietly. */
+  const buzz = (s: DragState) => {
+    if (s.pointerType !== "touch" && !s.mobile) return;
+    try {
+      navigator.vibrate?.(10);
+    } catch {
+      /* API present but blocked — the drop itself must not break */
+    }
+  };
   const finishDragPulse = () => {
     const s = dragRef.current;
     if (!s) return;
     const target = s.pulseTarget;
     dragRef.current = null;
     clearDragCanvas();
+    document.querySelector(".hud-root")?.classList.remove("hud-drop-pulse");
     if (target) {
+      buzz(s);
       if (target.el) {
         const el = target.el;
         el.classList.add("hud-drop-done");
@@ -1020,39 +1198,56 @@ export function NeuralLanding({
     () => () => {
       dragRef.current?.cleanup();
       dragRef.current = null;
+      document.querySelector(".hud-root")?.classList.remove("hud-drop-pulse");
       if (dragRafRef.current) cancelAnimationFrame(dragRafRef.current);
       dragRafRef.current = 0;
     },
     [],
   );
   /* Anchors are measured once per press (at pointerdown) and
-   * cached for the whole gesture — no layout reads while moving. */
-  const measureDragAnchors = (): DragAnchor[] => {
+   * cached for the whole gesture — no layout reads while moving.
+   * Mobile mode swaps the target set: the desktop cards are
+   * display:none (zero rects) and the tree lives in a sheet that
+   * minimises mid-drag, so the drag rail's chips — re-measured once
+   * the rail has risen — are the module targets instead. */
+  const measureDragAnchors = (mobile = false, railUp = false): DragAnchor[] => {
     const out: DragAnchor[] = [];
-    document
-      .querySelectorAll<HTMLElement>(".hud-card[data-module]")
-      .forEach((el) => {
+    /* in mobile mode the chips only count once the rail has risen —
+     * before that they sit below the fold and would false-snap
+     * drags that pass near the bottom edge. */
+    const cardSel = mobile
+      ? railUp
+        ? ".hud-rail-chip[data-module]"
+        : null
+      : ".hud-card[data-module]";
+    if (cardSel) {
+      document.querySelectorAll<HTMLElement>(cardSel).forEach((el) => {
         const m = modById(el.dataset.module ?? "");
         if (!m) return;
         const r = el.getBoundingClientRect();
+        if (r.width === 0 && r.height === 0) return;
         out.push({
           id: m.id, kind: "card",
           cx: r.left + r.width / 2, cy: r.top + r.height / 2,
           color: m.color, el,
         });
       });
-    document
-      .querySelectorAll<SVGRectElement>("[data-testid^='hud-tree-row-']")
-      .forEach((el) => {
-        const m = modById((el.dataset.testid ?? "").replace("hud-tree-row-", ""));
-        if (!m) return;
-        const r = el.getBoundingClientRect();
-        out.push({
-          id: m.id, kind: "tree",
-          cx: r.left + r.width / 2, cy: r.top + r.height / 2,
-          color: m.color, el,
+    }
+    if (!mobile) {
+      document
+        .querySelectorAll<SVGRectElement>("[data-testid^='hud-tree-row-']")
+        .forEach((el) => {
+          const m = modById((el.dataset.testid ?? "").replace("hud-tree-row-", ""));
+          if (!m) return;
+          const r = el.getBoundingClientRect();
+          if (r.width === 0 && r.height === 0) return;
+          out.push({
+            id: m.id, kind: "tree",
+            cx: r.left + r.width / 2, cy: r.top + r.height / 2,
+            color: m.color, el,
+          });
         });
-      });
+    }
     const sphere = document.querySelector(".hud-sphere");
     if (sphere) {
       /* design anchors on the disc: the eight ring modules around,
@@ -1091,6 +1286,17 @@ export function NeuralLanding({
         ?.classList.add("hud-dragging");
       sizeDragCanvas();
       ensureDragLoop();
+      if (s.mobile) {
+        /* the drag rail rises on .hud-dragging (CSS transition);
+         * once it has settled, re-measure so the chips become the
+         * anchor set. The line origin stays the grab point — the
+         * minimising sheet must not make the line jump. */
+        s.railTimer = window.setTimeout(() => {
+          if (dragRef.current === s && s.active) {
+            s.anchors = measureDragAnchors(true, true);
+          }
+        }, 300);
+      }
     }
     let best: DragAnchor | null = null;
     let bestD = DRAG_SNAP_R;
@@ -1106,6 +1312,8 @@ export function NeuralLanding({
       s.hot?.el?.classList.remove("hud-drop-hot");
       s.hot = best;
       best?.el?.classList.add("hud-drop-hot");
+      /* snap acquired (or switched target): one haptic tick */
+      if (best) buzz(s);
     }
     if (best) {
       /* magnetic pull: the closer the cursor, the harder the line
@@ -1135,6 +1343,9 @@ export function NeuralLanding({
     document.querySelector(".hud-root")?.classList.remove("hud-dragging");
     s.hot?.el?.classList.remove("hud-drop-hot");
     if (s.hot) {
+      /* keep the drag rail up (and the sheet minimised) until the
+       * pulse has landed — finishDragPulse removes this class. */
+      document.querySelector(".hud-root")?.classList.add("hud-drop-pulse");
       s.phase = "pulse";
       s.pulseStart = performance.now();
       s.pulseTarget = s.hot;
@@ -1160,8 +1371,12 @@ export function NeuralLanding({
       /* synthetic pointers may not be capturable; the window
        * listeners below still receive the whole gesture. */
     }
+    const isMobile = window.matchMedia("(max-width: 1100px)").matches;
     const s: DragState = {
       pointerId: e.pointerId,
+      pointerType: e.pointerType,
+      mobile: isMobile,
+      railTimer: 0,
       srcId: src.id,
       srcEl: el,
       color: src.color,
@@ -1172,7 +1387,7 @@ export function NeuralLanding({
       endX: e.clientX,
       endY: e.clientY,
       active: false,
-      anchors: measureDragAnchors(),
+      anchors: measureDragAnchors(isMobile),
       hot: null,
       phase: "drag",
       pulseStart: 0,
@@ -1191,6 +1406,7 @@ export function NeuralLanding({
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
       window.removeEventListener("pointercancel", up);
+      if (s.railTimer) window.clearTimeout(s.railTimer);
     };
     dragRef.current = s;
     window.addEventListener("pointermove", move);
@@ -1206,6 +1422,7 @@ export function NeuralLanding({
       className={cn("hud-root", leaving && "hud-leaving", quick && "hud-quick")}
       data-testid="studio-landing"
       data-quick={quick ? "1" : "0"}
+      data-msheet={msheet}
     >
       <div className="hud-wrap">
         {/* ══ TOP STATUS BAR ══ */}
@@ -1311,12 +1528,26 @@ export function NeuralLanding({
           <>
         {/* ══ MAIN ══ */}
         <div className="hud-main">
-          {/* LEFT · THE ORB TREE */}
-          <div className="hud-panel hud-tree">
-            <div className="hud-phead">
-              <span className="hud-t">THE ORB · 模块树</span>
-              <span className="hud-chip hud-c-cyan">TREE</span>
-              <span className="hud-hex">0x0RB1</span>
+          {/* LEFT · THE ORB TREE (bottom sheet at ≤1100px) */}
+          <div
+            className="hud-panel hud-tree"
+            ref={treePanelRef}
+            data-testid="hud-tree-panel"
+            data-flash={
+              msheet === "tree" && treeFlash ? treeFlash.group : undefined
+            }
+          >
+            <div
+              className="hud-sheet-head"
+              onTouchStart={onSheetTouchStart}
+              onTouchEnd={onSheetTouchEnd}
+            >
+              <div className="hud-sheet-grip" aria-hidden />
+              <div className="hud-phead">
+                <span className="hud-t">THE ORB · 模块树</span>
+                <span className="hud-chip hud-c-cyan">TREE</span>
+                <span className="hud-hex">0x0RB1</span>
+              </div>
             </div>
             <div className="hud-treebody">
               <svg viewBox="0 0 276 472" role="img" aria-label="模块树">
@@ -1358,8 +1589,8 @@ export function NeuralLanding({
                 <line x1="14" y1="56" x2="34" y2="56" stroke="#FF007F" strokeWidth="2" className="hud-flow-line" />
                 <circle cx="34" cy="56" r="4" fill="#FF007F" filter="url(#hud-glow)" />
                 <circle cx="34" cy="56" r="4" fill="none" stroke="#FF007F" strokeWidth="0.7" className="hud-wave-circle" style={{ animationDelay: ".6s" }} />
-                <text x="46" y="60" fontSize="10.5" fill="#ffb3d6">创作</text>
-                <text x="74" y="60" fontSize="8.5" fill="#5f7194" letterSpacing="1">CREATE</text>
+                <text x="46" y="60" fontSize="10.5" fill="#ffb3d6" data-treegroup="create">创作</text>
+                <text x="74" y="60" fontSize="8.5" fill="#5f7194" letterSpacing="1" data-treegroup="create">CREATE</text>
                 <line x1="34" y1="56" x2="34" y2="146" stroke="#7a2b52" strokeWidth="1.1" />
                 <line x1="34" y1="86" x2="56" y2="86" stroke="#00FFFF" strokeWidth="1.1" />
                 <circle cx="56" cy="86" r="3.4" fill="#00FFFF" filter="url(#hud-glow)" />
@@ -1384,8 +1615,8 @@ export function NeuralLanding({
                 <line x1="14" y1="196" x2="34" y2="196" stroke="#B200FF" strokeWidth="2" className="hud-flow-line" />
                 <circle cx="34" cy="196" r="4" fill="#B200FF" filter="url(#hud-glow)" />
                 <circle cx="34" cy="196" r="4" fill="none" stroke="#B200FF" strokeWidth="0.7" className="hud-wave-circle" style={{ animationDelay: "1.2s" }} />
-                <text x="46" y="200" fontSize="10.5" fill="#e3c2ff">知识</text>
-                <text x="74" y="200" fontSize="8.5" fill="#5f7194" letterSpacing="1">KNOWLEDGE</text>
+                <text x="46" y="200" fontSize="10.5" fill="#e3c2ff" data-treegroup="knowledge">知识</text>
+                <text x="74" y="200" fontSize="8.5" fill="#5f7194" letterSpacing="1" data-treegroup="knowledge">KNOWLEDGE</text>
                 <line x1="34" y1="196" x2="34" y2="256" stroke="#4d2680" strokeWidth="1.1" />
                 <line x1="34" y1="226" x2="56" y2="226" stroke="#00FFFF" strokeWidth="1.1" />
                 <circle cx="56" cy="226" r="3.4" fill="#00FFFF" filter="url(#hud-glow)" />
@@ -1403,8 +1634,8 @@ export function NeuralLanding({
                 <line x1="14" y1="306" x2="34" y2="306" stroke="#00FFFF" strokeWidth="2" className="hud-flow-line" />
                 <circle cx="34" cy="306" r="4" fill="#00FFFF" filter="url(#hud-glow)" />
                 <circle cx="34" cy="306" r="4" fill="none" stroke="#00FFFF" strokeWidth="0.7" className="hud-wave-circle" style={{ animationDelay: "1.8s" }} />
-                <text x="46" y="310" fontSize="10.5" fill="#b3f7ff">生活</text>
-                <text x="74" y="310" fontSize="8.5" fill="#5f7194" letterSpacing="1">LIFE</text>
+                <text x="46" y="310" fontSize="10.5" fill="#b3f7ff" data-treegroup="life">生活</text>
+                <text x="74" y="310" fontSize="8.5" fill="#5f7194" letterSpacing="1" data-treegroup="life">LIFE</text>
                 <line x1="34" y1="306" x2="34" y2="426" stroke="#1f5f6b" strokeWidth="1.1" />
                 <line x1="34" y1="336" x2="56" y2="336" stroke="#54678a" strokeWidth="1.1" />
                 <circle cx="56" cy="336" r="3.4" fill="#54678a" filter="url(#hud-glow)" />
@@ -1740,11 +1971,21 @@ export function NeuralLanding({
               </div>
             </div>
 
-            <div className="hud-panel hud-p-pink hud-stack">
-              <div className="hud-phead">
-                <span className="hud-t">DECISION STACK · 决策栈</span>
-                <span className="hud-chip hud-c-pink">{decisions.length} 待决</span>
-                <span className="hud-hex">0xD5TK</span>
+            <div
+              className="hud-panel hud-p-pink hud-stack"
+              data-testid="hud-stack-panel"
+            >
+              <div
+                className="hud-sheet-head"
+                onTouchStart={onSheetTouchStart}
+                onTouchEnd={onSheetTouchEnd}
+              >
+                <div className="hud-sheet-grip" aria-hidden />
+                <div className="hud-phead">
+                  <span className="hud-t">DECISION STACK · 决策栈</span>
+                  <span className="hud-chip hud-c-pink">{decisions.length} 待决</span>
+                  <span className="hud-hex">0xD5TK</span>
+                </div>
               </div>
               {decisions.map((d, i) => {
                 /* focus linkage: with a module focused, its decision
@@ -1904,6 +2145,25 @@ export function NeuralLanding({
           </div>
         )}
       </div>
+
+      {/* mobile chrome (≤1100px only, CSS-gated): bottom nav +
+       * drag rail. Desktop never sees either. */}
+      <HudMobileNav
+        sheet={msheet}
+        group={treeGroupRef.current}
+        home={!viewMod && !noteKind}
+        pending={decisions.length}
+        onOverview={() => {
+          setView(null);
+          setMsheet("none");
+        }}
+        onGroup={openTreeGroup}
+        onDecisions={() => {
+          setView(null);
+          setMsheet(msheet === "decisions" ? "none" : "decisions");
+        }}
+      />
+      <HudDragRail modules={modules} onOpen={openModule} />
 
       {/* drag engine overlay: line + comet pulse only; idle = empty */}
       <canvas
