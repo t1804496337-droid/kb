@@ -3058,6 +3058,23 @@ div.studio-orb.studio-orb-bg,
   --hud-int-lane-bg: rgba(7, 10, 18, 0.55);
   --hud-int-lane-border: rgba(0, 255, 255, 0.16);
   --hud-int-chip-drag-shadow: 0 10px 26px rgba(0, 0, 0, 0.6), 0 0 18px rgba(0, 255, 255, 0.28);
+  /* spatial denoise (2026-10-22, hud-denoise): the overview's main
+   * panels trade the full border for four L-corner ticks at low
+   * beam opacity over a faint cyan分区 tint, panel padding unifies
+   * at 15px, the centre sphere yields 12% of its size to wider
+   * 18px gutters, and the terminal rests collapsed on one line. */
+  --hud-int-panel-pad: 15px;
+  --hud-int-main-gap: 18px;
+  --hud-int-sphere-scale: 0.88;
+  --hud-int-corner-len: 10px;
+  --hud-int-corner-w: 1.5px;
+  --hud-int-corner-c: rgba(0, 255, 255, 0.55);
+  --hud-int-corner-c-pink: rgba(255, 0, 127, 0.55);
+  --hud-int-corner-c-purple: rgba(178, 0, 255, 0.6);
+  --hud-int-panel-tint: rgba(0, 255, 255, 0.06);
+  --hud-int-stack-gap: 10px;
+  --hud-int-log-line-h: 14px;
+  --hud-int-log-fade: rgba(2, 4, 9, 0.55);
 }
 .hud-root {
   --hud-bg: #07080a;
@@ -3309,7 +3326,7 @@ div.studio-orb.studio-orb-bg,
 .hud-main {
   flex: 1;
   display: flex;
-  gap: 8px;
+  gap: var(--hud-int-main-gap);
   min-height: 0;
 }
 
@@ -3418,7 +3435,7 @@ div.studio-orb.studio-orb-bg,
   position: absolute;
   left: 50%;
   top: 50%;
-  width: min(500px, 88%);
+  width: calc(min(500px, 88%) * var(--hud-int-sphere-scale));
   aspect-ratio: 1;
   transform: translate(-50%, -52%);
   border-radius: 50%;
@@ -3435,7 +3452,7 @@ div.studio-orb.studio-orb-bg,
   position: absolute;
   left: 50%;
   top: 50%;
-  width: min(520px, 92%);
+  width: calc(min(520px, 92%) * var(--hud-int-sphere-scale));
   aspect-ratio: 1;
   transform: translate(-50%, -52%);
   mix-blend-mode: screen;
@@ -3501,7 +3518,7 @@ div.studio-orb.studio-orb-bg,
   flex: none;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--hud-int-main-gap);
   min-height: 0;
 }
 .hud-radar { height: 218px; flex: none; }
@@ -3540,7 +3557,7 @@ div.studio-orb.studio-orb-bg,
   overflow: hidden;
 }
 .hud-srow {
-  padding: 8px 11px 7px;
+  padding: 8px 11px;
   border-bottom: 1px dashed rgba(140, 180, 255, 0.12);
 }
 .hud-srow:last-child { border-bottom: none; }
@@ -4125,6 +4142,136 @@ div.studio-orb.studio-orb-bg,
   justify-content: space-between;
 }
 .hud-card .hud-num { font-size: 19px; line-height: 1; color: #fff; }
+/* ── spatial denoise (2026-10-22, hud-denoise) ────────────────────
+ * The overview's main panels (Core Map, radar, decision stack and
+ * the bottom card strip — they carry .hud-dn) drop the closed 1px
+ * border: ::before paints all four L-corners as eight low-opacity
+ * beam strips (two per corner, panel beam colour), ::after retires
+ * (the card strip reuses it for its hairline, see below). The fill
+ * becomes a faint cyan分区 wash and padding unifies at
+ * --hud-int-panel-pad; fixed heights tuned against zero panel
+ * padding grow by the same amount so no content box shrinks. The
+ * terminal (inside the left column — not a .hud-panel) gets the
+ * same corner language plus a collapsed rest state: only its
+ * newest line, the typewriter slot, shows under a soft fade until
+ * the block is clicked open. The left overview panel (.hud-ov-*,
+ * the user-approved FUI skin) is deliberately NOT touched. */
+.hud-panel.hud-dn {
+  --dn-cc: var(--hud-int-corner-c);
+  border: none;
+  background: linear-gradient(
+    180deg,
+    var(--hud-int-panel-tint),
+    rgba(0, 255, 255, 0.02) 55%,
+    rgba(3, 6, 12, 0.35)
+  );
+  padding: var(--hud-int-panel-pad);
+}
+.hud-panel.hud-dn.hud-p-pink { --dn-cc: var(--hud-int-corner-c-pink); }
+.hud-panel.hud-dn.hud-p-purple { --dn-cc: var(--hud-int-corner-c-purple); }
+.hud-panel.hud-dn::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  width: auto;
+  height: auto;
+  border: none;
+  filter: none;
+  pointer-events: none;
+  background:
+    linear-gradient(var(--dn-cc), var(--dn-cc)) left 0 top 0 / var(--hud-int-corner-len) var(--hud-int-corner-w),
+    linear-gradient(var(--dn-cc), var(--dn-cc)) left 0 top 0 / var(--hud-int-corner-w) var(--hud-int-corner-len),
+    linear-gradient(var(--dn-cc), var(--dn-cc)) right 0 top 0 / var(--hud-int-corner-len) var(--hud-int-corner-w),
+    linear-gradient(var(--dn-cc), var(--dn-cc)) right 0 top 0 / var(--hud-int-corner-w) var(--hud-int-corner-len),
+    linear-gradient(var(--dn-cc), var(--dn-cc)) left 0 bottom 0 / var(--hud-int-corner-len) var(--hud-int-corner-w),
+    linear-gradient(var(--dn-cc), var(--dn-cc)) left 0 bottom 0 / var(--hud-int-corner-w) var(--hud-int-corner-len),
+    linear-gradient(var(--dn-cc), var(--dn-cc)) right 0 bottom 0 / var(--hud-int-corner-len) var(--hud-int-corner-w),
+    linear-gradient(var(--dn-cc), var(--dn-cc)) right 0 bottom 0 / var(--hud-int-corner-w) var(--hud-int-corner-len);
+  background-repeat: no-repeat;
+}
+.hud-panel.hud-dn::after { content: none; }
+/* card strip: its decorative hairline keeps its place — it moves
+ * to ::after now that ::before carries the corners (the top offset
+ * grows with the panel padding so it still threads the icon row). */
+.hud-panel.hud-cards.hud-dn::after {
+  content: "";
+  position: absolute;
+  left: 26px;
+  right: 26px;
+  top: 26px;
+  bottom: auto;
+  width: auto;
+  height: 1px;
+  border: none;
+  filter: none;
+  background: linear-gradient(90deg, transparent, rgba(0, 255, 255, 0.35), rgba(255, 0, 127, 0.35), transparent);
+  pointer-events: none;
+}
+/* radar: its fixed height was tuned border-box against no panel
+ * padding — grow it by the padding so the content box is unchanged
+ * (the ≤1100px stacking tier overrides this back to auto). */
+.hud-panel.hud-dn.hud-radar {
+  height: calc(218px + 2 * var(--hud-int-panel-pad));
+}
+/* the sweep is positioned against the panel's padding box — shift
+ * it by the same padding so it stays centred on the radar disc
+ * now that the in-flow body moved in by that amount. */
+.hud-panel.hud-dn .hud-radarsweep {
+  left: calc(12px + var(--hud-int-panel-pad));
+  top: calc(43px + var(--hud-int-panel-pad));
+}
+/* decision rows breathe: a real gap between the stack's list rows */
+.hud-panel.hud-dn.hud-stack { gap: var(--hud-int-stack-gap); }
+/* console strip: panel padding grew 10px → 15px, so the strip
+ * grows by the same 10px and the cards keep their inner height. */
+.hud-console { height: calc(118px + 2 * (var(--hud-int-panel-pad) - 10px)); }
+
+/* terminal: unified padding + the same four-corner language via
+ * its own ::before (it is not a .hud-panel), and the collapsed
+ * rest state for the line box. Click toggles — see neural-landing
+ * (interactive children are guarded out of the toggle). */
+.hud-log {
+  position: relative;
+  padding: var(--hud-int-panel-pad);
+  cursor: pointer;
+}
+.hud-log::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(var(--hud-int-corner-c), var(--hud-int-corner-c)) left 0 top 0 / var(--hud-int-corner-len) var(--hud-int-corner-w),
+    linear-gradient(var(--hud-int-corner-c), var(--hud-int-corner-c)) left 0 top 0 / var(--hud-int-corner-w) var(--hud-int-corner-len),
+    linear-gradient(var(--hud-int-corner-c), var(--hud-int-corner-c)) right 0 top 0 / var(--hud-int-corner-len) var(--hud-int-corner-w),
+    linear-gradient(var(--hud-int-corner-c), var(--hud-int-corner-c)) right 0 top 0 / var(--hud-int-corner-w) var(--hud-int-corner-len),
+    linear-gradient(var(--hud-int-corner-c), var(--hud-int-corner-c)) left 0 bottom 0 / var(--hud-int-corner-len) var(--hud-int-corner-w),
+    linear-gradient(var(--hud-int-corner-c), var(--hud-int-corner-c)) left 0 bottom 0 / var(--hud-int-corner-w) var(--hud-int-corner-len),
+    linear-gradient(var(--hud-int-corner-c), var(--hud-int-corner-c)) right 0 bottom 0 / var(--hud-int-corner-len) var(--hud-int-corner-w),
+    linear-gradient(var(--hud-int-corner-c), var(--hud-int-corner-c)) right 0 bottom 0 / var(--hud-int-corner-w) var(--hud-int-corner-len);
+  background-repeat: no-repeat;
+}
+.hud-log-head .hud-log-hint { color: var(--hud-dim); }
+.hud-log .hud-log-lines { position: relative; }
+.hud-log:not(.is-open) .hud-log-lines {
+  max-height: var(--hud-int-log-line-h);
+  overflow: hidden;
+}
+.hud-log:not(.is-open) .hud-log-lines > div { display: none; }
+.hud-log:not(.is-open) .hud-log-lines > div[data-testid="hud-term-latest"] {
+  display: block;
+}
+.hud-log:not(.is-open) .hud-log-lines::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 8px;
+  background: linear-gradient(180deg, var(--hud-int-log-fade), transparent);
+  pointer-events: none;
+}
+
 /* ---------- animations ---------- */
 @keyframes hud-pulse {
   0%, 100% { opacity: 1; filter: brightness(1.25); }
@@ -4196,12 +4343,12 @@ div.studio-orb.studio-orb-bg,
   .hud-main { flex-direction: column; }
   .hud-tree { width: auto; }
   .hud-center { min-height: 430px; }
-  .hud-sphere { width: min(320px, 84vw); }
-  .hud-sphere-glow { width: min(300px, 80vw); }
+  .hud-sphere { width: calc(min(320px, 84vw) * var(--hud-int-sphere-scale)); }
+  .hud-sphere-glow { width: calc(min(300px, 80vw) * var(--hud-int-sphere-scale)); }
   .hud-jelly-a { width: 74px; top: 16px; }
   .hud-jelly-b { width: 62px; }
   .hud-right { width: auto; }
-  .hud-radar { height: auto; }
+  .hud-radar, .hud-panel.hud-dn.hud-radar { height: auto; }
   .hud-console { height: auto; flex-direction: column; }
   .hud-cards { flex-wrap: wrap; }
   .hud-card { flex: 1 1 30%; min-height: 86px; }

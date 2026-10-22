@@ -1132,6 +1132,12 @@ export function NeuralLanding({
     }
   });
   const [archivedOpen, setArchivedOpen] = React.useState(false);
+  /* terminal progressive disclosure (2026-10-22, hud-denoise): the
+   * log rests collapsed on its newest line (the typewriter slot)
+   * under a fade; clicking the block opens the full scrolling list,
+   * clicking again folds it back. Session-only — every visit
+   * starts collapsed, nothing is persisted. */
+  const [logOpen, setLogOpen] = React.useState(false);
   const writeArchived = React.useCallback((ids: string[]) => {
     setArchivedIds(ids);
     try {
@@ -2964,10 +2970,33 @@ export function NeuralLanding({
                 }
               />
             </div>
-            <div className="hud-log">
+            <div
+              className={`hud-log${logOpen ? " is-open" : ""}`}
+              data-testid="hud-terminal"
+              data-open={logOpen ? "1" : undefined}
+              onClick={(e) => {
+                /* clicks on anything interactive inside the log are
+                 * theirs, not the fold toggle's (hud-denoise). */
+                if (
+                  (e.target as HTMLElement).closest(
+                    "a,button,[role='button'],input,textarea,select",
+                  )
+                )
+                  return;
+                if (consumeDragSuppress()) return;
+                setLogOpen((v) => !v);
+              }}
+            >
               <div className="hud-log-head">
                 <span>&gt; 终端日志</span>
-                <span className="hud-led hud-led-g" />
+                <span
+                  style={{ display: "flex", alignItems: "center", gap: 6 }}
+                >
+                  <span className="hud-log-hint">
+                    {logOpen ? "点击收起" : "点击展开"}
+                  </span>
+                  <span className="hud-led hud-led-g" />
+                </span>
               </div>
               <div className="hud-log-lines" ref={logLinesRef}>
                 <div style={{ color: "#8fa3c4" }}>
@@ -3063,7 +3092,7 @@ export function NeuralLanding({
           </div>
 
           {/* CENTER · CORE MAP */}
-          <div className="hud-panel hud-center">
+          <div className="hud-panel hud-dn hud-center">
             <div className="hud-phead">
               <span className="hud-t">CORE MAP · 知识核心图谱</span>
               <span className="hud-chip hud-c-yel">FORCE GRAPH</span>
@@ -3233,7 +3262,7 @@ export function NeuralLanding({
 
           {/* RIGHT · RADAR + DECISION STACK */}
           <div className="hud-right">
-            <div className="hud-panel hud-p-purple hud-radar">
+            <div className="hud-panel hud-dn hud-p-purple hud-radar">
               <div className="hud-phead">
                 <span className="hud-t">RADAR · 模块雷达</span>
                 <span className="hud-hex">0xRDAR</span>
@@ -3295,7 +3324,7 @@ export function NeuralLanding({
             </div>
 
             <div
-              className="hud-panel hud-p-pink hud-stack"
+              className="hud-panel hud-dn hud-p-pink hud-stack"
               data-testid="hud-stack-panel"
               ref={stackPanelRef}
             >
@@ -3452,7 +3481,7 @@ export function NeuralLanding({
 
         {/* ══ BOTTOM CONSOLE · 9 module cards, full row (no ENTER) ══ */}
         <div className="hud-console">
-          <div className="hud-panel hud-cards">
+          <div className="hud-panel hud-dn hud-cards">
             {modules.map((m) => (
               <button
                 key={m.id}
