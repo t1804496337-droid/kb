@@ -5040,6 +5040,99 @@ div.studio-orb.studio-orb-bg,
   color: var(--hud-dim);
   line-height: 1.6;
 }
+/* ── database grid (hud-dbgrid, 2026-10-22): segmented sections +
+ * two-column dense card matrix. Colours ride the #65 cyan variable
+ * scale only — no new literals; breakpoints stay literal per house
+ * convention (768px = the two-column switch the spec names). */
+.hud-db-seg {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--hud-sp-6);
+  margin-bottom: var(--hud-sp-10);
+}
+.hud-db-seg-btn {
+  font: inherit;
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--hud-sp-6);
+  padding: var(--hud-sp-6) var(--hud-sp-10);
+  border: var(--hud-sp-1) solid var(--hud-c-00ffff-a18);
+  background: var(--hud-c-00ffff-a4);
+  color: var(--hud-dim);
+  font-size: var(--hud-sp-11);
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  transition:
+    border-color 0.18s ease,
+    background 0.18s ease,
+    color 0.18s ease,
+    box-shadow 0.18s ease;
+}
+.hud-db-seg-btn:hover {
+  border-color: var(--hud-c-00ffff-a40);
+  color: var(--hud-int-radial-name);
+}
+.hud-db-seg-btn.is-on {
+  border-color: var(--hud-c-00ffff-a55);
+  background: var(--hud-c-00ffff-a9);
+  color: var(--hud-int-radial-name);
+  box-shadow: 0 0 var(--hud-sp-10) var(--hud-c-00ffff-a15);
+}
+.hud-db-seg-en {
+  font-size: var(--hud-sp-9-5);
+  letter-spacing: 0.06em;
+  opacity: 0.75;
+}
+.hud-db-seg-n { font-size: var(--hud-sp-10); color: var(--hud-cyan); }
+.hud-db-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--hud-sp-12);
+  margin-bottom: var(--hud-sp-10);
+}
+@media (min-width: 768px) {
+  .hud-db-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+.hud-db-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--hud-sp-12);
+  margin-bottom: var(--hud-sp-10);
+}
+.hud-db-card {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--hud-sp-10);
+  min-width: 0;
+  padding: var(--hud-sp-8) var(--hud-sp-10);
+  /* monitor feel: dark cyan wash + a border one step deeper than
+   * the shared .hud-module-row (a14 → a25). */
+  border: var(--hud-sp-1) solid var(--hud-c-00ffff-a25);
+  background: var(--hud-c-00ffff-a5);
+  transition:
+    border-color 0.18s ease,
+    background 0.18s ease,
+    box-shadow 0.18s ease;
+}
+.hud-db-card:hover {
+  border-color: var(--hud-c-00ffff-a55);
+  background: var(--hud-c-00ffff-a6);
+  box-shadow: 0 0 var(--hud-sp-12) var(--hud-c-00ffff-a15);
+}
+/* touch equivalent of the hover glow (house rule: no hover-only feedback) */
+.hud-db-card:active {
+  border-color: var(--hud-c-00ffff-a55);
+  box-shadow: 0 0 var(--hud-sp-12) var(--hud-c-00ffff-a15);
+}
+.hud-db-empty {
+  border: var(--hud-sp-1) dashed var(--hud-c-00ffff-a25);
+  padding: var(--hud-sp-6) var(--hud-sp-10);
+  margin-bottom: var(--hud-sp-10);
+  font-size: var(--hud-sp-10);
+  color: var(--hud-dim);
+  letter-spacing: 0.04em;
+  line-height: 1.5;
+}
 .hud-module-kv {
   display: flex;
   align-items: baseline;
