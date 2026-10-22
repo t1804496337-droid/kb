@@ -86,6 +86,26 @@ type HealthState = {
   ok: boolean;
 };
 
+/* ── decision-stack algorithm helpers (2026-10-22, hud-decision-algo) ──
+ * Ages are whole-day differences on Asia/Shanghai calendar days, so a
+ * row never flips stale mid-day over a time-of-day boundary. */
+const shDayNum = (iso: string): number => {
+  const [y, m, d] = iso.slice(0, 10).split("-").map(Number);
+  return Math.floor(Date.UTC(y, m - 1, d) / 864e5);
+};
+const todayShNum = (): number => {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Shanghai",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const get = (t: string) => Number(parts.find((p) => p.type === t)?.value);
+  return Math.floor(Date.UTC(get("year"), get("month") - 1, get("day")) / 864e5);
+};
+const ageDaysOf = (iso: string): number => todayShNum() - shDayNum(iso);
+const daysUntilOf = (iso: string): number => shDayNum(iso) - todayShNum();
+
 /* ── scramble hover decode (2026-10-22, hud-interactions) ──
  * rAF-driven text scramble for the module-tree labels: on hover the
  * label dissolves into glyph noise and re-resolves to the real text
@@ -686,13 +706,28 @@ export function NeuralLanding({
   }
 
   /* ---- decision stack (real open items, 2026-10-21 caliber) ----
-   * Ordered by urgency (user, 2026-10-22): EP001 → 健康 → 待办票 →
-   * 小红书 → 本体 → X. Every row is clickable: module-backed items
-   * jump to that module's content view; the two decision items
-   * (X / XHS) open a facts note view with intent-recording buttons.
-   * `wait` names whose hands the item is stuck in. Status copy is
-   * factual only — the decorative progress percentages of the frozen
-   * mockup were removed (no real source). */
+   * Every row is clickable: module-backed items jump to that module's
+   * content view; the two decision items (X / XHS) open a facts note
+   * view with intent-recording buttons. `wait` names whose hands the
+   * item is stuck in. Status copy is factual only — the decorative
+   * progress percentages of the frozen mockup were removed.
+   *
+   * Algorithmic ordering (2026-10-22, hud-decision-algo — replaces the
+   * hand-ordered list): each item carries a real `updatedAt` (the day
+   * its status last actually changed; the health row's is DYNAMIC —
+   * the latest complete sleep record in health-sync.json, so a fresh
+   * sync revives the row), an `urgency` grade (0–2, how close to done
+   * / how much it should move first) and a `waitKind`. No item has a
+   * real deadline today, so `due` stays unset everywhere — never
+   * fabricate one. score = urgency*100
+   *   + (due ? max(0, 30 − daysUntil(due)) * 3 : 0)
+   *   + (waitKind: user 25 / data 10 / schedule 0).
+   * Items untouched for > 3 Shanghai calendar days are decayed:
+   * they sink below every fresh item (score orders within a layer)
+   * and render at 40% opacity with a STALE · n 天未动 marker. */
+  const healthUpdatedAt =
+    slp?.date ??
+    (health.sleepLast ? `2026-${health.sleepLast}` : "2026-10-19");
   const decisions: {
     /** Stable slug — the drag engine's source id (onDrop sourceId). */
     id: string;
@@ -709,6 +744,14 @@ export function NeuralLanding({
      * module is focused on the overview, this row highlights and the
      * others dim. Note-only items (X / XHS) have no module. */
     module?: string;
+    /** ISO day this item's status last really changed. */
+    updatedAt: string;
+    /** 0–2 — closeness to done / how much it should move first. */
+    urgency: 0 | 1 | 2;
+    /** Whose hands the item is stuck in (drives the score bonus). */
+    waitKind: "user" | "data" | "schedule";
+    /** Real deadline only — none exists today; never fabricate. */
+    due?: string;
   }[] = [
     {
       id: "ep001",
@@ -716,6 +759,8 @@ export function NeuralLanding({
       tagCls: "hud-c-pink", target: "works", module: "works",
       fact: "已上传 · 待手机端改公开",
       wait: "等你 · 手机操作",
+      /* uploaded 2026-10-18; one phone tap from done → urgency 2 */
+      updatedAt: "2026-10-18", urgency: 2, waitKind: "user",
     },
     {
       id: "health-sync",
@@ -723,6 +768,9 @@ export function NeuralLanding({
       tagCls: healthTagCls, target: "health", module: "health",
       fact: healthFact,
       wait: "等数据 · 手机同步",
+      /* updatedAt is DYNAMIC (healthUpdatedAt above): the latest
+       * complete sleep record — a fresh sync revives this row. */
+      updatedAt: healthUpdatedAt, urgency: 1, waitKind: "data",
     },
     {
       id: "calendar-tickets",
@@ -730,6 +778,8 @@ export function NeuralLanding({
       tagCls: "hud-c-cyan", target: "calendar", module: "calendar",
       fact: "日历模块待办票未清",
       wait: "等你 · 随手清",
+      /* 视频号 ep01 定稿 2026-10-19; clearable any time → urgency 1 */
+      updatedAt: "2026-10-19", urgency: 1, waitKind: "user",
     },
     {
       id: "xhs-decision",
@@ -737,6 +787,8 @@ export function NeuralLanding({
       tagCls: "hud-c-pur", note: "xhs",
       fact: "申诉 / 换号 / 搁置 · 待拍板",
       wait: "等你 · 三选一",
+      /* account banned 2026-10-20; only the user can call it → 1 */
+      updatedAt: "2026-10-20", urgency: 1, waitKind: "user",
     },
     {
       id: "ontology-build",
@@ -744,6 +796,8 @@ export function NeuralLanding({
       tagCls: "hud-c-pur", target: "ontology", module: "ontology",
       fact: "空壳已上线 · 条目 0 · 细节待排期",
       wait: "等排期",
+      /* shell shipped 2026-10-21; queued build, nothing to push → 0 */
+      updatedAt: "2026-10-21", urgency: 0, waitKind: "schedule",
     },
     {
       id: "x-resume",
@@ -751,8 +805,67 @@ export function NeuralLanding({
       tagCls: "hud-c-pink", note: "x",
       fact: "8 个定时任务停用 · 待指令",
       wait: "等你 · 一句话恢复",
+      /* paused by the user's own order 2026-10-20; moves only when
+       * he reverses that order → urgency 0 */
+      updatedAt: "2026-10-20", urgency: 0, waitKind: "user",
     },
   ];
+  /* score + decay per the approved formula; stable sort keeps the
+   * declaration order inside equal (layer, score) groups. */
+  const scoredDecisions = decisions.map((d) => {
+    const age = ageDaysOf(d.updatedAt);
+    const score =
+      d.urgency * 100 +
+      (d.due ? Math.max(0, 30 - daysUntilOf(d.due)) * 3 : 0) +
+      (d.waitKind === "user" ? 25 : d.waitKind === "data" ? 10 : 0);
+    return { d, age, score, decayed: age > 3 };
+  });
+  const orderedDecisions = [...scoredDecisions].sort(
+    (a, b) => Number(a.decayed) - Number(b.decayed) || b.score - a.score,
+  );
+  /* FLIP reorder animation: when the computed order changes (e.g. the
+   * health row revives on sync and floats up), rows glide from their
+   * previous tops instead of the stack re-rendering in a flash. Tops
+   * are measured relative to the stack panel (scroll-invariant);
+   * the first paint only records positions, never animates. */
+  const stackPanelRef = React.useRef<HTMLDivElement | null>(null);
+  const decisionRowRefs = React.useRef(new Map<string, HTMLButtonElement>());
+  const decisionPrevTops = React.useRef<Map<string, number> | null>(null);
+  const decisionPrevSig = React.useRef<string | null>(null);
+  const decisionOrderSig = orderedDecisions.map((s) => s.d.id).join(",");
+  React.useLayoutEffect(() => {
+    const panel = stackPanelRef.current;
+    if (!panel) return;
+    const panelTop = panel.getBoundingClientRect().top;
+    const tops = new Map<string, number>();
+    decisionRowRefs.current.forEach((el, id) => {
+      if (el.isConnected) tops.set(id, el.getBoundingClientRect().top - panelTop);
+    });
+    const prev = decisionPrevTops.current;
+    const sigChanged =
+      decisionPrevSig.current !== null &&
+      decisionPrevSig.current !== decisionOrderSig;
+    decisionPrevTops.current = tops;
+    decisionPrevSig.current = decisionOrderSig;
+    if (!sigChanged || !prev) return;
+    tops.forEach((top, id) => {
+      const old = prev.get(id);
+      const el = decisionRowRefs.current.get(id);
+      if (old == null || !el) return;
+      const dy = old - top;
+      if (Math.abs(dy) < 1) return;
+      el.style.transition = "none";
+      el.style.transform = `translateY(${dy}px)`;
+      requestAnimationFrame(() => {
+        el.style.transition = "transform var(--hud-int-flip-dur) ease";
+        el.style.transform = "";
+        window.setTimeout(() => {
+          el.style.transition = "";
+          el.style.transform = "";
+        }, 380);
+      });
+    });
+  });
   const openDecision = (d: (typeof decisions)[number]) => {
     if (d.target) openModule(d.target);
     else if (d.note) {
@@ -2213,6 +2326,7 @@ export function NeuralLanding({
             <div
               className="hud-panel hud-p-pink hud-stack"
               data-testid="hud-stack-panel"
+              ref={stackPanelRef}
             >
               <div
                 className="hud-sheet-head"
@@ -2226,7 +2340,8 @@ export function NeuralLanding({
                   <span className="hud-hex">0xD5TK</span>
                 </div>
               </div>
-              {decisions.map((d, i) => {
+              {orderedDecisions.map((s, i) => {
+                const d = s.d;
                 /* focus linkage: with a module focused, its decision
                  * row highlights (slide-in) and every other row dims —
                  * dimmed, never hidden or removed. */
@@ -2239,10 +2354,18 @@ export function NeuralLanding({
                       "hud-srow hud-srow-btn",
                       related && "hud-srow-rel",
                       dimmed && "is-dim",
+                      s.decayed && "is-stale",
                     )}
                     key={d.en}
+                    ref={(el) => {
+                      if (el) decisionRowRefs.current.set(d.id, el);
+                      else decisionRowRefs.current.delete(d.id);
+                    }}
                     data-testid={`hud-decision-${d.note ?? d.target ?? d.en}`}
                     data-related={related ? "1" : undefined}
+                    data-score={s.score}
+                    data-decayed={s.decayed ? "1" : undefined}
+                    data-age={s.age}
                     style={
                       related ? { animationDelay: `${i * 45}ms` } : undefined
                     }
@@ -2263,8 +2386,16 @@ export function NeuralLanding({
                       <span className={`hud-tag hud-chip ${d.tagCls}`}>{d.tag}</span>
                     </div>
                     <div className="hud-en" style={{ marginTop: 4 }}>
-                      {d.fact} · <span className="hud-wait">{d.wait}</span> ·{" "}
-                      {d.target ? "点击进入 →" : "点击看说明 →"}
+                      {d.fact} · <span className="hud-wait">{d.wait}</span>
+                      {s.decayed && (
+                        <>
+                          {" · "}
+                          <span className="hud-stale">
+                            STALE · {s.age} 天未动
+                          </span>
+                        </>
+                      )}{" "}
+                      · {d.target ? "点击进入 →" : "点击看说明 →"}
                     </div>
                   </button>
                 );
