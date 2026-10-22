@@ -3022,6 +3022,14 @@ div.studio-orb.studio-orb-bg,
   --hud-int-arch-border: rgba(140, 180, 255, 0.14);
   --hud-int-caret-dur: 1.06s;
   --hud-int-block-off: #0d1226;
+  /* health clipboard sync port (2026-10-22, hud-health-sync):
+   * terminal session-note colours (validation ERROR red / info cyan)
+   * and the paste-fallback overlay, which reuses the palette shell
+   * (.hud-pal-mask / .hud-pal at z 70) with its own inner layout. */
+  --hud-int-term-error: #ff5470;
+  --hud-int-term-info: #00ffff;
+  --hud-int-paste-area-bg: rgba(0, 255, 255, 0.04);
+  --hud-int-paste-area-border: rgba(0, 255, 255, 0.3);
 }
 .hud-root {
   --hud-bg: #07080a;
@@ -3699,6 +3707,72 @@ div.studio-orb.studio-orb-bg,
 .hud-term-caret {
   color: var(--hud-yellow);
   animation: hud-caret-blink var(--hud-int-caret-dur) steps(1) infinite;
+}
+
+/* health paste fallback (2026-10-22, hud-health-sync): the shell is
+ * the palette's (.hud-pal-mask + .hud-pal, z 70); only the innards
+ * are paste-specific. The textarea is a form field, so the radial
+ * menu and the palette key guards both leave it alone natively. */
+.hud-health-paste {
+  padding: 14px 16px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.hud-health-paste-head {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  color: var(--hud-cyan);
+  font-size: 12px;
+  letter-spacing: 0.14em;
+}
+.hud-health-paste-sub {
+  color: #8fa3c4;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+}
+.hud-health-paste-area {
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.55;
+  color: #e8f4ff;
+  background: var(--hud-int-paste-area-bg);
+  border: 1px solid var(--hud-int-paste-area-border);
+  padding: 9px 10px;
+  resize: vertical;
+  min-height: 108px;
+  outline: none;
+}
+.hud-health-paste-area:focus {
+  border-color: var(--hud-int-pal-border);
+}
+.hud-health-paste-err {
+  color: var(--hud-int-term-error);
+  font-size: 11.5px;
+  letter-spacing: 0.04em;
+}
+.hud-health-paste-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.hud-health-paste-btn {
+  font: inherit;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  color: #9fd8e8;
+  background: var(--hud-int-chip-bg);
+  border: 1px solid var(--hud-int-chip-border);
+  padding: 5px 14px;
+  cursor: pointer;
+}
+.hud-health-paste-btn:hover {
+  background: var(--hud-int-chip-bg-hover);
+}
+.hud-health-paste-btn.is-go {
+  color: var(--hud-yellow);
+  border-color: var(--hud-yellow);
 }
 @keyframes hud-caret-blink {
   0%, 49% { opacity: 1; }

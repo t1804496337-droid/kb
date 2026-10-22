@@ -15,6 +15,14 @@ import {
 import { emit as busEmit, on as onBusEvent } from "@/components/studio/bus";
 import { RadialMenu } from "@/components/studio/radial-menu";
 import { MindMap } from "@/components/studio/mind-map";
+import {
+  loadManualHealth,
+  saveManualHealth,
+  onManualHealthChange,
+  manualWins,
+  parseHealthClipboard,
+  type ManualHealth,
+} from "@/components/studio/health-effective";
 
 export type LandingNode = {
   key: string;
@@ -484,6 +492,41 @@ export function NeuralLanding({
     };
   }, []);
 
+  /* ---- manual health record (2026-10-22, hud-health-sync · 拼图三) ----
+   * The clipboard sync port's single stored record. The EFFECTIVE
+   * health view is merged here — and only here: when the manual
+   * record's date is newer than (or the same day as) the file's
+   * latest sleep record AND the manual record carries sleep data,
+   * every consumer below (top bar, ticker, overview health row,
+   * decision row DYNAMIC updatedAt, telemetry) reads effHealth and
+   * the manual values win; an older manual record changes nothing.
+   * The merge rule itself lives in health-effective.ts (manualWins),
+   * shared with HealthBody so the two never drift apart. */
+  const [manualHealth, setManualHealth] = React.useState<ManualHealth | null>(
+    () => loadManualHealth(),
+  );
+  React.useEffect(
+    () =>
+      onManualHealthChange(() => setManualHealth(loadManualHealth())),
+    [],
+  );
+  const manualApplies = manualWins(manualHealth, health.sleep?.date ?? null);
+  const manualSleepApplies =
+    manualApplies && manualHealth?.sleepHours !== undefined;
+  const effHealth: HealthState = manualSleepApplies
+    ? {
+        ok: true,
+        syncTime: health.syncTime,
+        sleepLast: (manualHealth as ManualHealth).date.slice(5),
+        sleep: {
+          date: (manualHealth as ManualHealth).date,
+          start: (manualHealth as ManualHealth).sleepStart,
+          end: (manualHealth as ManualHealth).sleepEnd,
+          hours: (manualHealth as ManualHealth).sleepHours,
+        },
+      }
+    : health;
+
   /* ---- module data: live counts via props, E display copy fixed ---- */
   const nodeBySection = (s: string) =>
     nodes.find((n) => !n.customId && n.section === s);
@@ -604,13 +647,53 @@ export function NeuralLanding({
   const [execLog, setExecLog] = React.useState<ExecLogItem[]>(loadExecLog);
   const execLogRef = React.useRef(execLog);
   const logLinesRef = React.useRef<HTMLDivElement | null>(null);
+  /* ── terminal session notes (2026-10-22, hud-health-sync) ──
+   * Session-only terminal lines that are NOT bus EXEC successes:
+   * red ERROR lines from the health clipboard port's validation and
+   * cyan info lines (e.g. the clipboard fell back to paste mode).
+   * Deliberately kept OUT of the persisted EXEC log — that store's
+   * contract is "one line per completed business action" — so notes
+   * live in component state only, vanish on reload, and render after
+   * the EXEC lines in the terminal. */
+  type TermNote = { id: number; ts: number; text: string; kind: "error" | "info" };
+  const [termNotes, setTermNotes] = React.useState<TermNote[]>([]);
+  const termNoteIdRef = React.useRef(0);
+  const pushTermNote = React.useCallback(
+    (body: string, kind: "error" | "info") => {
+      const now = new Date();
+      termNoteIdRef.current += 1;
+      const note: TermNote = {
+        id: termNoteIdRef.current,
+        ts: now.getTime(),
+        text: `[${fmtExecStamp(now)}] ${body}`,
+        kind,
+      };
+      setTermNotes((prev) => [...prev.slice(-9), note]);
+    },
+    [],
+  );
   /* terminal typewriter: the newest real log line types itself in
    * on mount / on change — the newest EXEC line once any exist,
-   * otherwise the last HUD_LOG_FACTS entry (hud-restyle behaviour). */
+   * otherwise the last HUD_LOG_FACTS entry (hud-restyle behaviour).
+   * A session note newer than the last EXEC line takes the typed
+   * slot instead (hud-health-sync), so a fresh ERROR line types in
+   * red exactly like a success line types in blue. */
+  const lastExecItem =
+    execLog.length > 0 ? execLog[execLog.length - 1] : null;
+  const lastTermNote =
+    termNotes.length > 0 ? termNotes[termNotes.length - 1] : null;
+  const latestKind: "exec" | "note" | "fact" =
+    lastTermNote && (!lastExecItem || lastTermNote.ts >= lastExecItem.ts)
+      ? "note"
+      : lastExecItem
+        ? "exec"
+        : "fact";
   const termLatestText =
-    execLog.length > 0
-      ? execLog[execLog.length - 1].text
-      : (HUD_LOG_FACTS[HUD_LOG_FACTS.length - 1]?.text ?? "");
+    latestKind === "note"
+      ? (lastTermNote as TermNote).text
+      : latestKind === "exec"
+        ? (lastExecItem as ExecLogItem).text
+        : (HUD_LOG_FACTS[HUD_LOG_FACTS.length - 1]?.text ?? "");
   const typedTermLatest = useTypewriter(termLatestText, 32);
   /* ── decision archive (2026-10-22, hud-restyle) ──
    * [ARCHIVE] on a decision row is a REAL archive: the row's id goes
@@ -749,10 +832,15 @@ export function NeuralLanding({
   const moduleStatus = (m: HudModule): { main: string; note: string } => {
     switch (m.id) {
       case "health":
-        return {
-          main: `STALE · ${health.sleepLast ?? "10-19"}`,
-          note: `HEALTH-SYNC → MAIN · LAST ${health.syncTime ?? "--:--"}`,
-        };
+        return manualSleepApplies
+          ? {
+              main: `SYNCED · ${(manualHealth as ManualHealth).date.slice(5)}`,
+              note: `MANUAL SYNC · 剪贴板解析口 · FILE LAST ${health.syncTime ?? "--:--"}`,
+            }
+          : {
+              main: `STALE · ${effHealth.sleepLast ?? "10-19"}`,
+              note: `HEALTH-SYNC → MAIN · LAST ${health.syncTime ?? "--:--"}`,
+            };
       case "calendar":
         return {
           main: `TICKETS ×${ticketsN} OPEN`,
@@ -847,11 +935,11 @@ export function NeuralLanding({
   const yestD = new Date();
   yestD.setDate(yestD.getDate() - 1);
   const yestISO = `${yestD.getFullYear()}-${pad2(yestD.getMonth() + 1)}-${pad2(yestD.getDate())}`;
-  const slp = health.sleep;
+  const slp = effHealth.sleep;
   let healthTag = "STALE";
   let healthTagCls = "hud-c-amb";
-  let healthFact = `最近完整记录 ${health.sleepLast ?? "10-19"} · 数据待更新`;
-  if (health.ok && slp && slp.date >= yestISO) {
+  let healthFact = `最近完整记录 ${effHealth.sleepLast ?? "10-19"} · 数据待更新`;
+  if (effHealth.ok && slp && slp.date >= yestISO) {
     healthTag = "已同步";
     healthTagCls = "hud-c-grn";
     healthFact =
@@ -860,9 +948,9 @@ export function NeuralLanding({
       (typeof slp.hours === "number"
         ? ` · ${Math.round(slp.hours * 10) / 10}h`
         : "");
-  } else if (health.ok && slp) {
+  } else if (effHealth.ok && slp) {
     healthFact = `最近完整记录 ${slp.date.slice(5)} 晚 · 昨晚待手机同步`;
-  } else if (health.ok) {
+  } else if (effHealth.ok) {
     healthFact = "暂无完整睡眠记录 · 待手机同步";
   }
 
@@ -888,7 +976,7 @@ export function NeuralLanding({
    * and render at 40% opacity with a STALE · n 天未动 marker. */
   const healthUpdatedAt =
     slp?.date ??
-    (health.sleepLast ? `2026-${health.sleepLast}` : "2026-10-19");
+    (effHealth.sleepLast ? `2026-${effHealth.sleepLast}` : "2026-10-19");
   const decisions: {
     /** Stable slug — the drag engine's source id (onDrop sourceId). */
     id: string;
@@ -2024,7 +2112,7 @@ export function NeuralLanding({
   React.useEffect(() => {
     const el = logLinesRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [execLog]);
+  }, [execLog, termNotes]);
 
   /* ── radial menu + zen mode (2026-10-22, hud-radial) ──
    * The wheel (radial-menu.tsx) and the palette are mutually
@@ -2039,6 +2127,70 @@ export function NeuralLanding({
   /* 灵感拓扑 (hud-mindmap): a stage overlay above the overview's
    * centre — its state and persistence live in mind-map.tsx. */
   const [mmOpen, setMmOpen] = React.useState(false);
+  /* ── health clipboard sync port (2026-10-22, hud-health-sync · 拼图三) ──
+   * Radial [SYNC HEALTH] runs syncHealth: try navigator.clipboard
+   * .readText() first; any failure (no API, permission denied — iOS
+   * Safari has no readText) opens the paste fallback overlay, whose
+   * text runs down the very same validation path (applyHealthText).
+   * A successful parse is stored via health-effective.ts, the
+   * effective health view re-derives everywhere, and the bus emit
+   * appends the EXEC line + bursts the health hotspot. A failed
+   * parse writes NOTHING and appends a red ERROR note instead. */
+  const [pasteOpen, setPasteOpen] = React.useState(false);
+  const [pasteText, setPasteText] = React.useState("");
+  const [pasteError, setPasteError] = React.useState<string | null>(null);
+  const pasteAreaRef = React.useRef<HTMLTextAreaElement | null>(null);
+  /* one commit tail for both entry paths (direct read / paste):
+   * store → local state → bus. The bus subscriber appends the EXEC
+   * line and bursts the health hotspot; the effective view re-derives
+   * from the manual state. */
+  const commitManualHealth = React.useCallback((m: ManualHealth) => {
+    saveManualHealth(m);
+    setManualHealth(m);
+    busEmit("HEALTH_SYNC", "health");
+  }, []);
+  const applyHealthText = React.useCallback(
+    (text: string) => {
+      const r = parseHealthClipboard(text);
+      if (!r.ok) {
+        pushTermNote(`EXEC: HEALTH_SYNC -> ERROR · ${r.error}`, "error");
+        return r;
+      }
+      commitManualHealth(r.value);
+      return r;
+    },
+    [pushTermNote, commitManualHealth],
+  );
+  const syncHealth = React.useCallback(async () => {
+    let text: string | null = null;
+    try {
+      if (!navigator.clipboard?.readText) throw new Error("no clipboard api");
+      text = await navigator.clipboard.readText();
+    } catch {
+      text = null;
+    }
+    if (text === null) {
+      pushTermNote("HEALTH SYNC · 剪贴板读取不可用，改用粘贴同步", "info");
+      setPasteError(null);
+      setPasteText("");
+      setPasteOpen(true);
+      return;
+    }
+    applyHealthText(text);
+  }, [applyHealthText, pushTermNote]);
+  React.useEffect(() => {
+    if (pasteOpen) pasteAreaRef.current?.focus();
+  }, [pasteOpen]);
+  /* Esc closes the paste overlay (the wheel is already closed by
+   * the time it opens; the palette yields via siblingOpen). */
+  React.useEffect(() => {
+    if (!pasteOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setPasteOpen(false);
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [pasteOpen]);
   const radialOpenRef = React.useRef(false);
   const cancelPendingDrag = React.useCallback(() => {
     const s = dragRef.current;
@@ -2137,7 +2289,7 @@ export function NeuralLanding({
           <div className="hud-top-right">
             <div className="hud-metric">
               SYNC{" "}
-              {health.ok ? (
+              {effHealth.ok ? (
                 <b className="hud-c-grn">● OK</b>
               ) : (
                 <b className="hud-c-amb">● STALE</b>
@@ -2262,7 +2414,7 @@ export function NeuralLanding({
                 <span className="hud-txt" key={k} aria-hidden={k === 1 || undefined}>
                   九大模块 <i>·</i> 一个第二大脑 <i>·</i> NINE MODULES <u>·</u>{" "}
                   ONE SECOND BRAIN <i>·</i>{" "}
-                  {health.ok ? "HEALTH-SYNC OK" : "HEALTH-SYNC STALE"} <u>·</u>{" "}
+                  {effHealth.ok ? "HEALTH-SYNC OK" : "HEALTH-SYNC STALE"} <u>·</u>{" "}
                   EP001 PENDING PUBLISH <i>·</i> X PAUSED <u>·</u> XHS PAUSED{" "}
                   <i>·</i>
                 </span>
@@ -2495,13 +2647,15 @@ export function NeuralLanding({
               </div>
               <div className="hud-log-lines" ref={logLinesRef}>
                 <div style={{ color: "#8fa3c4" }}>
-                  {health.ok
-                    ? `[${health.syncTime ?? "--:--"}] SYNC health-sync.json → MAIN · OK`
-                    : "[--:--] SYNC health-sync.json · STALE"}
+                  {manualSleepApplies
+                    ? `[${(manualHealth as ManualHealth).date.slice(5)}] MANUAL HEALTH SYNC · 剪贴板解析口`
+                    : health.ok
+                      ? `[${health.syncTime ?? "--:--"}] SYNC health-sync.json → MAIN · OK`
+                      : "[--:--] SYNC health-sync.json · STALE"}
                 </div>
                 <div>[BOOT] SKILLS LOADED · {skillsN} ENTRIES</div>
                 {HUD_LOG_FACTS.map((l, li) =>
-                  li === HUD_LOG_FACTS.length - 1 && execLog.length === 0 ? (
+                  li === HUD_LOG_FACTS.length - 1 && latestKind === "fact" ? (
                     /* newest real event line: typewriter reveal
                      * (hud-restyle) — content is the existing log
                      * line itself, never a generated event. Once EXEC
@@ -2523,7 +2677,8 @@ export function NeuralLanding({
                  * business action, appended in time order after the
                  * fact lines; the newest types itself in. */}
                 {execLog.map((item, i) => {
-                  const isLast = i === execLog.length - 1;
+                  const isTyped =
+                    i === execLog.length - 1 && latestKind === "exec";
                   return (
                     <div
                       key={`${item.ts}-${i}`}
@@ -2531,12 +2686,38 @@ export function NeuralLanding({
                       data-type={
                         /EXEC: (\S+)/.exec(item.text)?.[1] ?? ""
                       }
-                      {...(isLast
+                      {...(isTyped
                         ? { "data-testid": "hud-term-latest" }
                         : {})}
                       style={{ color: "#c8e6ff" }}
                     >
-                      {isLast ? typedTermLatest : item.text}
+                      {isTyped ? typedTermLatest : item.text}
+                    </div>
+                  );
+                })}
+                {/* session notes (hud-health-sync): red ERROR lines
+                 * from clipboard validation + cyan info lines — the
+                 * newest one takes the typewriter slot, same as an
+                 * EXEC line would. Session-only by design (see the
+                 * termNotes state comment). */}
+                {termNotes.map((n, i) => {
+                  const isTyped =
+                    i === termNotes.length - 1 && latestKind === "note";
+                  return (
+                    <div
+                      key={n.id}
+                      data-term-note={n.kind}
+                      {...(isTyped
+                        ? { "data-testid": "hud-term-latest" }
+                        : {})}
+                      style={{
+                        color:
+                          n.kind === "error"
+                            ? "var(--hud-int-term-error)"
+                            : "var(--hud-int-term-info)",
+                      }}
+                    >
+                      {isTyped ? typedTermLatest : n.text}
                     </div>
                   );
                 })}
@@ -2711,8 +2892,12 @@ export function NeuralLanding({
                   </span>
                   <span>
                     SLEEP{" "}
-                    <b className="hud-c-amb">
-                      {health.sleepLast ? `STALE · ${health.sleepLast}` : "STALE"}
+                    <b className={manualSleepApplies ? "hud-c-grn" : "hud-c-amb"}>
+                      {manualSleepApplies
+                        ? `SYNCED · ${effHealth.sleepLast}`
+                        : effHealth.sleepLast
+                          ? `STALE · ${effHealth.sleepLast}`
+                          : "STALE"}
                     </b>
                   </span>
                 </>
@@ -2764,7 +2949,11 @@ export function NeuralLanding({
                       { id: "database", label: "DATA 数据", v: dbN, cls: "hud-c-cyan" },
                       { id: "works", label: "WORKS 作品", v: worksN, cls: "hud-c-pink" },
                       { id: "finance", label: "FINANCE 财务", v: finN, cls: "hud-c-yel" },
-                      { id: "health", label: "HEALTH 健康", v: "STALE", cls: "hud-c-amb" },
+                      {
+                        id: "health", label: "HEALTH 健康",
+                        v: manualSleepApplies ? (effHealth.sleepLast ?? "SYNCED") : "STALE",
+                        cls: manualSleepApplies ? "hud-c-grn" : "hud-c-amb",
+                      },
                       { id: "calendar", label: "CALENDAR 日历", v: calN, cls: "" },
                     ] as const
                   ).map((r) => (
@@ -3089,13 +3278,92 @@ export function NeuralLanding({
         <MindMap siblingOpen={palOpen} onClose={() => setMmOpen(false)} />
       )}
 
+      {/* ══ HEALTH PASTE FALLBACK (hud-health-sync) — same z tier as
+          the command palette (70): the clipboard API failed, so the
+          user pastes the health JSON here; [解析同步] runs the exact
+          same parseHealthClipboard path as a direct read. ══ */}
+      {pasteOpen && (
+        <div
+          className="hud-pal-mask"
+          data-testid="hud-health-paste-mask"
+          onClick={() => setPasteOpen(false)}
+        >
+          <div
+            className="hud-pal hud-health-paste"
+            role="dialog"
+            aria-modal="true"
+            aria-label="粘贴健康数据同步"
+            data-testid="hud-health-paste"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="hud-health-paste-head">
+              <span>SYNC HEALTH · 粘贴同步</span>
+              <span className="hud-health-paste-sub">
+                剪贴板读取不可用 —— 把健康 JSON 粘贴到这里，校验口径与直读一致
+              </span>
+            </div>
+            <textarea
+              ref={pasteAreaRef}
+              className="hud-health-paste-area"
+              data-testid="hud-health-paste-area"
+              value={pasteText}
+              onChange={(e) => {
+                setPasteText(e.target.value);
+                setPasteError(null);
+              }}
+              placeholder='{"date":"2026-10-22","sleep":{"hours":7.5},"steps":8123}'
+              aria-label="健康 JSON 文本"
+              rows={6}
+              spellCheck={false}
+            />
+            {pasteError && (
+              <div
+                className="hud-health-paste-err"
+                data-testid="hud-health-paste-err"
+              >
+                {pasteError}
+              </div>
+            )}
+            <div className="hud-health-paste-actions">
+              <button
+                type="button"
+                className="hud-health-paste-btn"
+                data-testid="hud-health-paste-cancel"
+                onClick={() => setPasteOpen(false)}
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                className="hud-health-paste-btn is-go"
+                data-testid="hud-health-paste-go"
+                onClick={() => {
+                  const r = applyHealthText(pasteText);
+                  if (!r.ok) {
+                    setPasteError(`ERROR · ${r.error}`);
+                    return;
+                  }
+                  setPasteOpen(false);
+                  setPasteText("");
+                }}
+              >
+                解析同步
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ══ RADIAL MENU — right-click (desktop) / long-press (touch) ══ */}
       <RadialMenu
         zenActive={zen}
-        siblingOpen={palOpen}
+        siblingOpen={palOpen || pasteOpen}
         onOpenChange={(o) => {
           radialOpenRef.current = o;
-          if (o) setPalOpen(false);
+          if (o) {
+            setPalOpen(false);
+            setPasteOpen(false);
+          }
         }}
         onLongPressSummon={cancelPendingDrag}
         actions={{
@@ -3107,6 +3375,9 @@ export function NeuralLanding({
           newTicket: () => openModule("calendar"),
           toggleZen: () => setZen((v) => !v),
           openPalette: () => setPalOpen(true),
+          syncHealth: () => {
+            void syncHealth();
+          },
         }}
       />
     </div>

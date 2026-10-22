@@ -186,6 +186,17 @@ export const SLICES: SliceDef[] = [
   jsonSlice("workflowSteps", "studio_workflow_steps_v2", "灵感池步骤", arrayOf(okFlowStep)),
   /* 健康打卡（旧工作台层，page.tsx） */
   jsonSlice("healthCheckins", "studio_health_checkins_v1", "健康打卡", arrayOf(isDateStr)),
+  /* 健康手动同步（2026-10-22, hud-health-sync）：剪贴板解析口落盘的
+   * 单条 ManualHealth——date 必备，sleepHours/steps 至少一项。 */
+  jsonSlice("healthManual", "studio_health_manual_v1", "健康手动同步", (v) =>
+    isPlainObject(v) &&
+    isDateStr(v.date) &&
+    (v.sleepHours === undefined || isFiniteNum(v.sleepHours)) &&
+    (v.sleepStart === undefined || typeof v.sleepStart === "string") &&
+    (v.sleepEnd === undefined || typeof v.sleepEnd === "string") &&
+    (v.steps === undefined || (isFiniteNum(v.steps) && (v.steps as number) >= 0)) &&
+    (v.sleepHours !== undefined || v.steps !== undefined),
+  ),
   /* 自定义模块与枢纽行（旧工作台层，page.tsx） */
   jsonSlice("customModules", "studio_custom_modules_v1", "自定义模块", arrayOf(
     (m) => isPlainObject(m) && typeof m.id === "string" && typeof m.label === "string",

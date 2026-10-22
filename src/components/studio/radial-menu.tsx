@@ -25,6 +25,8 @@ export type RadialActions = {
   newTicket: () => void;
   toggleZen: () => void;
   openPalette: () => void;
+  /** 拼图三（hud-health-sync）：剪贴板健康解析口，宿主异步执行。 */
+  syncHealth: () => void;
 };
 
 type Sector = {
@@ -34,19 +36,22 @@ type Sector = {
   act: keyof RadialActions;
 };
 
-/* clockwise from the top */
+/* clockwise from the top — geometry is parameterised by the sector
+ * count (STEP = 360 / n), so adding a sector re-flows the whole wheel
+ * without touching the hit-test math. */
 const SECTORS: Sector[] = [
   { key: "export", label: "导出快照", short: "导出", act: "exportSnap" },
   { key: "import", label: "导入还原", short: "导入", act: "importSnap" },
   { key: "zen", label: "禅定模式", short: "禅定", act: "toggleZen" },
   { key: "palette", label: "命令面板", short: "面板", act: "openPalette" },
   { key: "ticket", label: "新建待办", short: "待办", act: "newTicket" },
+  { key: "health", label: "同步健康 · SYNC HEALTH", short: "健康", act: "syncHealth" },
 ];
 
 const R0 = 36;
 const R1 = 106;
 const GAP = 4; /* degrees of dead angle between neighbouring sectors */
-const STEP = 360 / SECTORS.length; /* 72° */
+const STEP = 360 / SECTORS.length; /* 60° at six sectors */
 const LONG_PRESS_MS = 450;
 const EDGE = 126; /* wheel radius 118 + 8px safety, for centre clamping */
 
@@ -215,6 +220,9 @@ export function RadialMenu({
             break;
           case "openPalette":
             a.openPalette();
+            break;
+          case "syncHealth":
+            a.syncHealth();
             break;
         }
       } finally {

@@ -15,6 +15,12 @@ import {
 } from "@/components/studio/finance-module";
 import { InlineConfirmButton } from "@/components/ui/inline-confirm";
 import { emit } from "@/components/studio/bus";
+import {
+  loadManualHealth,
+  onManualHealthChange,
+  manualWins,
+  type ManualHealth,
+} from "@/components/studio/health-effective";
 import skillsSyncJson from "../../../public/skills-sync.json";
 import healthSyncJson from "../../../public/health-sync.json";
 
@@ -156,7 +162,10 @@ type HealthSync = {
   updated_at?: string;
   data_cutoff_note?: string;
   sleep?: {
-    last?: { date: string; start: string; end: string; hours: number };
+    /* start/end optional: a manual clipboard record may carry only
+     * the duration (hud-health-sync) — never borrow the file's
+     * start/end for a different night. */
+    last?: { date: string; start?: string; end?: string; hours: number };
     last7?: { date: string; hours: number }[];
   };
   steps?: { today?: number | null; avg7?: number | null };
@@ -2694,10 +2703,46 @@ function HealthBody() {
     };
   }, []);
   const data: HealthSync = sync ?? HEALTH_SYNC_STATIC;
-  const last = data.sleep?.last;
-  const last7 = data.sleep?.last7 ?? [];
+  /* ── manual clipboard record merge (2026-10-22, hud-health-sync) ──
+   * The effective view follows the shared rule in health-effective
+   * .ts (manualWins, by date): a manual record newer than (or the
+   * same day as) the file's latest sleep record supplies the sleep
+   * headline (and today's steps when its date is today); an older
+   * manual record changes nothing here. The file's own fields are
+   * never mutated — the merge is render-time only, and the manual
+   * provenance is badged in the view. */
+  const [manual, setManual] = React.useState<ManualHealth | null>(() =>
+    loadManualHealth(),
+  );
+  React.useEffect(
+    () => onManualHealthChange(() => setManual(loadManualHealth())),
+    [],
+  );
   const today = new Date();
   const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+  const mWins = manualWins(manual, data.sleep?.last?.date ?? null);
+  const manualSleep =
+    mWins && manual && manual.sleepHours !== undefined ? manual : null;
+  const last = manualSleep
+    ? {
+        date: manualSleep.date,
+        start: manualSleep.sleepStart,
+        end: manualSleep.sleepEnd,
+        hours: manualSleep.sleepHours as number,
+      }
+    : data.sleep?.last;
+  const last7 = manualSleep
+    ? [
+        ...(data.sleep?.last7 ?? []).filter((s) => s.date !== manualSleep.date),
+        { date: manualSleep.date, hours: manualSleep.sleepHours as number },
+      ]
+        .sort((a, b) => (a.date < b.date ? -1 : 1))
+        .slice(-7)
+    : (data.sleep?.last7 ?? []);
+  const stepsToday =
+    mWins && manual && manual.steps !== undefined && manual.date === todayStr
+      ? manual.steps
+      : data.steps?.today;
   const stale = !last || last.date < todayStr;
   return (
     <div>
@@ -2717,10 +2762,23 @@ function HealthBody() {
           {stale ? `STALE · 最近记录 ${last?.date?.slice(5) ?? "—"}` : "FRESH"}
         </span>
       </Kv>
+      {mWins && manual ? (
+        <Kv k="手动同步">
+          <span className="hud-c-cyan" data-testid="hud-health-manual-badge">
+            剪贴板解析口 · {manual.date}
+            {manual.sleepHours !== undefined ? ` · 睡眠 ${manual.sleepHours}h` : ""}
+            {manual.steps !== undefined ? ` · 步数 ${manual.steps}` : ""}
+          </span>
+        </Kv>
+      ) : null}
       {last ? (
         <>
           <Kv k="最近一晚睡眠">
-            {last.date} · {last.start} 入睡 → {last.end} 起床 · {last.hours}h
+            {last.date}
+            {last.start && last.end
+              ? ` · ${last.start} 入睡 → ${last.end} 起床`
+              : ""}{" "}
+            · {last.hours}h
           </Kv>
           <div className="hud-module-bars" data-testid="hud-sleep-bars">
             {last7.map((s) => (
@@ -2737,7 +2795,7 @@ function HealthBody() {
       ) : null}
       <Kv k="步数 · 近 7 日均值">
         {data.steps?.avg7 != null ? `${data.steps.avg7} 步` : "未同步"} · 今日{" "}
-        {data.steps?.today != null ? `${data.steps.today} 步` : "未同步"}
+        {stepsToday != null ? `${stepsToday} 步` : "未同步"}
       </Kv>
       <Kv k="体重">
         {data.weight_kg != null ? `${data.weight_kg} kg` : "未同步"}
