@@ -1823,42 +1823,44 @@ export function NeuralLanding({
               />
               {selMod ? (
                 <>
-                  <div className="hud-tag" style={{ left: 18, top: 14 }}>
+                  <div className="hud-tag hud-tag-main" style={{ left: 18, top: 14 }}>
                     ◈ MODULE · {selMod.en}
                     <b style={{ color: selMod.color }}>
                       {selMod.label} {selMod.countText ?? selMod.count}
                     </b>
                     ENTRIES {selMod.count ?? "—"} · SHARE {sharePct(selMod.count)}%
                   </div>
-                  <div className="hud-tag" style={{ right: 140, top: 14, textAlign: "right" }}>
+                  <div className="hud-tag hud-tag-aux" style={{ right: 140, top: 14, textAlign: "right" }}>
                     STATUS · {selMod.en} ◈
                     <b style={{ color: selMod.color }}>{moduleStatus(selMod).main}</b>
                     {moduleStatus(selMod).note}
                   </div>
-                  <div className="hud-tag" style={{ left: 18, bottom: 8 }}>
+                  <div className="hud-tag hud-tag-aux" style={{ left: 18, bottom: 8 }}>
                     [ NODE {selMod.label} · DEG {selMod.count ?? "—"} ] · [ SHARE{" "}
                     {sharePct(selMod.count)}% ]
                   </div>
-                  <div className="hud-tag" style={{ right: 18, bottom: 8, textAlign: "right" }}>
+                  <div className="hud-tag hud-tag-aux" style={{ right: 18, bottom: 8, textAlign: "right" }}>
                     FOCUS ● {selMod.en} · 0xLAy0UT
                   </div>
                 </>
               ) : (
                 <>
-                  <div className="hud-tag" style={{ left: 18, top: 14 }}>
-                    ◈ LEFT HEMI · GOLD
+                  <div className="hud-tag hud-tag-main" style={{ left: 18, top: 14 }}>
+                    <span className="hud-tag-sub">◈ LEFT HEMI · GOLD</span>
                     <b className="hud-c-yel">KNOWLEDGE {knowledgeN}</b>
-                    SKILLS {skillsN} + DATABASE {dbN}
+                    <span className="hud-tag-sub">
+                      SKILLS {skillsN} + DATABASE {dbN}
+                    </span>
                   </div>
-                  <div className="hud-tag" style={{ right: 140, top: 14, textAlign: "right" }}>
+                  <div className="hud-tag hud-tag-aux" style={{ right: 140, top: 14, textAlign: "right" }}>
                     RIGHT HEMI · VIOLET ◈
                     <b className="hud-c-pur">OUTPUT {outputN}</b>
                     WORKS {worksN} + FINANCE {finN}
                   </div>
-                  <div className="hud-tag" style={{ left: 18, bottom: 8 }}>
+                  <div className="hud-tag hud-tag-aux" style={{ left: 18, bottom: 8 }}>
                     [ NODE 技能库 · DEG {skillsN} ] · [ NODE 数据库 · DEG {dbN} ]
                   </div>
-                  <div className="hud-tag" style={{ right: 18, bottom: 8, textAlign: "right" }}>
+                  <div className="hud-tag hud-tag-aux" style={{ right: 18, bottom: 8, textAlign: "right" }}>
                     SIM ● RUNNING · 0xLAy0UT
                   </div>
                 </>
