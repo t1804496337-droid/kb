@@ -19,7 +19,10 @@ export type BusEventType =
   /* 拼图三（hud-health-sync）：剪贴板解析口校验通过、manual 落盘后发 */
   | "HEALTH_SYNC"
   /* 拼图二（hud-empower）：创作流水线芯片换道落盘后发 */
-  | "STUDIO_STAGE_MOVE";
+  | "STUDIO_STAGE_MOVE"
+  /* UX 整改（hud-ux-dock）：灵感拓扑里建节点 / 连边成功后发 */
+  | "MINDMAP_NODE"
+  | "MINDMAP_EDGE";
 
 export type BusEvent = {
   type: BusEventType;
@@ -27,6 +30,11 @@ export type BusEvent = {
    * 动作（快照导入、无模块的 note 类决策意向）用 "hub"，脉冲
    * 消费端把它解析为球心（创作空间）热点。 */
   moduleId: string;
+  /** 业务对象名（UX 整改，hud-ux-dock）：终端中文播报的素材——
+   * 财务条目的类别+金额、决策标题、芯片名+目标泳道、健康日期
+   * 摘要、图谱节点文字等。由发射点在动作完成时带上，订阅端拼
+   * 中文行时取用；缺省时播报模板自行降级（如快照导入无对象）。 */
+  detail?: string;
 };
 
 type BusHandler = (ev: BusEvent) => void;
@@ -34,8 +42,8 @@ type BusHandler = (ev: BusEvent) => void;
 const handlers = new Set<BusHandler>();
 
 /** 发射一个业务事件——同步分发给全部订阅者。 */
-export function emit(type: BusEventType, moduleId: string): void {
-  const ev: BusEvent = { type, moduleId };
+export function emit(type: BusEventType, moduleId: string, detail?: string): void {
+  const ev: BusEvent = { type, moduleId, detail };
   handlers.forEach((h) => {
     try {
       h(ev);

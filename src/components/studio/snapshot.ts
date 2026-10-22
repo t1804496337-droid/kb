@@ -176,10 +176,23 @@ export const SLICES: SliceDef[] = [
   jsonSlice("decisionArchived", "studio_decision_archived_v1", "决策栈归档", arrayOf(
     (v) => typeof v === "string",
   )),
-  /* 终端 EXEC 日志（2026-10-22, hud-bus-pulse）：{ts: epoch, text} 数组，上限 20 条 */
-  jsonSlice("execLog", "studio_exec_log_v1", "终端 EXEC 日志", arrayOf(
-    (v) => isPlainObject(v) && isFiniteNum(v.ts) && typeof v.text === "string",
+  /* 终端业务日志（2026-10-22, hud-bus-pulse；结构化升级 hud-ux-dock）：
+   * 旧形态 {ts, text} 与新形态 {ts, type, module, detail?} 两种都收。 */
+  jsonSlice("execLog", "studio_exec_log_v1", "终端业务日志", arrayOf(
+    (v) =>
+      isPlainObject(v) &&
+      isFiniteNum(v.ts) &&
+      (typeof v.text === "string" || typeof v.type === "string"),
   )),
+  /* 顶部跑马灯标语（2026-10-22, hud-ux-dock）：用户可编辑的纯
+   * 字符串片（raw，与 windowTitle 同编码）；缺省标语不落盘。 */
+  {
+    name: "marquee",
+    key: "studio_marquee_v1",
+    module: "顶部标语",
+    kind: "raw",
+    validate: (v) => typeof v === "string" && v.length >= 1 && v.length <= 200,
+  },
   jsonSlice("skillsCollapsed", "studio_skills_collapsed_v1", "技能库折叠", isBoolRecord),
   /* 日历事项 / 灵感池步骤（HUD 与旧层共用同键） */
   jsonSlice("calendarItems", "studio_calendar_items_v1", "日历事项", arrayOf(okCalItem)),

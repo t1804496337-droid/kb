@@ -1371,8 +1371,9 @@ function FinanceBody() {
     const entry: FinanceEntry = { ...data, id: `fin-${Date.now()}` };
     saveEntries([...entries, entry]);
     /* 业务总线（hud-bus-pulse）：手工记账与 OCR 确认入账共用这一条
-     * 新增路径，落盘后只发一次 FINANCE_ADD_ENTRY。 */
-    emit("FINANCE_ADD_ENTRY", "finance");
+     * 新增路径，落盘后只发一次 FINANCE_ADD_ENTRY。detail 带类别与
+     * 金额（hud-ux-dock），终端拼成「[财务] 新增记录：日用 ¥22」。 */
+    emit("FINANCE_ADD_ENTRY", "finance", `${data.category} ¥${data.amount}`);
     return entry;
   };
 
@@ -2290,7 +2291,11 @@ function FinanceBody() {
                     saveEntries(entries.filter((x) => x.id !== e.id));
                     if (editingEntryId === e.id) resetEntryForm();
                     showToast("明细已删除");
-                    emit("FINANCE_DELETE_ENTRY", "finance");
+                    emit(
+                      "FINANCE_DELETE_ENTRY",
+                      "finance",
+                      `${e.category} ¥${e.amount}`,
+                    );
                   }}
                 />
               </Row>
@@ -3238,7 +3243,13 @@ function StudioBoard() {
        * 真正完成之后）；落盘失败则不动状态、不假装流转。 */
       if (!writeFlowSteps(next)) return;
       setSteps(next);
-      emit("STUDIO_STAGE_MOVE", "studio");
+      /* detail 带芯片名与目标泳道（hud-ux-dock）：终端拼成
+       * 「[创作] 芯片名 → 制作」。 */
+      emit(
+        "STUDIO_STAGE_MOVE",
+        "studio",
+        `${cur.title} → ${FLOW_STAGES.find((s) => s.id === target)?.label ?? target}`,
+      );
     },
     [steps],
   );
@@ -3548,8 +3559,15 @@ export function HudDecisionNote({
       /* storage unavailable → 仅本次会话内显示 */
     }
     /* 业务总线（hud-bus-pulse）：意向真正落盘后才发。X / 小红书两项
-     * 都是无归属模块的 note 类决策 → moduleId 用 "hub"。 */
-    if (recorded) emit("DECISION_PICK", "hub");
+     * 都是无归属模块的 note 类决策 → moduleId 用 "hub"。detail 带
+     * 决策标题与所选项（hud-ux-dock），终端拼成中文播报。 */
+    if (recorded) {
+      emit(
+        "DECISION_PICK",
+        "hub",
+        `${isX ? "X 账号恢复" : "小红书去向"} · ${options.find((o) => o.id === id)?.label ?? id}`,
+      );
+    }
   };
   const pickLabel = options.find((o) => o.id === pick)?.label;
   return (
