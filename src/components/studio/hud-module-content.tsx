@@ -1179,9 +1179,14 @@ function StudioBody({ onOpen }: { onOpen: (id: string) => void }) {
 
 /* ─────────────────── decision stack · note views ─────────────────── */
 
+/** 意向记录的本机存储键（与日历事项同机制：只存这台设备）。 */
+const DECISION_PICKS_KEY = "studio_decision_picks_v1";
+
 /**
  * 决策栈里无对应模块的两项（X 恢复 / 小红书去向）点开后的状态说明页：
- * 只陈述事实与待决选项，不假装能一键执行。
+ * 陈述事实与待决选项，并可在页内记录意向（localStorage 本机存储）。
+ * 记录意向不触发任何真实执行——不发请求、不改账号/任务状态；
+ * 真执行仍以用户在聊天里跟 Luna 确认为准。
  */
 export function HudDecisionNote({
   kind,
@@ -1191,6 +1196,43 @@ export function HudDecisionNote({
   onBack: () => void;
 }) {
   const isX = kind === "x";
+  const options: { id: string; label: string }[] = isX
+    ? [
+        { id: "resume", label: "恢复运营" },
+        { id: "pause", label: "继续暂停" },
+      ]
+    : [
+        { id: "A", label: "A 申诉" },
+        { id: "B", label: "B 换号重来" },
+        { id: "C", label: "C 先搁置" },
+      ];
+  const [pick, setPick] = React.useState<string | null>(null);
+  React.useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(DECISION_PICKS_KEY);
+      if (raw) {
+        const obj = JSON.parse(raw) as Record<string, unknown>;
+        const v = obj?.[kind];
+        if (typeof v === "string") setPick(v);
+      }
+    } catch {
+      /* storage unavailable → 无已选记录 */
+    }
+  }, [kind]);
+  const choose = (id: string) => {
+    setPick(id);
+    try {
+      const raw = window.localStorage.getItem(DECISION_PICKS_KEY);
+      const obj = raw
+        ? (JSON.parse(raw) as Record<string, unknown>)
+        : {};
+      obj[kind] = id;
+      window.localStorage.setItem(DECISION_PICKS_KEY, JSON.stringify(obj));
+    } catch {
+      /* storage unavailable → 仅本次会话内显示 */
+    }
+  };
+  const pickLabel = options.find((o) => o.id === pick)?.label;
   return (
     <div
       className="hud-panel hud-module"
@@ -1237,6 +1279,30 @@ export function HudDecisionNote({
             </Kv>
           </div>
         )}
+        <div className="hud-pickbox" data-testid="hud-decision-pick">
+          <p className="hud-module-note">
+            意向记录 · 只存这台设备，不触发任何执行：
+          </p>
+          <div className="hud-pickrow">
+            {options.map((o) => (
+              <button
+                key={o.id}
+                type="button"
+                className={cn("hud-pickbtn", pick === o.id && "hud-pickbtn-on")}
+                data-testid={`hud-pick-${kind}-${o.id}`}
+                aria-pressed={pick === o.id}
+                onClick={() => choose(o.id)}
+              >
+                {o.label}
+              </button>
+            ))}
+          </div>
+          {pickLabel ? (
+            <p className="hud-picked" data-testid="hud-decision-picked">
+              已选：{pickLabel} —— 在聊天里跟 Luna 确认后执行
+            </p>
+          ) : null}
+        </div>
       </div>
     </div>
   );
