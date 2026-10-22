@@ -2,7 +2,18 @@
 
 import * as React from "react";
 import { cn } from "@/lib/utils";
-import { fmtMoney, isRepayment } from "@/components/studio/finance-module";
+import {
+  FINANCE_ASSET_TYPES,
+  currentMonthKey,
+  fmtMoney,
+  isNonConsumption,
+  isRepayment,
+  type FinanceAsset,
+  type FinanceAssetType,
+  type FinanceEntry,
+  type FinanceLiability,
+} from "@/components/studio/finance-module";
+import { InlineConfirmButton } from "@/components/ui/inline-confirm";
 import skillsSyncJson from "../../../public/skills-sync.json";
 import healthSyncJson from "../../../public/health-sync.json";
 
@@ -22,8 +33,11 @@ import healthSyncJson from "../../../public/health-sync.json";
  *               待办票分区；平台同步六平台如实标未接入
  * - calendar  ← 2026-10 月历 + 事项（localStorage
  *               studio_calendar_items_v1，可增删，本地保存）+ 待办票
- * - finance   ← ledger.csv 两条种子：汇总卡（累计/消费/还款）+ 分类
- *               小计 + 流水（金额口径走 finance-module 的 fmtMoney）
+ * - finance   ← 旧版五区接回（概览/记账明细/月度报告/负债管理/
+ *               资产台账）：数据层与旧模块同构（localStorage 同键 +
+ *               台账 2 条种子），数字全由条目实时派生；记账明细带
+ *               图片记账（tesseract.js 本地 OCR + chi_sim 自托管，
+ *               提取金额/日期/对方/分类 → 待确认卡 → 确认才入账）
  * - health    ← public/health-sync.json（睡眠/步数/饮食）+ 训练记录区
  *               （计划＝塑形计划-轻器械高次数.md，完成状态无确认数据
  *               → 标计划态，不代填）+ 教学视频（/health-media.json
@@ -820,77 +834,1824 @@ function CalendarBody() {
 
 /* ─────────────────────────── 3 · finance ─────────────────────────── */
 
-function FinanceBody() {
-  const entries = FINANCE_LEDGER_ENTRIES;
-  const totalOut = entries
-    .filter((e) => e.kind === "expense")
-    .reduce((acc, e) => acc + e.amount, 0);
-  const repay = entries
-    .filter((e) => isRepayment(e))
-    .reduce((acc, e) => acc + e.amount, 0);
-  const consumption = totalOut - repay;
-  const byCategory = new Map<string, { sum: number; n: number }>();
-  for (const e of entries) {
-    const cur = byCategory.get(e.category) ?? { sum: 0, n: 0 };
-    cur.sum += e.amount;
-    cur.n += 1;
-    byCategory.set(e.category, cur);
+/* 财务数据层：与旧模块（page.tsx 状态层 + finance-module.tsx）完全同构——
+ * 同一套 localStorage 键、同样的种子（台账真实 2 条）与校验、同样的
+ * 首次播种语义（删过的条目不复活）。旧版在本机浏览器存过的数据，
+ * 打开这里会自动读回来。所有数字都由 entries / liabilities / assets
+ * 实时派生，概览与月度报告共用同一个 finSummarize，不写死金额。 */
+const FIN_ENTRIES_KEY = "studio_finance_entries_v1";
+const FIN_LIABILITIES_KEY = "studio_finance_liabilities_v1";
+const FIN_ASSETS_KEY = "studio_finance_assets_v1";
+const FIN_BUDGET_KEY = "studio_finance_budget_v1";
+const FIN_SEEDED_KEY = "studio_finance_seeded_v1";
+
+const FIN_SEED_ENTRIES: FinanceEntry[] = [
+  {
+    id: "fin-seed-ledger-1",
+    date: "2026-10-17",
+    kind: "expense",
+    amount: 22,
+    category: "日用",
+    note: "水+烟",
+    source: "ledger",
+  },
+  {
+    id: "fin-seed-ledger-2",
+    date: "2026-10-17",
+    kind: "expense",
+    amount: 401.54,
+    category: "还款",
+    note: "微信分付还款",
+    source: "ledger",
+  },
+];
+
+const FIN_CATEGORIES = [
+  "日用",
+  "餐饮",
+  "交通",
+  "购物",
+  "娱乐",
+  "还款",
+  "转账",
+  "工资",
+  "其他",
+];
+
+const finRound2 = (n: number) => Math.round(n * 100) / 100;
+const finMonthOf = (date: string) => date.slice(0, 7);
+const finPad2 = (n: number) => String(n).padStart(2, "0");
+const finPrevMonthKey = (mk: string): string => {
+  const [y, m] = mk.split("-").map(Number);
+  const d = new Date(y, m - 2, 1);
+  return `${d.getFullYear()}-${finPad2(d.getMonth() + 1)}`;
+};
+const finMonthLabel = (mk: string) =>
+  `${Number(mk.slice(0, 4))} 年 ${Number(mk.slice(5, 7))} 月`;
+const finTodayStr = (): string => {
+  const d = new Date();
+  return `${d.getFullYear()}-${finPad2(d.getMonth() + 1)}-${finPad2(d.getDate())}`;
+};
+const finGreeting = (): string => {
+  const h = new Date().getHours();
+  if (h < 6) return "夜深了";
+  if (h < 12) return "上午好";
+  if (h < 14) return "中午好";
+  if (h < 18) return "下午好";
+  return "晚上好";
+};
+
+type FinScope = "all" | "consume";
+type FinMonthSummary = {
+  income: number;
+  outflow: number;
+  net: number;
+  expenseCount: number;
+  repay: number;
+  entryCount: number;
+};
+
+/** 与旧 finance-module 的 summarize 同口径：仅消费口径排除还款/转账流出。 */
+function finSummarize(
+  entries: FinanceEntry[],
+  mk: string,
+  scope: FinScope,
+): FinMonthSummary {
+  const list = entries.filter((e) => finMonthOf(e.date) === mk);
+  const income = finRound2(
+    list.filter((e) => e.kind === "income").reduce((s, e) => s + e.amount, 0),
+  );
+  const scoped = list.filter(
+    (e) => e.kind === "expense" && (scope === "all" || !isNonConsumption(e)),
+  );
+  const outflow = finRound2(scoped.reduce((s, e) => s + e.amount, 0));
+  const repay = finRound2(
+    list.filter(isRepayment).reduce((s, e) => s + e.amount, 0),
+  );
+  return {
+    income,
+    outflow,
+    net: finRound2(income - outflow),
+    expenseCount: scoped.length,
+    repay,
+    entryCount: list.length,
+  };
+}
+
+/* ── 图片记账：本地 OCR 提取（规则独立成函数，方便调参）──
+ * 金额：优先「金额类标签」后面的数字 → 其次 ¥ 标记的最大值 → 其次
+ * 两位小数的最大值；都没有就返回 null（上层留空让用户补，不瞎填）。
+ * 日期：YYYY-MM-DD / YYYY/MM/DD / YYYY年M月D日 / M月D日（当年）。
+ * 对方：「收款方/商户/对方」行文本，否则已知平台名。
+ * 分类：关键词规则（顺序即优先级），兜底「其他」。 */
+export type BillExtract = {
+  amount: number | null;
+  date: string | null;
+  counterparty: string | null;
+  category: string;
+};
+
+const OCR_CATEGORY_RULES: { category: string; re: RegExp }[] = [
+  { category: "还款", re: /分付|花呗|白条|信用卡还款|还款/ },
+  {
+    category: "餐饮",
+    re: /餐饮|餐厅|食堂|面馆|拉面|面条|米线|小吃|火锅|烧烤|咖啡|奶茶|外卖|美团|饿了么|饭店|吃饭/,
+  },
+  { category: "交通", re: /滴滴|打车|地铁|公交|加油|停车|出行|高铁|火车票|机票/ },
+  { category: "购物", re: /淘宝|天猫|京东|拼多多|抖音电商|商城|购物/ },
+  { category: "日用", re: /超市|便利店|日用|药房|水费|电费|燃气|话费/ },
+];
+
+export function extractBillFields(rawText: string): BillExtract {
+  /* OCR（chi_sim）实测特性：中文字间会带空格、¥ 常被读成「半」、
+   * 「收款方」可能读成「收蒜方」。先按行去掉全部空白再匹配，
+   * 标签与数字之间容忍少量杂字，对方行用模糊标签兜底。 */
+  const text = rawText
+    .replace(/,/g, "")
+    .split("\n")
+    .map((l) => l.replace(/\s+/g, ""))
+    .join("\n");
+  let amount: number | null = null;
+  const labeled = text.match(
+    /(?:付款金额|实付金额|实付|实际付款|支付金额|消费金额|交易金额|订单金额|总金额|金额)[^0-9]{0,4}?(\d+(?:\.\d{1,2})?)/,
+  );
+  if (labeled) {
+    const v = parseFloat(labeled[1]);
+    if (Number.isFinite(v) && v > 0) amount = finRound2(v);
   }
-  const dates = entries.map((e) => e.date).sort();
+  if (amount === null) {
+    const yen = [...text.matchAll(/[¥￥]\s*(\d+(?:\.\d{1,2})?)/g)]
+      .map((m) => parseFloat(m[1]))
+      .filter((v) => Number.isFinite(v) && v > 0);
+    if (yen.length > 0) amount = finRound2(Math.max(...yen));
+  }
+  if (amount === null) {
+    const dec = [...text.matchAll(/(\d+\.\d{2})(?!\d)/g)]
+      .map((m) => parseFloat(m[1]))
+      .filter((v) => Number.isFinite(v) && v > 0 && v < 1000000);
+    if (dec.length > 0) amount = finRound2(Math.max(...dec));
+  }
+
+  let date: string | null = null;
+  const dm =
+    text.match(/(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/) ??
+    text.match(/(\d{4})年(\d{1,2})月(\d{1,2})日/);
+  if (dm) {
+    const mo = Number(dm[2]);
+    const da = Number(dm[3]);
+    if (mo >= 1 && mo <= 12 && da >= 1 && da <= 31)
+      date = `${dm[1]}-${finPad2(mo)}-${finPad2(da)}`;
+  }
+  if (date === null) {
+    const md = text.match(/(\d{1,2})月(\d{1,2})日/);
+    if (md) {
+      const mo = Number(md[1]);
+      const da = Number(md[2]);
+      if (mo >= 1 && mo <= 12 && da >= 1 && da <= 31)
+        date = `${new Date().getFullYear()}-${finPad2(mo)}-${finPad2(da)}`;
+    }
+  }
+
+  let counterparty: string | null = null;
+  for (const line of text.split(/\n/)) {
+    const m = line.match(
+      /(?:收.方|收款人|商户名称|商户|对方|付款给|卖家)[:：]?(.+)$/,
+    );
+    if (m) {
+      const v = m[1].trim();
+      if (v.length >= 2) {
+        counterparty = v.slice(0, 24);
+        break;
+      }
+    }
+  }
+  if (counterparty === null) {
+    for (const b of [
+      "美团",
+      "饿了么",
+      "滴滴出行",
+      "淘宝",
+      "京东",
+      "拼多多",
+      "天猫",
+      "星巴克",
+      "麦当劳",
+      "肯德基",
+    ]) {
+      if (text.includes(b)) {
+        counterparty = b;
+        break;
+      }
+    }
+  }
+
+  let category = "其他";
+  for (const rule of OCR_CATEGORY_RULES) {
+    if (rule.re.test(text)) {
+      category = rule.category;
+      break;
+    }
+  }
+  return { amount, date, counterparty, category };
+}
+
+type OcrWorkerLike = {
+  recognize: (img: File) => Promise<{ data: { text: string } }>;
+  terminate: () => Promise<unknown>;
+};
+
+type OcrDraft = {
+  date: string;
+  kind: "income" | "expense";
+  amount: string;
+  category: string;
+  note: string;
+  thumb: string;
+  amountMissing: boolean;
+};
+
+function FinField({
+  label,
+  w,
+  children,
+}: {
+  label: string;
+  w?: number;
+  children: React.ReactNode;
+}) {
   return (
-    <div>
-      <SecHead
-        title="汇总"
-        en="SUMMARY"
-        right={
-          <span className="hud-module-note">
-            数据源 Luna 台账 ledger.csv（种子条目）· {entries.length} 条 ·{" "}
-            {dates[0] ?? "—"}
-            {dates.length > 1 ? ` ～ ${dates[dates.length - 1]}` : ""}
-          </span>
+    <label
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: 3,
+        ...(w ? { width: w, flex: "none" } : { flex: "1 1 120px" }),
+      }}
+    >
+      <span className="hud-module-note">{label}</span>
+      {children}
+    </label>
+  );
+}
+
+function FinStat({
+  k,
+  v,
+  sub,
+  testid,
+  data,
+}: {
+  k: string;
+  v: React.ReactNode;
+  sub?: string;
+  testid: string;
+  data?: Record<string, string | number>;
+}) {
+  const dataProps: Record<string, string> = {};
+  if (data) {
+    for (const [key, val] of Object.entries(data))
+      dataProps[`data-${key}`] = String(val);
+  }
+  return (
+    <div className="hud-module-stat" data-testid={testid} {...dataProps}>
+      <div className="hud-module-stat-v">{v}</div>
+      <div className="hud-module-stat-k">{k}</div>
+      {sub ? (
+        <div className="hud-module-note" style={{ marginTop: 3 }}>
+          {sub}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function FinanceBody() {
+  const [entries, setEntries] = React.useState<FinanceEntry[]>([]);
+  const [liabilities, setLiabilities] = React.useState<FinanceLiability[]>([]);
+  const [assets, setAssets] = React.useState<FinanceAsset[]>([]);
+  const [budget, setBudget] = React.useState<number | null>(null);
+  const [toast, setToast] = React.useState("");
+  const toastTimer = React.useRef<number | undefined>(undefined);
+  const showToast = React.useCallback((msg: string) => {
+    setToast(msg);
+    window.clearTimeout(toastTimer.current);
+    toastTimer.current = window.setTimeout(() => setToast(""), 2600);
+  }, []);
+
+  /* 读取：与 page.tsx 完全相同的校验与播种语义。 */
+  React.useEffect(() => {
+    try {
+      const rawE = window.localStorage.getItem(FIN_ENTRIES_KEY);
+      let loaded: FinanceEntry[] = [];
+      if (rawE) {
+        const arr = JSON.parse(rawE) as FinanceEntry[];
+        if (Array.isArray(arr)) {
+          loaded = arr.filter(
+            (e) =>
+              e &&
+              typeof e.id === "string" &&
+              typeof e.date === "string" &&
+              /^\d{4}-\d{2}-\d{2}$/.test(e.date) &&
+              (e.kind === "income" || e.kind === "expense") &&
+              typeof e.amount === "number" &&
+              Number.isFinite(e.amount) &&
+              typeof e.category === "string",
+          );
         }
-      />
-      <div className="hud-module-stats" data-testid="hud-fin-stats">
-        <div className="hud-module-stat">
-          <div className="hud-module-stat-v">{fmtMoney(totalOut)}</div>
-          <div className="hud-module-stat-k">累计支出 · 全部</div>
+      }
+      if (!window.localStorage.getItem(FIN_SEEDED_KEY)) {
+        if (!rawE) {
+          loaded = [...FIN_SEED_ENTRIES];
+          window.localStorage.setItem(
+            FIN_ENTRIES_KEY,
+            JSON.stringify(loaded),
+          );
+        }
+        window.localStorage.setItem(FIN_SEEDED_KEY, "1");
+      }
+      setEntries(loaded);
+      const rawL = window.localStorage.getItem(FIN_LIABILITIES_KEY);
+      if (rawL) {
+        const arr = JSON.parse(rawL) as FinanceLiability[];
+        if (Array.isArray(arr)) {
+          setLiabilities(
+            arr.filter(
+              (l) =>
+                l &&
+                typeof l.id === "string" &&
+                typeof l.name === "string" &&
+                typeof l.total === "number" &&
+                typeof l.remaining === "number",
+            ),
+          );
+        }
+      }
+      const rawA = window.localStorage.getItem(FIN_ASSETS_KEY);
+      if (rawA) {
+        const arr = JSON.parse(rawA) as FinanceAsset[];
+        if (Array.isArray(arr)) {
+          setAssets(
+            arr.filter(
+              (a) =>
+                a &&
+                typeof a.id === "string" &&
+                typeof a.name === "string" &&
+                typeof a.cost === "number",
+            ),
+          );
+        }
+      }
+      const rawB = window.localStorage.getItem(FIN_BUDGET_KEY);
+      if (rawB) {
+        const n = Number(rawB);
+        if (Number.isFinite(n) && n > 0) setBudget(n);
+      }
+    } catch {
+      /* storage unavailable → 空态 */
+    }
+  }, []);
+
+  const saveEntries = (next: FinanceEntry[]) => {
+    setEntries(next);
+    try {
+      window.localStorage.setItem(FIN_ENTRIES_KEY, JSON.stringify(next));
+    } catch {
+      /* storage unavailable */
+    }
+  };
+  const saveLiabilities = (next: FinanceLiability[]) => {
+    setLiabilities(next);
+    try {
+      window.localStorage.setItem(FIN_LIABILITIES_KEY, JSON.stringify(next));
+    } catch {
+      /* storage unavailable */
+    }
+  };
+  const saveAssets = (next: FinanceAsset[]) => {
+    setAssets(next);
+    try {
+      window.localStorage.setItem(FIN_ASSETS_KEY, JSON.stringify(next));
+    } catch {
+      /* storage unavailable */
+    }
+  };
+  const saveBudget = (n: number | null) => {
+    setBudget(n);
+    try {
+      if (n === null) window.localStorage.removeItem(FIN_BUDGET_KEY);
+      else window.localStorage.setItem(FIN_BUDGET_KEY, String(n));
+    } catch {
+      /* storage unavailable */
+    }
+  };
+
+  const addEntry = (data: Omit<FinanceEntry, "id">) => {
+    const entry: FinanceEntry = { ...data, id: `fin-${Date.now()}` };
+    saveEntries([...entries, entry]);
+    return entry;
+  };
+
+  /* ---- 派生（概览与月度报告共用口径） ---- */
+  const [scope, setScope] = React.useState<FinScope>("all");
+  const nowMonth = currentMonthKey();
+  const [reportMonth, setReportMonth] = React.useState<string>(nowMonth);
+  const reportMonths = React.useMemo(() => {
+    const set = new Set(entries.map((e) => finMonthOf(e.date)));
+    set.add(nowMonth);
+    return [...set].sort().reverse();
+  }, [entries, nowMonth]);
+  const activeReportMonth = reportMonths.includes(reportMonth)
+    ? reportMonth
+    : nowMonth;
+  const ov = React.useMemo(
+    () => finSummarize(entries, nowMonth, scope),
+    [entries, nowMonth, scope],
+  );
+  const rp = React.useMemo(
+    () => finSummarize(entries, activeReportMonth, scope),
+    [entries, activeReportMonth, scope],
+  );
+  const rpPrev = React.useMemo(
+    () => finSummarize(entries, finPrevMonthKey(activeReportMonth), scope),
+    [entries, activeReportMonth, scope],
+  );
+  const totalAllOut = React.useMemo(
+    () =>
+      finRound2(
+        entries
+          .filter((e) => e.kind === "expense")
+          .reduce((s, e) => s + e.amount, 0),
+      ),
+    [entries],
+  );
+  const liabTotal = finRound2(liabilities.reduce((s, l) => s + l.remaining, 0));
+  const liabMin = finRound2(
+    liabilities.reduce((s, l) => s + (l.minPayment ?? 0), 0),
+  );
+  const liabAdvice = React.useMemo(() => {
+    const open = liabilities.filter((l) => l.remaining > 0);
+    const rated = open.filter(
+      (l) => typeof l.annualRate === "number" && l.annualRate > 0,
+    );
+    if (rated.length === 0) return null;
+    return [...rated].sort(
+      (a, b) =>
+        (b.annualRate ?? 0) - (a.annualRate ?? 0) || b.remaining - a.remaining,
+    )[0];
+  }, [liabilities]);
+  const assetCost = finRound2(assets.reduce((s, a) => s + a.cost, 0));
+  const assetsWithValue = assets.filter((a) => typeof a.value === "number");
+  const assetValue =
+    assetsWithValue.length > 0
+      ? finRound2(assetsWithValue.reduce((s, a) => s + (a.value ?? 0), 0))
+      : null;
+  const budgetRemaining = budget !== null ? finRound2(budget - ov.outflow) : null;
+  const budgetPct =
+    budget !== null && budget > 0
+      ? Math.min(100, Math.round((ov.outflow / budget) * 100))
+      : 0;
+  const rpBudgetRemaining =
+    budget !== null ? finRound2(budget - rp.outflow) : null;
+  const rpBudgetPct =
+    budget !== null && budget > 0
+      ? Math.min(100, Math.round((rp.outflow / budget) * 100))
+      : 0;
+  const changeText = React.useMemo(() => {
+    if (rpPrev.entryCount === 0) return "暂无对比（上月无数据）";
+    if (rpPrev.outflow <= 0) return "上月支出为 ¥0，暂无法对比";
+    const pct = ((rp.outflow - rpPrev.outflow) / rpPrev.outflow) * 100;
+    const rounded = Math.round(pct * 10) / 10;
+    if (rounded === 0) return "支出与上月持平";
+    return `支出较上月 ${rounded > 0 ? "+" : ""}${rounded}%（${fmtMoney(rpPrev.outflow)} → ${fmtMoney(rp.outflow)}）`;
+  }, [rp, rpPrev]);
+  const reportByCategory = React.useMemo(() => {
+    const map = new Map<string, { out: number; inc: number; n: number }>();
+    for (const e of entries) {
+      if (finMonthOf(e.date) !== activeReportMonth) continue;
+      const cur = map.get(e.category) ?? { out: 0, inc: 0, n: 0 };
+      if (e.kind === "expense") cur.out += e.amount;
+      else cur.inc += e.amount;
+      cur.n += 1;
+      map.set(e.category, cur);
+    }
+    return [...map.entries()].sort((a, b) => b[1].out - a[1].out);
+  }, [entries, activeReportMonth]);
+
+  /* ---- 记账表单（新增 / 行内编辑） ---- */
+  const [editingEntryId, setEditingEntryId] = React.useState<string | null>(null);
+  const [entryForm, setEntryForm] = React.useState({
+    date: finTodayStr(),
+    kind: "expense" as "income" | "expense",
+    amount: "",
+    category: "",
+    note: "",
+  });
+  const resetEntryForm = () => {
+    setEditingEntryId(null);
+    setEntryForm({
+      date: finTodayStr(),
+      kind: "expense",
+      amount: "",
+      category: "",
+      note: "",
+    });
+  };
+  const submitEntry = () => {
+    const amount = Number(entryForm.amount);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(entryForm.date)) {
+      showToast("先选一个日期");
+      return;
+    }
+    if (!Number.isFinite(amount) || amount <= 0) {
+      showToast("金额要大于 0");
+      return;
+    }
+    if (!entryForm.category.trim()) {
+      showToast("先填分类，如 日用 / 还款 / 工资");
+      return;
+    }
+    const payload: Omit<FinanceEntry, "id" | "source"> = {
+      date: entryForm.date,
+      kind: entryForm.kind,
+      amount: finRound2(amount),
+      category: entryForm.category.trim(),
+      ...(entryForm.note.trim() ? { note: entryForm.note.trim() } : {}),
+    };
+    if (editingEntryId) {
+      saveEntries(
+        entries.map((e) => (e.id === editingEntryId ? { ...e, ...payload } : e)),
+      );
+      showToast("明细已更新");
+    } else {
+      addEntry(payload);
+      showToast("已记一笔");
+    }
+    resetEntryForm();
+  };
+  const sortedEntries = React.useMemo(
+    () =>
+      [...entries].sort((a, b) =>
+        a.date === b.date ? (a.id < b.id ? 1 : -1) : a.date < b.date ? 1 : -1,
+      ),
+    [entries],
+  );
+
+  /* ---- 负债表单 ---- */
+  const [editingLiabId, setEditingLiabId] = React.useState<string | null>(null);
+  const [liabForm, setLiabForm] = React.useState({
+    name: "",
+    total: "",
+    remaining: "",
+    rate: "",
+    min: "",
+    note: "",
+  });
+  const resetLiabForm = () => {
+    setEditingLiabId(null);
+    setLiabForm({ name: "", total: "", remaining: "", rate: "", min: "", note: "" });
+  };
+  const submitLiab = () => {
+    const total = Number(liabForm.total);
+    const remaining =
+      liabForm.remaining.trim() === "" ? total : Number(liabForm.remaining);
+    if (!liabForm.name.trim()) {
+      showToast("先填负债名称");
+      return;
+    }
+    if (!Number.isFinite(total) || total < 0) {
+      showToast("总额需为不小于 0 的数字");
+      return;
+    }
+    if (!Number.isFinite(remaining) || remaining < 0) {
+      showToast("剩余需为不小于 0 的数字");
+      return;
+    }
+    const rate = liabForm.rate.trim() === "" ? undefined : Number(liabForm.rate);
+    if (rate !== undefined && (!Number.isFinite(rate) || rate < 0)) {
+      showToast("年化利率需为不小于 0 的数字");
+      return;
+    }
+    const min = liabForm.min.trim() === "" ? undefined : Number(liabForm.min);
+    if (min !== undefined && (!Number.isFinite(min) || min < 0)) {
+      showToast("月最低还款需为不小于 0 的数字");
+      return;
+    }
+    const payload: Omit<FinanceLiability, "id"> = {
+      name: liabForm.name.trim(),
+      total: finRound2(total),
+      remaining: finRound2(remaining),
+      ...(rate !== undefined ? { annualRate: rate } : {}),
+      ...(min !== undefined ? { minPayment: finRound2(min) } : {}),
+      ...(liabForm.note.trim() ? { note: liabForm.note.trim() } : {}),
+    };
+    if (editingLiabId) {
+      saveLiabilities(
+        liabilities.map((l) => (l.id === editingLiabId ? { ...l, ...payload } : l)),
+      );
+      showToast("负债已更新");
+    } else {
+      saveLiabilities([...liabilities, { ...payload, id: `finl-${Date.now()}` }]);
+      showToast("负债已添加");
+    }
+    resetLiabForm();
+  };
+
+  /* ---- 资产表单 ---- */
+  const [editingAssetId, setEditingAssetId] = React.useState<string | null>(null);
+  const [assetForm, setAssetForm] = React.useState({
+    name: "",
+    type: "股票" as FinanceAssetType,
+    cost: "",
+    value: "",
+  });
+  const resetAssetForm = () => {
+    setEditingAssetId(null);
+    setAssetForm({ name: "", type: "股票", cost: "", value: "" });
+  };
+  const submitAsset = () => {
+    const cost = Number(assetForm.cost);
+    if (!assetForm.name.trim()) {
+      showToast("先填资产名称");
+      return;
+    }
+    if (assetForm.cost.trim() === "" || !Number.isFinite(cost) || cost < 0) {
+      showToast("持仓成本需为不小于 0 的数字");
+      return;
+    }
+    const value =
+      assetForm.value.trim() === "" ? undefined : Number(assetForm.value);
+    if (value !== undefined && (!Number.isFinite(value) || value < 0)) {
+      showToast("现值需为不小于 0 的数字");
+      return;
+    }
+    const payload: Omit<FinanceAsset, "id"> = {
+      name: assetForm.name.trim(),
+      type: assetForm.type,
+      cost: finRound2(cost),
+      ...(value !== undefined ? { value: finRound2(value) } : {}),
+    };
+    if (editingAssetId) {
+      saveAssets(assets.map((a) => (a.id === editingAssetId ? { ...a, ...payload } : a)));
+      showToast("资产已更新");
+    } else {
+      saveAssets([...assets, { ...payload, id: `fina-${Date.now()}` }]);
+      showToast("资产已添加");
+    }
+    resetAssetForm();
+  };
+
+  /* ---- 预算编辑（概览卡内） ---- */
+  const [budgetDraft, setBudgetDraft] = React.useState("");
+  const [budgetEditing, setBudgetEditing] = React.useState(false);
+  const applyBudget = () => {
+    const n = Number(budgetDraft);
+    if (!Number.isFinite(n) || n <= 0) {
+      showToast("预算要大于 0");
+      return;
+    }
+    saveBudget(finRound2(n));
+    setBudgetEditing(false);
+    showToast("月度预算已保存");
+  };
+
+  /* ---- 图片记账（本地 OCR） ---- */
+  const [ocrOpen, setOcrOpen] = React.useState(false);
+  const [ocrBusy, setOcrBusy] = React.useState(false);
+  const [ocrMsg, setOcrMsg] = React.useState("");
+  const [ocrDraft, setOcrDraft] = React.useState<OcrDraft | null>(null);
+  const ocrFileRef = React.useRef<HTMLInputElement | null>(null);
+  const ocrWorkerRef = React.useRef<OcrWorkerLike | null>(null);
+  const ocrDraftRef = React.useRef<OcrDraft | null>(null);
+  ocrDraftRef.current = ocrDraft;
+  React.useEffect(() => {
+    const worker = ocrWorkerRef.current;
+    return () => {
+      if (ocrDraftRef.current) URL.revokeObjectURL(ocrDraftRef.current.thumb);
+      if (worker) {
+        ocrWorkerRef.current = null;
+        void worker.terminate().catch(() => undefined);
+      }
+    };
+  }, []);
+  const clearOcrDraft = () => {
+    if (ocrDraft) URL.revokeObjectURL(ocrDraft.thumb);
+    setOcrDraft(null);
+  };
+  const runOcr = async (file: File) => {
+    if (ocrBusy) return;
+    clearOcrDraft();
+    setOcrBusy(true);
+    setOcrMsg("正在加载本地识别引擎…");
+    const thumb = URL.createObjectURL(file);
+    try {
+      if (!ocrWorkerRef.current) {
+        const Tesseract = await import("tesseract.js");
+        const worker = await Tesseract.createWorker(
+          "chi_sim",
+          Tesseract.OEM.LSTM_ONLY,
+          {
+            workerPath: "/ocr/worker.min.js",
+            corePath: "/ocr",
+            langPath: "/ocr",
+            gzip: true,
+            cacheMethod: "none",
+            logger: (m) => {
+              if (m.status === "recognizing text") {
+                setOcrMsg(`识别中 ${Math.round(m.progress * 100)}%`);
+              }
+            },
+          },
+        );
+        ocrWorkerRef.current = worker as unknown as OcrWorkerLike;
+      }
+      setOcrMsg("识别中 0%");
+      const res = await ocrWorkerRef.current.recognize(file);
+      const ex = extractBillFields(res.data.text ?? "");
+      setOcrDraft({
+        date: ex.date ?? finTodayStr(),
+        kind: "expense",
+        amount: ex.amount !== null ? String(ex.amount) : "",
+        category: ex.category,
+        note: ex.counterparty ?? "",
+        thumb,
+        amountMissing: ex.amount === null,
+      });
+      setOcrMsg(
+        ex.amount === null
+          ? "识别完成，但金额没认出来，请在下面手动补上再确认"
+          : "识别完成，请核对下面这条，确认后才入账",
+      );
+    } catch {
+      URL.revokeObjectURL(thumb);
+      setOcrMsg("识别失败：请换一张更清晰的图，或用下面的表单手动记一笔");
+    } finally {
+      setOcrBusy(false);
+    }
+  };
+  const confirmOcrDraft = () => {
+    if (!ocrDraft) return;
+    const amount = Number(ocrDraft.amount);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(ocrDraft.date)) {
+      showToast("先补一个日期");
+      return;
+    }
+    if (!Number.isFinite(amount) || amount <= 0) {
+      showToast("金额没认出来，请手动补一个大于 0 的金额");
+      return;
+    }
+    if (!ocrDraft.category.trim()) {
+      showToast("先填分类");
+      return;
+    }
+    addEntry({
+      date: ocrDraft.date,
+      kind: ocrDraft.kind,
+      amount: finRound2(amount),
+      category: ocrDraft.category.trim(),
+      ...(ocrDraft.note.trim() ? { note: ocrDraft.note.trim() } : {}),
+      source: "ocr",
+    });
+    clearOcrDraft();
+    setOcrMsg("");
+    showToast("已记一笔（图片识别）");
+  };
+
+  const copyAiSummary = async () => {
+    const lines = [
+      ``,
+      `收入 ${fmtMoney(rp.income)} · 流出 ${fmtMoney(rp.outflow)} · 净现金流 ${fmtMoney(rp.net)}`,
+      `本月支出 ${rp.expenseCount} 条 · 偿还负债 ${fmtMoney(rp.repay)}`,
+      budget !== null
+        ? `月度预算 ${fmtMoney(budget)} · 剩余 ${fmtMoney(rpBudgetRemaining ?? 0)}`
+        : "月度预算 未设置",
+      `总负债 ${fmtMoney(liabTotal)}（${liabilities.length} 笔） · 资产 ${assets.length} 项（成本 ${fmtMoney(assetCost)}）`,
+      `关键变化：${changeText}`,
+    ];
+    try {
+      await navigator.clipboard.writeText(lines.join("\n"));
+      showToast("摘要已复制，发给 Luna 即可诊断");
+    } catch {
+      showToast("复制失败，请截图发给 Luna");
+    }
+  };
+
+  const scopeNote =
+    scope === "all" ? "口径：全部资金流出" : "口径：仅消费（不含还款/转账）";
+  const finInputCls = "hud-module-input";
+  const finInputStyle = { marginBottom: 0 } as const;
+
+  return (
+    <div data-testid="hud-fin-view">
+      {toast ? (
+        <p
+          className="hud-module-note"
+          data-testid="hud-fin-toast"
+          style={{ marginBottom: 8, color: "var(--hud-yellow)" }}
+        >
+          {toast}
+        </p>
+      ) : null}
+
+      {/* ---------- 概览 ---------- */}
+      <div data-testid="hud-fin-overview">
+        <SecHead
+          title="概览"
+          en="OVERVIEW"
+          right={
+            <span className="hud-module-note">
+              数据存本机浏览器（与旧版同键）· 共 {entries.length} 条流水
+            </span>
+          }
+        />
+        <p className="hud-module-note" style={{ marginBottom: 8 }}>
+          {finGreeting()}，这是你在 {finMonthLabel(nowMonth)} 的财务概览。{scopeNote}
+          · 口径在月度报告里切换
+        </p>
+        <div className="hud-module-stats">
+          <FinStat
+            k={`本月净现金流 · ${finMonthLabel(nowMonth)}`}
+            v={fmtMoney(ov.net)}
+            sub={`收入 ${fmtMoney(ov.income)} · 流出 ${fmtMoney(ov.outflow)}`}
+            testid="hud-fin-ov-netflow"
+            data={{ income: ov.income, outflow: ov.outflow, net: ov.net }}
+          />
+          <FinStat
+            k="本月支出"
+            v={fmtMoney(ov.outflow)}
+            sub={`共 ${ov.expenseCount} 条支出明细（当前口径）`}
+            testid="hud-fin-ov-expense"
+            data={{ amount: ov.outflow, count: ov.expenseCount }}
+          />
+          <FinStat
+            k="累计支出 · 全部期间"
+            v={fmtMoney(totalAllOut)}
+            sub="全部口径 · 与旧汇总卡同数（由流水实时算）"
+            testid="hud-fin-ov-total"
+            data={{ amount: totalAllOut }}
+          />
         </div>
-        <div className="hud-module-stat">
-          <div className="hud-module-stat-v">{fmtMoney(consumption)}</div>
-          <div className="hud-module-stat-k">消费支出 · 不含还款</div>
-        </div>
-        <div className="hud-module-stat">
-          <div className="hud-module-stat-v">{fmtMoney(repay)}</div>
-          <div className="hud-module-stat-k">还款 · 微信分付</div>
+        <div className="hud-module-stats">
+          <div
+            className="hud-module-stat"
+            data-testid="hud-fin-ov-budget"
+            data-budget={budget === null ? "none" : budget}
+            data-remaining={budgetRemaining === null ? "none" : budgetRemaining}
+            data-pct={budgetPct}
+          >
+            <div className="hud-module-stat-v">
+              {budget === null
+                ? "未设置"
+                : fmtMoney(budgetRemaining ?? 0)}
+            </div>
+            <div className="hud-module-stat-k">预算剩余 · 本月</div>
+            {budget === null ? (
+              <div className="hud-module-note" style={{ marginTop: 3 }}>
+                设一个月度预算，这里会显示剩余与进度。
+              </div>
+            ) : (
+              <>
+                <div className="hud-module-note" style={{ marginTop: 3 }}>
+                  预算 {fmtMoney(budget)} · 已用 {budgetPct}%（按当前口径支出计）
+                </div>
+                <div
+                  style={{
+                    marginTop: 6,
+                    height: 6,
+                    background: "rgba(255,255,255,0.08)",
+                  }}
+                >
+                  <div
+                    style={{
+                      height: "100%",
+                      width: `${budgetPct}%`,
+                      background: "var(--hud-yellow)",
+                    }}
+                  />
+                </div>
+              </>
+            )}
+            {budgetEditing || budget === null ? (
+              <div
+                className="hud-module-form"
+                style={{ marginTop: 8, marginBottom: 0 }}
+              >
+                <input
+                  data-testid="hud-fin-budget-input"
+                  type="number"
+                  min="0"
+                  className={finInputCls}
+                  style={{ ...finInputStyle, width: 140 }}
+                  value={budgetDraft}
+                  onChange={(e) => setBudgetDraft(e.target.value)}
+                  placeholder="月度预算（元）"
+                />
+                <button
+                  type="button"
+                  data-testid="hud-fin-budget-save"
+                  className="hud-module-toggle"
+                  onClick={applyBudget}
+                >
+                  保存
+                </button>
+                {budget !== null ? (
+                  <>
+                    <button
+                      type="button"
+                      className="hud-module-toggle"
+                      onClick={() => setBudgetEditing(false)}
+                    >
+                      取消
+                    </button>
+                    <button
+                      type="button"
+                      data-testid="hud-fin-budget-clear"
+                      className="hud-module-del"
+                      onClick={() => {
+                        saveBudget(null);
+                        setBudgetEditing(false);
+                        setBudgetDraft("");
+                        showToast("月度预算已清除");
+                      }}
+                    >
+                      清除
+                    </button>
+                  </>
+                ) : null}
+              </div>
+            ) : (
+              <button
+                type="button"
+                data-testid="hud-fin-budget-edit"
+                className="hud-module-toggle"
+                style={{ marginTop: 8 }}
+                onClick={() => {
+                  setBudgetDraft(String(budget));
+                  setBudgetEditing(true);
+                }}
+              >
+                修改预算
+              </button>
+            )}
+          </div>
+          <FinStat
+            k="借款负债"
+            v={liabilities.length === 0 ? "暂无负债" : fmtMoney(liabTotal)}
+            sub={
+              liabilities.length === 0
+                ? "还没有负债记录，去下方「负债管理」添加第一笔。"
+                : `${liabilities.length} 笔 · 月最低还款合计 ${fmtMoney(liabMin)}`
+            }
+            testid="hud-fin-ov-liab"
+            data={{ total: liabTotal, count: liabilities.length }}
+          />
+          <FinStat
+            k="追踪资产"
+            v={assets.length === 0 ? "暂无资产" : fmtMoney(assetCost)}
+            sub={
+              assets.length === 0
+                ? "还没有资产记录，去下方「资产台账」添加第一项。"
+                : `${assets.length} 项持仓成本${assetValue !== null ? ` · 现值合计 ${fmtMoney(assetValue)}` : ""}`
+            }
+            testid="hud-fin-ov-asset"
+            data={{
+              count: assets.length,
+              cost: assetCost,
+              value: assetValue === null ? "none" : assetValue,
+            }}
+          />
         </div>
       </div>
-      <SecHead title="分类小计" en="BY CATEGORY" />
-      {[...byCategory.entries()].map(([cat, v]) => (
-        <div className="hud-module-kv" key={cat}>
-          <span>{cat}</span>
-          <b>
-            {fmtMoney(v.sum)} · {v.n} 笔
-          </b>
-        </div>
-      ))}
-      <SecHead title="流水" en="ENTRIES" />
-      {entries.map((e) => (
-        <Row key={e.id} testid={`hud-fin-${e.id}`}>
-          <span className="hud-module-note">{e.date}</span>
-          <div className="hud-module-row-main">
-            <div className="hud-module-row-t">{e.note}</div>
-            <div className="hud-module-row-src">
-              台账导入 · ledger.csv · {e.channel}
+
+      {/* ---------- 记账明细 ---------- */}
+      <div data-testid="hud-fin-entries-sec">
+        <SecHead
+          title="记账明细"
+          en="ENTRIES"
+          right={
+            <button
+              type="button"
+              className="hud-module-toggle"
+              data-testid="hud-fin-ocr-toggle"
+              onClick={() => setOcrOpen((v) => !v)}
+            >
+              {ocrOpen ? "收起图片记账" : "图片记账 · 识别账单截图"}
+            </button>
+          }
+        />
+        {ocrOpen ? (
+          <div
+            data-testid="hud-fin-ocr-panel"
+            style={{
+              border: "1px solid rgba(0,255,255,0.25)",
+              background: "rgba(6,8,16,0.65)",
+              padding: 12,
+              marginBottom: 12,
+            }}
+          >
+            <div
+              className="hud-module-form"
+              style={{ marginBottom: ocrMsg || ocrDraft ? 8 : 0 }}
+            >
+              <input
+                ref={ocrFileRef}
+                type="file"
+                accept="image/*"
+                data-testid="hud-fin-ocr-file"
+                style={{ display: "none" }}
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  e.target.value = "";
+                  if (f) void runOcr(f);
+                }}
+              />
+              <button
+                type="button"
+                className="hud-module-toggle"
+                data-testid="hud-fin-ocr-pick"
+                disabled={ocrBusy}
+                onClick={() => ocrFileRef.current?.click()}
+              >
+                {ocrBusy ? "识别中…" : "选择账单截图 / 小票"}
+              </button>
+              <span className="hud-module-note" style={{ alignSelf: "center" }}>
+                识别全在本机浏览器完成，图片不上传任何服务器
+              </span>
             </div>
+            {ocrMsg ? (
+              <p className="hud-module-note" data-testid="hud-fin-ocr-status">
+                {ocrMsg}
+              </p>
+            ) : null}
+            {ocrDraft ? (
+              <div data-testid="hud-fin-ocr-draft" style={{ marginTop: 10 }}>
+                <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={ocrDraft.thumb}
+                    alt="账单截图缩略图"
+                    style={{
+                      width: 76,
+                      height: 76,
+                      objectFit: "cover",
+                      border: "1px solid rgba(0,255,255,0.3)",
+                      flex: "none",
+                    }}
+                  />
+                  <div
+                    className="hud-module-form"
+                    style={{ flex: "1 1 320px", marginBottom: 0 }}
+                  >
+                    <FinField label="日期" w={140}>
+                      <input
+                        type="date"
+                        data-testid="hud-fin-ocr-date"
+                        className={finInputCls}
+                        style={finInputStyle}
+                        value={ocrDraft.date}
+                        onChange={(e) =>
+                          setOcrDraft({ ...ocrDraft, date: e.target.value })
+                        }
+                      />
+                    </FinField>
+                    <FinField label="类型" w={96}>
+                      <select
+                        data-testid="hud-fin-ocr-kind"
+                        className={finInputCls}
+                        style={finInputStyle}
+                        value={ocrDraft.kind}
+                        onChange={(e) =>
+                          setOcrDraft({
+                            ...ocrDraft,
+                            kind: e.target.value as "income" | "expense",
+                          })
+                        }
+                      >
+                        <option value="expense">支出</option>
+                        <option value="income">收入</option>
+                      </select>
+                    </FinField>
+                    <FinField label="金额（元）" w={120}>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        data-testid="hud-fin-ocr-amount"
+                        className={finInputCls}
+                        style={finInputStyle}
+                        value={ocrDraft.amount}
+                        placeholder={ocrDraft.amountMissing ? "没认出来，请手动补" : "0.00"}
+                        onChange={(e) =>
+                          setOcrDraft({ ...ocrDraft, amount: e.target.value })
+                        }
+                      />
+                    </FinField>
+                    <FinField label="分类" w={120}>
+                      <input
+                        data-testid="hud-fin-ocr-category"
+                        className={finInputCls}
+                        style={finInputStyle}
+                        value={ocrDraft.category}
+                        list="hud-fin-category-list"
+                        onChange={(e) =>
+                          setOcrDraft({ ...ocrDraft, category: e.target.value })
+                        }
+                      />
+                    </FinField>
+                    <FinField label="备注（对方）">
+                      <input
+                        data-testid="hud-fin-ocr-note"
+                        className={finInputCls}
+                        style={finInputStyle}
+                        value={ocrDraft.note}
+                        placeholder="收款方 / 商户"
+                        onChange={(e) =>
+                          setOcrDraft({ ...ocrDraft, note: e.target.value })
+                        }
+                      />
+                    </FinField>
+                  </div>
+                </div>
+                {ocrDraft.amountMissing ? (
+                  <p
+                    className="hud-module-note"
+                    data-testid="hud-fin-ocr-warn"
+                    style={{ marginTop: 8, color: "var(--hud-yellow)" }}
+                  >
+                    金额没认出来，请手动补上再确认入账
+                  </p>
+                ) : null}
+                <div className="hud-module-form" style={{ marginTop: 10, marginBottom: 0 }}>
+                  <button
+                    type="button"
+                    className="hud-module-toggle"
+                    data-testid="hud-fin-ocr-confirm"
+                    onClick={confirmOcrDraft}
+                  >
+                    确认入账
+                  </button>
+                  <button
+                    type="button"
+                    className="hud-module-del"
+                    data-testid="hud-fin-ocr-discard"
+                    onClick={() => {
+                      clearOcrDraft();
+                      setOcrMsg("");
+                    }}
+                  >
+                    丢弃
+                  </button>
+                </div>
+              </div>
+            ) : null}
           </div>
-          <span className="hud-chip hud-c-yel">{e.category}</span>
-          <span className="hud-module-amt">-{fmtMoney(e.amount)}</span>
-        </Row>
-      ))}
-      <p className="hud-module-note" style={{ marginTop: 10 }}>
-        负债 / 资产 / 预算为旧模块的本机录入项，当前无条目；新流水先记入
-        Luna 台账 ledger.csv，再同步进站。
-      </p>
+        ) : null}
+
+        <form
+          className="hud-module-form"
+          onSubmit={(e) => {
+            e.preventDefault();
+            submitEntry();
+          }}
+        >
+          <FinField label="日期" w={150}>
+            <input
+              data-testid="hud-fin-entry-date"
+              type="date"
+              className={finInputCls}
+              style={finInputStyle}
+              value={entryForm.date}
+              onChange={(e) => setEntryForm({ ...entryForm, date: e.target.value })}
+            />
+          </FinField>
+          <FinField label="类型" w={96}>
+            <select
+              data-testid="hud-fin-entry-kind"
+              className={finInputCls}
+              style={finInputStyle}
+              value={entryForm.kind}
+              onChange={(e) =>
+                setEntryForm({
+                  ...entryForm,
+                  kind: e.target.value as "income" | "expense",
+                })
+              }
+            >
+              <option value="expense">支出</option>
+              <option value="income">收入</option>
+            </select>
+          </FinField>
+          <FinField label="金额（元）" w={120}>
+            <input
+              data-testid="hud-fin-entry-amount"
+              type="number"
+              min="0"
+              step="0.01"
+              className={finInputCls}
+              style={finInputStyle}
+              value={entryForm.amount}
+              placeholder="0.00"
+              onChange={(e) => setEntryForm({ ...entryForm, amount: e.target.value })}
+            />
+          </FinField>
+          <FinField label="分类" w={130}>
+            <input
+              data-testid="hud-fin-entry-category"
+              className={finInputCls}
+              style={finInputStyle}
+              value={entryForm.category}
+              placeholder="日用 / 还款 / 工资…"
+              list="hud-fin-category-list"
+              onChange={(e) => setEntryForm({ ...entryForm, category: e.target.value })}
+            />
+          </FinField>
+          <datalist id="hud-fin-category-list">
+            {FIN_CATEGORIES.map((c) => (
+              <option key={c} value={c} />
+            ))}
+          </datalist>
+          <FinField label="备注（可选）">
+            <input
+              data-testid="hud-fin-entry-note"
+              className={finInputCls}
+              style={finInputStyle}
+              value={entryForm.note}
+              placeholder="这笔钱花在哪"
+              onChange={(e) => setEntryForm({ ...entryForm, note: e.target.value })}
+            />
+          </FinField>
+          <div style={{ display: "flex", alignItems: "flex-end", gap: 6 }}>
+            <button
+              type="submit"
+              data-testid="hud-fin-entry-submit"
+              className="hud-module-toggle"
+            >
+              {editingEntryId ? "保存修改" : "记一笔"}
+            </button>
+            {editingEntryId ? (
+              <button
+                type="button"
+                className="hud-module-toggle"
+                onClick={resetEntryForm}
+              >
+                取消
+              </button>
+            ) : null}
+          </div>
+        </form>
+
+        <div data-testid="hud-fin-entries" data-count={entries.length}>
+          {sortedEntries.length === 0 ? (
+            <div className="hud-module-zone-empty">
+              还没有记账明细 · 用上面的表单记第一笔，或用图片记账识别账单截图
+            </div>
+          ) : (
+            sortedEntries.map((e) => (
+              <Row key={e.id} testid={`hud-fin-entry-${e.id}`}>
+                <span className="hud-module-note">{e.date}</span>
+                <div className="hud-module-row-main">
+                  <div className="hud-module-row-t">
+                    {e.category}
+                    {e.source === "ledger" ? (
+                      <span className="hud-chip hud-c-pur" style={{ marginLeft: 6 }}>
+                        台账导入
+                      </span>
+                    ) : null}
+                    {e.source === "ocr" ? (
+                      <span className="hud-chip hud-c-grn" style={{ marginLeft: 6 }}>
+                        图片识别
+                      </span>
+                    ) : null}
+                  </div>
+                  <div className="hud-module-row-src">
+                    {e.kind === "income" ? "收入" : "支出"}
+                    {e.note ? ` · ${e.note}` : ""}
+                  </div>
+                </div>
+                <span
+                  className="hud-module-amt"
+                  style={
+                    e.kind === "income"
+                      ? { color: "#4ade80", textShadow: "0 0 9px rgba(74,222,128,0.4)" }
+                      : undefined
+                  }
+                >
+                  {e.kind === "income" ? "+" : "−"}
+                  {fmtMoney(e.amount)}
+                </span>
+                <button
+                  type="button"
+                  className="hud-module-toggle"
+                  data-testid={`hud-fin-entry-edit-${e.id}`}
+                  onClick={() => {
+                    setEditingEntryId(e.id);
+                    setEntryForm({
+                      date: e.date,
+                      kind: e.kind,
+                      amount: String(e.amount),
+                      category: e.category,
+                      note: e.note ?? "",
+                    });
+                  }}
+                >
+                  编辑
+                </button>
+                <InlineConfirmButton
+                  label="删除"
+                  confirmLabel="确认删除"
+                  testId={`hud-fin-entry-del-${e.id}`}
+                  ariaLabel={`删除明细 ${e.date} ${e.category}`}
+                  className="hud-module-del"
+                  onConfirm={() => {
+                    saveEntries(entries.filter((x) => x.id !== e.id));
+                    if (editingEntryId === e.id) resetEntryForm();
+                    showToast("明细已删除");
+                  }}
+                />
+              </Row>
+            ))
+          )}
+        </div>
+      </div>
+
+      {/* ---------- 月度报告 ---------- */}
+      <div data-testid="hud-fin-report">
+        <SecHead
+          title="月度报告"
+          en="MONTHLY REPORT"
+          right={
+            <button
+              type="button"
+              className="hud-module-toggle"
+              data-testid="hud-fin-print"
+              onClick={() => window.print()}
+            >
+              导出（简版打印）
+            </button>
+          }
+        />
+        <div className="hud-module-form">
+          <FinField label="账期" w={170}>
+            <select
+              data-testid="hud-fin-report-month"
+              className={finInputCls}
+              style={finInputStyle}
+              value={activeReportMonth}
+              onChange={(e) => setReportMonth(e.target.value)}
+            >
+              {reportMonths.map((mk) => (
+                <option key={mk} value={mk}>
+                  {finMonthLabel(mk)}
+                </option>
+              ))}
+            </select>
+          </FinField>
+          <FinField label="统计口径">
+            <div style={{ display: "flex", gap: 6 }}>
+              <button
+                type="button"
+                data-testid="hud-fin-scope-all"
+                className={scope === "all" ? "hud-pickbtn hud-pickbtn-on" : "hud-pickbtn"}
+                onClick={() => setScope("all")}
+              >
+                全部资金流出
+              </button>
+              <button
+                type="button"
+                data-testid="hud-fin-scope-consume"
+                className={scope === "consume" ? "hud-pickbtn hud-pickbtn-on" : "hud-pickbtn"}
+                onClick={() => setScope("consume")}
+              >
+                仅消费
+              </button>
+            </div>
+          </FinField>
+        </div>
+        <p className="hud-module-note" style={{ marginBottom: 8 }}>
+          「仅消费」排除分类含「还款」「转账」的流出；净现金流随口径计算，
+          概览与本报告共用同一口径。
+        </p>
+        <div className="hud-module-stats">
+          <FinStat
+            k={`净现金流 · ${finMonthLabel(activeReportMonth)}`}
+            v={fmtMoney(rp.net)}
+            sub={`收入 ${fmtMoney(rp.income)} · 流出 ${fmtMoney(rp.outflow)}`}
+            testid="hud-fin-rp-netflow"
+            data={{ income: rp.income, outflow: rp.outflow, net: rp.net }}
+          />
+          <FinStat
+            k="本月支出"
+            v={fmtMoney(rp.outflow)}
+            sub={`共 ${rp.expenseCount} 条支出明细（当前口径）`}
+            testid="hud-fin-rp-expense"
+            data={{ amount: rp.outflow, count: rp.expenseCount }}
+          />
+          <FinStat
+            k="预算剩余"
+            v={budget === null ? "未设置" : fmtMoney(rpBudgetRemaining ?? 0)}
+            sub={
+              budget === null
+                ? "在上方概览的预算卡里设置月度预算。"
+                : `预算 ${fmtMoney(budget)} · 已用 ${rpBudgetPct}%`
+            }
+            testid="hud-fin-rp-budget"
+            data={{
+              budget: budget === null ? "none" : budget,
+              remaining: rpBudgetRemaining === null ? "none" : rpBudgetRemaining,
+              pct: rpBudgetPct,
+            }}
+          />
+        </div>
+        <div className="hud-module-stats">
+          <FinStat
+            k="偿还负债"
+            v={fmtMoney(rp.repay)}
+            sub="来自分类为「还款」的支出 · 本金/利息/手续费未拆分"
+            testid="hud-fin-rp-repay"
+            data={{ amount: rp.repay }}
+          />
+          <FinStat
+            k="追踪资产"
+            v={`${assets.length} 项`}
+            sub={`持仓成本合计 ${fmtMoney(assetCost)} · 手动维护，不接行情`}
+            testid="hud-fin-rp-assets"
+            data={{ count: assets.length, cost: assetCost }}
+          />
+          <FinStat
+            k="本月关键变化"
+            v={<span data-testid="hud-fin-rp-change-text">{changeText}</span>}
+            sub="规则生成：本月支出与上月同口径对比"
+            testid="hud-fin-rp-change"
+          />
+        </div>
+        <SecHead title="分类小计" en="BY CATEGORY" />
+        {reportByCategory.length === 0 ? (
+          <div className="hud-module-zone-empty">
+            {finMonthLabel(activeReportMonth)} 还没有流水
+          </div>
+        ) : (
+          reportByCategory.map(([cat, v]) => (
+            <div className="hud-module-kv" key={cat}>
+              <span>{cat}</span>
+              <b>
+                {v.out > 0 ? `支出 ${fmtMoney(v.out)}` : ""}
+                {v.out > 0 && v.inc > 0 ? " · " : ""}
+                {v.inc > 0 ? `收入 ${fmtMoney(v.inc)}` : ""} · {v.n} 笔
+              </b>
+            </div>
+          ))
+        )}
+      </div>
+
+      {/* ---------- 负债管理 ---------- */}
+      <div data-testid="hud-fin-liabs-sec">
+        <SecHead title="负债管理" en="LIABILITIES" />
+        <div
+          data-testid="hud-fin-liab-summary"
+          data-total={liabTotal}
+          data-min={liabMin}
+          data-count={liabilities.length}
+        >
+          <Kv k="总负债">{fmtMoney(liabTotal)}</Kv>
+          <Kv k="月最低还款合计">{fmtMoney(liabMin)}</Kv>
+          <Kv k="笔数">{liabilities.length} 笔</Kv>
+        </div>
+        <p className="hud-module-note" style={{ margin: "8px 0" }}>
+          优先偿还建议（规则 · 按利率优先）：
+          {liabAdvice
+            ? `先还「${liabAdvice.name}」：年化利率 ${liabAdvice.annualRate}% 为当前最高，剩余 ${fmtMoney(liabAdvice.remaining)}，优先偿还能减少利息支出。`
+            : liabilities.length > 0
+              ? "已记录的负债暂未填写年化利率，补上利率后这里会按从高到低给出优先顺序。"
+              : "暂无负债记录。添加负债并填写年化利率后，这里会给出优先偿还建议。"}
+        </p>
+        <form
+          className="hud-module-form"
+          onSubmit={(e) => {
+            e.preventDefault();
+            submitLiab();
+          }}
+        >
+          <FinField label="名称">
+            <input
+              data-testid="hud-fin-liab-name"
+              className={finInputCls}
+              style={finInputStyle}
+              value={liabForm.name}
+              placeholder="如 微信分付"
+              onChange={(e) => setLiabForm({ ...liabForm, name: e.target.value })}
+            />
+          </FinField>
+          <FinField label="总额（元）" w={120}>
+            <input
+              data-testid="hud-fin-liab-total"
+              type="number"
+              min="0"
+              step="0.01"
+              className={finInputCls}
+              style={finInputStyle}
+              value={liabForm.total}
+              placeholder="0.00"
+              onChange={(e) => setLiabForm({ ...liabForm, total: e.target.value })}
+            />
+          </FinField>
+          <FinField label="剩余（空=同总额）" w={140}>
+            <input
+              data-testid="hud-fin-liab-remaining"
+              type="number"
+              min="0"
+              step="0.01"
+              className={finInputCls}
+              style={finInputStyle}
+              value={liabForm.remaining}
+              placeholder="0.00"
+              onChange={(e) => setLiabForm({ ...liabForm, remaining: e.target.value })}
+            />
+          </FinField>
+          <FinField label="年化利率 %（可选）" w={130}>
+            <input
+              data-testid="hud-fin-liab-rate"
+              type="number"
+              min="0"
+              step="0.01"
+              className={finInputCls}
+              style={finInputStyle}
+              value={liabForm.rate}
+              placeholder="如 18"
+              onChange={(e) => setLiabForm({ ...liabForm, rate: e.target.value })}
+            />
+          </FinField>
+          <FinField label="月最低还款（可选）" w={140}>
+            <input
+              data-testid="hud-fin-liab-min"
+              type="number"
+              min="0"
+              step="0.01"
+              className={finInputCls}
+              style={finInputStyle}
+              value={liabForm.min}
+              placeholder="0.00"
+              onChange={(e) => setLiabForm({ ...liabForm, min: e.target.value })}
+            />
+          </FinField>
+          <FinField label="备注（可选）">
+            <input
+              data-testid="hud-fin-liab-note"
+              className={finInputCls}
+              style={finInputStyle}
+              value={liabForm.note}
+              placeholder="补充说明"
+              onChange={(e) => setLiabForm({ ...liabForm, note: e.target.value })}
+            />
+          </FinField>
+          <div style={{ display: "flex", alignItems: "flex-end", gap: 6 }}>
+            <button
+              type="submit"
+              data-testid="hud-fin-liab-submit"
+              className="hud-module-toggle"
+            >
+              {editingLiabId ? "保存修改" : "添加负债"}
+            </button>
+            {editingLiabId ? (
+              <button
+                type="button"
+                className="hud-module-toggle"
+                onClick={resetLiabForm}
+              >
+                取消
+              </button>
+            ) : null}
+          </div>
+        </form>
+        <div data-testid="hud-fin-liabs" data-count={liabilities.length}>
+          {liabilities.length === 0 ? (
+            <div className="hud-module-zone-empty">
+              还没有负债记录 · 用上面的表单添加第一笔
+            </div>
+          ) : (
+            liabilities.map((l) => (
+              <Row key={l.id} testid={`hud-fin-liab-${l.id}`}>
+                <div className="hud-module-row-main">
+                  <div className="hud-module-row-t">
+                    {l.name}
+                    {l.note ? (
+                      <span className="hud-module-note" style={{ marginLeft: 6 }}>
+                        {l.note}
+                      </span>
+                    ) : null}
+                  </div>
+                  <div className="hud-module-row-src">
+                    总额 {fmtMoney(l.total)}
+                    {typeof l.annualRate === "number" ? ` · 年化 ${l.annualRate}%` : ""}
+                    {typeof l.minPayment === "number" ? ` · 月最低 ${fmtMoney(l.minPayment)}` : ""}
+                  </div>
+                </div>
+                <span className="hud-module-amt">剩 {fmtMoney(l.remaining)}</span>
+                <button
+                  type="button"
+                  className="hud-module-toggle"
+                  data-testid={`hud-fin-liab-edit-${l.id}`}
+                  onClick={() => {
+                    setEditingLiabId(l.id);
+                    setLiabForm({
+                      name: l.name,
+                      total: String(l.total),
+                      remaining: String(l.remaining),
+                      rate: l.annualRate !== undefined ? String(l.annualRate) : "",
+                      min: l.minPayment !== undefined ? String(l.minPayment) : "",
+                      note: l.note ?? "",
+                    });
+                  }}
+                >
+                  编辑
+                </button>
+                <InlineConfirmButton
+                  label="删除"
+                  confirmLabel="确认删除"
+                  testId={`hud-fin-liab-del-${l.id}`}
+                  ariaLabel={`删除负债 ${l.name}`}
+                  className="hud-module-del"
+                  onConfirm={() => {
+                    saveLiabilities(liabilities.filter((x) => x.id !== l.id));
+                    if (editingLiabId === l.id) resetLiabForm();
+                    showToast("负债已删除");
+                  }}
+                />
+              </Row>
+            ))
+          )}
+        </div>
+      </div>
+
+      {/* ---------- 资产台账 ---------- */}
+      <div data-testid="hud-fin-assets-sec">
+        <SecHead title="资产台账" en="ASSETS" />
+        <div
+          data-testid="hud-fin-asset-summary"
+          data-count={assets.length}
+          data-cost={assetCost}
+          data-value={assetValue === null ? "none" : assetValue}
+        >
+          <Kv k="资产项数">{assets.length} 项</Kv>
+          <Kv k="持仓成本合计">{fmtMoney(assetCost)}</Kv>
+          <Kv k="现值合计">
+            {assetValue === null ? "未填现值" : fmtMoney(assetValue)}
+          </Kv>
+        </div>
+        <p className="hud-module-note" style={{ margin: "8px 0" }}>
+          手动维护，不接行情。
+        </p>
+        <form
+          className="hud-module-form"
+          onSubmit={(e) => {
+            e.preventDefault();
+            submitAsset();
+          }}
+        >
+          <FinField label="名称">
+            <input
+              data-testid="hud-fin-asset-name"
+              className={finInputCls}
+              style={finInputStyle}
+              value={assetForm.name}
+              placeholder="如 招商银行持仓"
+              onChange={(e) => setAssetForm({ ...assetForm, name: e.target.value })}
+            />
+          </FinField>
+          <FinField label="类型" w={110}>
+            <select
+              data-testid="hud-fin-asset-type"
+              className={finInputCls}
+              style={finInputStyle}
+              value={assetForm.type}
+              onChange={(e) =>
+                setAssetForm({
+                  ...assetForm,
+                  type: e.target.value as FinanceAssetType,
+                })
+              }
+            >
+              {FINANCE_ASSET_TYPES.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </select>
+          </FinField>
+          <FinField label="持仓成本（元）" w={140}>
+            <input
+              data-testid="hud-fin-asset-cost"
+              type="number"
+              min="0"
+              step="0.01"
+              className={finInputCls}
+              style={finInputStyle}
+              value={assetForm.cost}
+              placeholder="0.00"
+              onChange={(e) => setAssetForm({ ...assetForm, cost: e.target.value })}
+            />
+          </FinField>
+          <FinField label="现值（元，可选）" w={140}>
+            <input
+              data-testid="hud-fin-asset-value"
+              type="number"
+              min="0"
+              step="0.01"
+              className={finInputCls}
+              style={finInputStyle}
+              value={assetForm.value}
+              placeholder="不填则不计"
+              onChange={(e) => setAssetForm({ ...assetForm, value: e.target.value })}
+            />
+          </FinField>
+          <div style={{ display: "flex", alignItems: "flex-end", gap: 6 }}>
+            <button
+              type="submit"
+              data-testid="hud-fin-asset-submit"
+              className="hud-module-toggle"
+            >
+              {editingAssetId ? "保存修改" : "添加资产"}
+            </button>
+            {editingAssetId ? (
+              <button
+                type="button"
+                className="hud-module-toggle"
+                onClick={resetAssetForm}
+              >
+                取消
+              </button>
+            ) : null}
+          </div>
+        </form>
+        <div data-testid="hud-fin-assets" data-count={assets.length}>
+          {assets.length === 0 ? (
+            <div className="hud-module-zone-empty">
+              还没有资产记录 · 用上面的表单添加第一项
+            </div>
+          ) : (
+            assets.map((a) => (
+              <Row key={a.id} testid={`hud-fin-asset-${a.id}`}>
+                <div className="hud-module-row-main">
+                  <div className="hud-module-row-t">
+                    {a.name}
+                    <span className="hud-chip hud-c-yel" style={{ marginLeft: 6 }}>
+                      {a.type}
+                    </span>
+                  </div>
+                  <div className="hud-module-row-src">
+                    成本 {fmtMoney(a.cost)}
+                    {typeof a.value === "number" ? ` · 现值 ${fmtMoney(a.value)}` : ""}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="hud-module-toggle"
+                  data-testid={`hud-fin-asset-edit-${a.id}`}
+                  onClick={() => {
+                    setEditingAssetId(a.id);
+                    setAssetForm({
+                      name: a.name,
+                      type: a.type,
+                      cost: String(a.cost),
+                      value: a.value !== undefined ? String(a.value) : "",
+                    });
+                  }}
+                >
+                  编辑
+                </button>
+                <InlineConfirmButton
+                  label="删除"
+                  confirmLabel="确认删除"
+                  testId={`hud-fin-asset-del-${a.id}`}
+                  ariaLabel={`删除资产 ${a.name}`}
+                  className="hud-module-del"
+                  onConfirm={() => {
+                    saveAssets(assets.filter((x) => x.id !== a.id));
+                    if (editingAssetId === a.id) resetAssetForm();
+                    showToast("资产已删除");
+                  }}
+                />
+              </Row>
+            ))
+          )}
+        </div>
+      </div>
+
+      {/* ---------- AI 诊断（占位，走聊天回路） ---------- */}
+      <div data-testid="hud-fin-ai" style={{ marginTop: 14 }}>
+        <SecHead title="AI 资产诊断" en="AI DIAGNOSIS" />
+        <p className="hud-module-note">
+          自动诊断还在接入阶段。现在可以把当月数据摘要复制下来，发给 Luna
+          在聊天里做诊断。
+        </p>
+        <button
+          type="button"
+          className="hud-module-toggle"
+          data-testid="hud-fin-ai-copy"
+          style={{ marginTop: 8 }}
+          onClick={copyAiSummary}
+        >
+          复制本月摘要给 Luna
+        </button>
+      </div>
     </div>
   );
 }

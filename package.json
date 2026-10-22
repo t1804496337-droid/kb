@@ -18,10 +18,12 @@
     "next": "16.4.2",
     "react": "19.3.0",
     "react-dom": "19.3.0",
-    "tailwind-merge": "^3.7.0"
+    "tailwind-merge": "^3.7.0",
+    "tesseract.js": "^7.0.0"
   },
   "devDependencies": {
     "@tailwindcss/turbopack": "^4",
+    "@tesseract.js-data/chi_sim": "^1.0.0",
     "@types/node": "^20.19.43",
     "@types/react": "^19",
     "@types/react-dom": "^19",
