@@ -3419,6 +3419,14 @@ div.studio-orb.studio-orb-bg,
 .hud-srow-btn:last-child { border-bottom: none; }
 .hud-srow-btn:hover { background: rgba(0, 255, 255, 0.05); }
 .hud-srow-btn:hover .hud-name { color: #fff; }
+/* decision stack · 卡在谁手里的小标签（弱化虚线框） */
+.hud-srow .hud-wait {
+  color: #8494b3;
+  border: 1px dashed rgba(132, 148, 179, 0.45);
+  padding: 0 5px;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+}
 .hud-bar {
   height: 5px;
   margin-top: 6px;
@@ -3660,6 +3668,40 @@ div.studio-orb.studio-orb-bg,
   color: var(--hud-dim);
   letter-spacing: 0.04em;
   line-height: 1.6;
+}
+/* decision note · 意向记录按钮组（只存本机 localStorage，无执行） */
+.hud-pickbox { margin-top: 16px; }
+.hud-pickrow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+.hud-pickbtn {
+  font: inherit;
+  font-size: 10.5px;
+  letter-spacing: 0.1em;
+  color: var(--hud-ink);
+  background: rgba(0, 255, 255, 0.04);
+  border: 1px solid rgba(0, 255, 255, 0.35);
+  padding: 6px 14px;
+  cursor: pointer;
+}
+.hud-pickbtn:hover { background: rgba(0, 255, 255, 0.12); color: #fff; }
+.hud-pickbtn-on {
+  color: #06121a;
+  background: var(--hud-cyan);
+  border-color: var(--hud-cyan);
+  font-weight: 700;
+  text-shadow: none;
+}
+.hud-pickbtn-on:hover { background: var(--hud-cyan); color: #06121a; }
+.hud-picked {
+  margin-top: 10px;
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  color: #3dff9e;
+  text-shadow: 0 0 7px rgba(61, 255, 158, 0.5);
 }
 .hud-module-group { margin-bottom: 14px; }
 .hud-module-group-h {

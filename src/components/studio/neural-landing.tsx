@@ -66,7 +66,18 @@ type HudModule = {
   led: "g" | "a" | "d";
 };
 
-type HealthState = { syncTime: string | null; sleepLast: string | null; ok: boolean };
+type HealthState = {
+  syncTime: string | null;
+  sleepLast: string | null;
+  /** sleep.last verbatim from health-sync.json (date/start/end/hours). */
+  sleep: {
+    date: string;
+    start?: string;
+    end?: string;
+    hours?: number;
+  } | null;
+  ok: boolean;
+};
 
 export function NeuralLanding({
   nodes,
@@ -107,22 +118,48 @@ export function NeuralLanding({
   const [health, setHealth] = React.useState<HealthState>({
     syncTime: null,
     sleepLast: null,
+    sleep: null,
     ok: false,
   });
   React.useEffect(() => {
     let live = true;
     fetch("/health-sync.json", { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null))
-      .then((j: { updated_at?: unknown; sleep?: { last?: { date?: unknown } } } | null) => {
-        if (!live || !j) return;
-        const upd = typeof j.updated_at === "string" ? j.updated_at : "";
-        const sleepDate = j.sleep?.last?.date;
-        setHealth({
-          syncTime: upd.length >= 16 ? upd.slice(11, 16) : null,
-          sleepLast: typeof sleepDate === "string" ? sleepDate.slice(5) : null,
-          ok: true,
-        });
-      })
+      .then(
+        (
+          j: {
+            updated_at?: unknown;
+            sleep?: {
+              last?: {
+                date?: unknown;
+                start?: unknown;
+                end?: unknown;
+                hours?: unknown;
+              };
+            };
+          } | null,
+        ) => {
+          if (!live || !j) return;
+          const upd = typeof j.updated_at === "string" ? j.updated_at : "";
+          const last = j.sleep?.last;
+          const sleepDate = last?.date;
+          setHealth({
+            syncTime: upd.length >= 16 ? upd.slice(11, 16) : null,
+            sleepLast: typeof sleepDate === "string" ? sleepDate.slice(5) : null,
+            sleep:
+              typeof sleepDate === "string"
+                ? {
+                    date: sleepDate,
+                    start: typeof last?.start === "string" ? last.start : undefined,
+                    end: typeof last?.end === "string" ? last.end : undefined,
+                    hours:
+                      typeof last?.hours === "number" ? last.hours : undefined,
+                  }
+                : null,
+            ok: true,
+          });
+        },
+      )
       .catch(() => {
         /* unreachable → stays STALE */
       });
@@ -320,11 +357,41 @@ export function NeuralLanding({
     .map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`)
     .join(" ");
 
+  /* ---- health decision line: composed live from /health-sync.json ----
+   * sleep.last.date vs viewer-local yesterday decides 已同步 / STALE —
+   * never a hard-coded freshness claim. Fetch failure → the previous
+   * fallback copy below. */
+  const pad2 = (n: number) => String(n).padStart(2, "0");
+  const yestD = new Date();
+  yestD.setDate(yestD.getDate() - 1);
+  const yestISO = `${yestD.getFullYear()}-${pad2(yestD.getMonth() + 1)}-${pad2(yestD.getDate())}`;
+  const slp = health.sleep;
+  let healthTag = "STALE";
+  let healthTagCls = "hud-c-amb";
+  let healthFact = `最近完整记录 ${health.sleepLast ?? "10-19"} · 数据待更新`;
+  if (health.ok && slp && slp.date >= yestISO) {
+    healthTag = "已同步";
+    healthTagCls = "hud-c-grn";
+    healthFact =
+      `昨晚完整记录已同步` +
+      (slp.start && slp.end ? ` · ${slp.start} 入睡 → ${slp.end} 起床` : "") +
+      (typeof slp.hours === "number"
+        ? ` · ${Math.round(slp.hours * 10) / 10}h`
+        : "");
+  } else if (health.ok && slp) {
+    healthFact = `最近完整记录 ${slp.date.slice(5)} 晚 · 昨晚待手机同步`;
+  } else if (health.ok) {
+    healthFact = "暂无完整睡眠记录 · 待手机同步";
+  }
+
   /* ---- decision stack (real open items, 2026-10-21 caliber) ----
-   * Every row is clickable: module-backed items jump to that module's
-   * content view; the two decision items (X / XHS) open a facts-only
-   * note view. Status copy is factual only — the decorative progress
-   * percentages of the frozen mockup were removed (no real source). */
+   * Ordered by urgency (user, 2026-10-22): EP001 → 健康 → 待办票 →
+   * 小红书 → 本体 → X. Every row is clickable: module-backed items
+   * jump to that module's content view; the two decision items
+   * (X / XHS) open a facts note view with intent-recording buttons.
+   * `wait` names whose hands the item is stuck in. Status copy is
+   * factual only — the decorative progress percentages of the frozen
+   * mockup were removed (no real source). */
   const decisions: {
     led: HudModule["led"] | "p";
     name: string;
@@ -332,6 +399,7 @@ export function NeuralLanding({
     tag: string;
     tagCls: string;
     fact: string;
+    wait: string;
     target?: string;
     note?: "x" | "xhs";
   }[] = [
@@ -339,31 +407,37 @@ export function NeuralLanding({
       led: "p", name: "EP001 公开", en: "YOUTUBE PUBLISH", tag: "待公开",
       tagCls: "hud-c-pink", target: "works",
       fact: "已上传 · 待手机端改公开",
+      wait: "等你 · 手机操作",
     },
     {
-      led: "a", name: "健康数据同步", en: "HEALTH SYNC", tag: "STALE",
-      tagCls: "hud-c-amb", target: "health",
-      fact: `最近完整记录 ${health.sleepLast ?? "10-19"} · 数据待更新`,
+      led: "a", name: "健康数据同步", en: "HEALTH SYNC", tag: healthTag,
+      tagCls: healthTagCls, target: "health",
+      fact: healthFact,
+      wait: "等数据 · 手机同步",
     },
     {
       led: "g", name: `待办票 ×${ticketsN}`, en: "CALENDAR TICKETS", tag: "待清",
       tagCls: "hud-c-cyan", target: "calendar",
       fact: "日历模块待办票未清",
-    },
-    {
-      led: "d", name: "本体知识库填充", en: "ONTOLOGY BUILD", tag: "建设中",
-      tagCls: "hud-c-pur", target: "ontology",
-      fact: "空壳已上线 · 条目 0 · 细节待排期",
-    },
-    {
-      led: "d", name: "X 账号恢复", en: "X OPS RESUME", tag: "已暂停",
-      tagCls: "hud-c-pink", note: "x",
-      fact: "8 个定时任务停用 · 待指令",
+      wait: "等你 · 随手清",
     },
     {
       led: "p", name: "小红书去向", en: "XHS DECISION A/B/C", tag: "待拍板",
       tagCls: "hud-c-pur", note: "xhs",
       fact: "申诉 / 换号 / 搁置 · 待拍板",
+      wait: "等你 · 三选一",
+    },
+    {
+      led: "d", name: "本体知识库填充", en: "ONTOLOGY BUILD", tag: "建设中",
+      tagCls: "hud-c-pur", target: "ontology",
+      fact: "空壳已上线 · 条目 0 · 细节待排期",
+      wait: "等排期",
+    },
+    {
+      led: "d", name: "X 账号恢复", en: "X OPS RESUME", tag: "已暂停",
+      tagCls: "hud-c-pink", note: "x",
+      fact: "8 个定时任务停用 · 待指令",
+      wait: "等你 · 一句话恢复",
     },
   ];
   const openDecision = (d: (typeof decisions)[number]) => {
@@ -872,7 +946,8 @@ export function NeuralLanding({
                     <span className={`hud-tag hud-chip ${d.tagCls}`}>{d.tag}</span>
                   </div>
                   <div className="hud-en" style={{ marginTop: 4 }}>
-                    {d.fact} · {d.target ? "点击进入 →" : "点击看说明 →"}
+                    {d.fact} · <span className="hud-wait">{d.wait}</span> ·{" "}
+                    {d.target ? "点击进入 →" : "点击看说明 →"}
                   </div>
                 </button>
               ))}
