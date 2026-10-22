@@ -239,6 +239,8 @@ export function RadialMenu({
       if ((t as HTMLElement).isContentEditable) return true;
       return !!t.closest('[contenteditable="true"], [contenteditable=""]');
     };
+    const inMindmap = (t: EventTarget | null): boolean =>
+      t instanceof Element && !!t.closest("[data-mindmap]");
     const onContextMenu = (e: MouseEvent) => {
       /* a contextmenu trailing a long-press summon is swallowed —
        * the wheel is already open, the native menu must not appear. */
@@ -247,6 +249,10 @@ export function RadialMenu({
         return;
       }
       if (isFormField(e.target)) return; /* native copy/paste survives */
+      /* the mind-map stage owns right-button gestures (pan) — the
+       * wheel stands down there; the stage suppresses the native
+       * menu itself. */
+      if (inMindmap(e.target)) return;
       e.preventDefault();
       openMenu(e.clientX, e.clientY, "context");
     };
@@ -259,6 +265,7 @@ export function RadialMenu({
     };
     const onPointerDown = (e: PointerEvent) => {
       if (e.pointerType === "mouse" || e.button !== 0) return;
+      if (inMindmap(e.target)) return; /* mind-map owns its presses */
       lpStart.current = { id: e.pointerId, x: e.clientX, y: e.clientY };
       if (lpTimer.current) window.clearTimeout(lpTimer.current);
       lpTimer.current = window.setTimeout(() => {

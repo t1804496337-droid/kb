@@ -100,6 +100,31 @@ export function budgetNumber(v: unknown): number | null {
 const okFlag = (v: unknown): boolean =>
   typeof v === "boolean" || v === "1" || v === 1 || v === "0" || v === 0;
 
+/* 灵感拓扑（mind-map.tsx）：nodes/edges/view 全形状校验 */
+const okMindmap = (v: unknown): boolean =>
+  isPlainObject(v) &&
+  Array.isArray(v.nodes) &&
+  v.nodes.every(
+    (n) =>
+      isPlainObject(n) &&
+      typeof n.id === "string" &&
+      isFiniteNum(n.x) &&
+      isFiniteNum(n.y) &&
+      typeof n.text === "string",
+  ) &&
+  Array.isArray(v.edges) &&
+  v.edges.every(
+    (e) =>
+      isPlainObject(e) &&
+      typeof e.id === "string" &&
+      typeof e.from === "string" &&
+      typeof e.to === "string",
+  ) &&
+  isPlainObject(v.view) &&
+  isFiniteNum(v.view.s) &&
+  isFiniteNum(v.view.tx) &&
+  isFiniteNum(v.view.ty);
+
 /* ── 登记册 ── */
 
 type SliceKind = "json" | "budget" | "flag" | "raw";
@@ -182,6 +207,8 @@ export const SLICES: SliceDef[] = [
   /* UI 临时态（旧工作台层：抽屉/分区开合记忆） */
   jsonSlice("skillsOpen", "studio_skills_open_v1", "技能库开合·UI态", isBoolRecord),
   jsonSlice("dbOpen", "studio_db_open_v1", "数据库开合·UI态", isBoolRecord),
+  /* 灵感拓扑（HUD 现网，mind-map.tsx） */
+  jsonSlice("mindmap", "studio_mindmap_v1", "灵感拓扑", okMindmap),
   /* 作品库平台同步缓存（拉取数据的本机缓存，非手写数据） */
   jsonSlice("worksSyncCache", "studio_works_sync_v1", "作品库同步缓存", (v) =>
     isPlainObject(v) &&

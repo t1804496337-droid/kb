@@ -13,6 +13,7 @@ import {
   hasPreImportBackup,
 } from "@/components/studio/snapshot";
 import { RadialMenu } from "@/components/studio/radial-menu";
+import { MindMap } from "@/components/studio/mind-map";
 
 export type LandingNode = {
   key: string;
@@ -1632,6 +1633,9 @@ export function NeuralLanding({
    * picks a sector can't also click the row underneath. Zen is a
    * temporary visual state only — never persisted, refresh exits. */
   const [zen, setZen] = React.useState(false);
+  /* 灵感拓扑 (hud-mindmap): a stage overlay above the overview's
+   * centre — its state and persistence live in mind-map.tsx. */
+  const [mmOpen, setMmOpen] = React.useState(false);
   const radialOpenRef = React.useRef(false);
   const cancelPendingDrag = React.useCallback(() => {
     const s = dragRef.current;
@@ -2113,6 +2117,14 @@ export function NeuralLanding({
               <span className="hud-t">CORE MAP · 知识核心图谱</span>
               <span className="hud-chip hud-c-yel">FORCE GRAPH</span>
               <span className="hud-chip hud-c-pur">{total} NODES</span>
+              <button
+                type="button"
+                className="hud-chip hud-c-cyan hud-mm-toggle"
+                data-testid="hud-mm-toggle"
+                onClick={() => setMmOpen((v) => !v)}
+              >
+                拓扑 MINDMAP
+              </button>
               <span className="hud-hex">0xC0RE · [ + ] · GRID C3</span>
             </div>
             <div className="hud-curve">
@@ -2542,6 +2554,12 @@ export function NeuralLanding({
         data-testid="hud-drag-canvas"
         aria-hidden
       />
+
+      {/* ══ MIND-MAP STAGE — z 68: above the drag canvas (65),
+          below the command palette (70) ══ */}
+      {mmOpen && (
+        <MindMap siblingOpen={palOpen} onClose={() => setMmOpen(false)} />
+      )}
 
       {/* ══ RADIAL MENU — right-click (desktop) / long-press (touch) ══ */}
       <RadialMenu

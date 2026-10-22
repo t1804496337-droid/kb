@@ -2985,6 +2985,18 @@ div.studio-orb.studio-orb-bg,
   --hud-int-panel-purple-shadow-mobile: 0 0 14px rgba(178, 0, 255, 0.09);
   /* radial menu (2026-10-22, hud-radial) */
   --hud-int-yellow: #ffea00;
+  /* mind-map stage (2026-10-22, hud-mindmap): z 68 sits between
+   * the drag canvas (65) and the command palette (70). */
+  --hud-int-mm-z: 68;
+  --hud-int-mm-bg: rgba(3, 6, 12, 0.9);
+  --hud-int-mm-grid: rgba(0, 255, 255, 0.05);
+  --hud-int-mm-node-bg: rgba(0, 255, 255, 0.06);
+  --hud-int-mm-node-border: rgba(0, 255, 255, 0.55);
+  --hud-int-mm-node-glow: 0 0 14px rgba(0, 255, 255, 0.3);
+  --hud-int-mm-node-sel-border: #ffea00;
+  --hud-int-mm-node-sel-glow: 0 0 18px rgba(255, 234, 0, 0.45);
+  --hud-int-mm-port: #00ffff;
+  --hud-int-mm-hint: #9fd8e8;
   --hud-int-radial-bg: rgba(0, 255, 255, 0.07);
   --hud-int-radial-border: rgba(0, 255, 255, 0.5);
   --hud-int-radial-hub-bg: rgba(7, 10, 18, 0.94);
@@ -4778,4 +4790,167 @@ div.studio-orb.studio-orb-bg,
   opacity: 0;
   visibility: hidden;
   transition: opacity 0.3s ease, visibility 0s linear 0.3s;
+}
+
+/* ══════════════════════════════════════════════════════════════
+ * MIND-MAP STAGE (2026-10-22, hud-mindmap)
+ * A fixed stage below the topbar (top is set inline from the
+ * topbar's measured bottom). z-index var(--hud-int-mm-z)=68:
+ * above the drag canvas (65), below the command palette (70).
+ * The sphere stays behind the translucent stage as a dim backdrop.
+ * ══════════════════════════════════════════════════════════════ */
+.hud-mm-toggle {
+  font: inherit;
+  background: transparent;
+  cursor: pointer;
+}
+.hud-mm-toggle:hover { background: var(--hud-int-chip-bg-hover); }
+.hud-mm {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: var(--hud-int-mm-z);
+  background:
+    radial-gradient(circle at 50% 42%, transparent 0 240px, rgba(0, 0, 0, 0.25) 620px),
+    var(--hud-int-mm-bg);
+  overflow: hidden;
+  touch-action: none;
+  cursor: grab;
+  -webkit-touch-callout: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.hud-mm::before {
+  /* faint dot grid, fixed to the stage (the world pans beneath) */
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(var(--hud-int-mm-grid) 1px, transparent 1.4px);
+  background-size: 26px 26px;
+  pointer-events: none;
+}
+.hud-mm-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.hud-mm-world {
+  position: absolute;
+  inset: 0;
+  transform-origin: 0 0;
+}
+.hud-mm-node {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  padding: 5px 12px;
+  background: var(--hud-int-mm-node-bg);
+  border: 1px solid var(--hud-int-mm-node-border);
+  box-shadow: var(--hud-int-mm-node-glow);
+  color: #e8f4ff;
+  font-size: 13px;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+  cursor: grab;
+  touch-action: none;
+}
+.hud-mm-node:active { cursor: grabbing; }
+.hud-mm-node.is-sel {
+  border-color: var(--hud-int-mm-node-sel-border);
+  box-shadow: var(--hud-int-mm-node-sel-glow);
+}
+.hud-mm-node.is-editing { opacity: 0.35; }
+.hud-mm-node-text {
+  text-shadow: 0 0 8px rgba(0, 255, 255, 0.75);
+  pointer-events: none;
+}
+.hud-mm-port {
+  position: absolute;
+  right: -17px;
+  top: 50%;
+  width: 13px;
+  height: 13px;
+  margin-top: -6.5px;
+  border-radius: 50%;
+  border: 1px solid var(--hud-int-mm-port);
+  background: rgba(3, 6, 12, 0.9);
+  box-shadow: 0 0 7px rgba(0, 255, 255, 0.7);
+  cursor: crosshair;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  touch-action: none;
+}
+.hud-mm-node:hover .hud-mm-port,
+.hud-mm-node.is-sel .hud-mm-port { opacity: 1; }
+.hud-mm-del {
+  position: absolute;
+  left: -11px;
+  top: -11px;
+  width: 17px;
+  height: 17px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid var(--hud-int-alert);
+  background: rgba(3, 6, 12, 0.92);
+  color: var(--hud-int-alert);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+}
+.hud-mm-edit {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  width: 190px;
+  padding: 5px 10px;
+  background: rgba(3, 6, 12, 0.96);
+  border: 1px solid var(--hud-int-mm-node-sel-border);
+  box-shadow: var(--hud-int-mm-node-sel-glow);
+  color: #e8f4ff;
+  font: inherit;
+  font-size: 13px;
+  letter-spacing: 0.06em;
+  text-align: center;
+  outline: none;
+  z-index: 3;
+}
+.hud-mm-hint {
+  position: absolute;
+  left: 50%;
+  bottom: 34px;
+  transform: translateX(-50%);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  color: var(--hud-int-mm-hint);
+  text-shadow: 0 0 7px rgba(0, 255, 255, 0.5);
+  white-space: nowrap;
+  pointer-events: none;
+}
+.hud-mm-meta {
+  position: absolute;
+  left: 14px;
+  bottom: 10px;
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  color: var(--hud-dim);
+  pointer-events: none;
+}
+.hud-mm-close {
+  position: absolute;
+  right: 14px;
+  bottom: 10px;
+  font: inherit;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  padding: 4px 12px;
+  background: transparent;
+  border: 1px solid var(--hud-int-chip-border);
+  color: var(--hud-int-mm-hint);
+  cursor: pointer;
+}
+.hud-mm-close:hover { background: var(--hud-int-chip-bg-hover); }
+@media (max-width: 768px) {
+  .hud-mm-node { box-shadow: 0 0 8px rgba(0, 255, 255, 0.22); }
+  .hud-mm-hint { font-size: 10px; max-width: 92vw; white-space: normal; text-align: center; }
 }
