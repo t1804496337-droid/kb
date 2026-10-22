@@ -107,6 +107,42 @@ const todayShNum = (): number => {
 const ageDaysOf = (iso: string): number => todayShNum() - shDayNum(iso);
 const daysUntilOf = (iso: string): number => shDayNum(iso) - todayShNum();
 
+/* ── three-zone restyle helpers (2026-10-22, hud-restyle) ──
+ * beamRgb: a module's #RRGGBB beam colour as an "r g b" triplet for
+ * the console-card waterline's rgb(var(--beam) / α) gradient.
+ * useTypewriter: reveals the terminal's newest REAL log line
+ * character by character. It types on mount and again only when the
+ * line's text itself changes — the once-a-second clock re-render
+ * passes the same string and never restarts the reveal. */
+const beamRgb = (c: string): string => {
+  const m = /^#([0-9a-f]{6})$/i.exec(c.trim());
+  if (!m) return "0 255 255";
+  const n = parseInt(m[1], 16);
+  return `${(n >> 16) & 255} ${(n >> 8) & 255} ${n & 255}`;
+};
+
+function useTypewriter(text: string, cps = 32): string {
+  const [n, setN] = React.useState(0);
+  const seen = React.useRef<string | null>(null);
+  React.useEffect(() => {
+    if (seen.current === text) return;
+    seen.current = text;
+    setN(0);
+    const step = Math.max(16, Math.round(1000 / cps));
+    const id = window.setInterval(() => {
+      setN((v) => {
+        if (v >= text.length) {
+          window.clearInterval(id);
+          return v;
+        }
+        return v + 1;
+      });
+    }, step);
+    return () => window.clearInterval(id);
+  }, [text, cps]);
+  return text.slice(0, n);
+}
+
 /* ── scramble hover decode (2026-10-22, hud-interactions) ──
  * rAF-driven text scramble for the module-tree labels: on hover the
  * label dissolves into glyph noise and re-resolves to the real text
@@ -523,6 +559,44 @@ export function NeuralLanding({
   const [sel, setSel] = React.useState<string | null>(null);
   const [hov, setHov] = React.useState<string | null>(null);
   const scramble = useScramble();
+  /* terminal typewriter: the newest real log line (the last
+   * HUD_LOG_FACTS entry) types itself in on mount / on change. */
+  const typedTermLatest = useTypewriter(
+    HUD_LOG_FACTS[HUD_LOG_FACTS.length - 1]?.text ?? "",
+    32,
+  );
+  /* ── decision archive (2026-10-22, hud-restyle) ──
+   * [ARCHIVE] on a decision row is a REAL archive: the row's id goes
+   * to localStorage studio_decision_archived_v1 (registered in the
+   * snapshot layer as decisionArchived), the row leaves the
+   * algorithmic ordering and sinks into the collapsed 已归档 group at
+   * the stack's foot, restorable from there. The pending counts
+   * (stack chip + mobile-nav badge) count only unarchived rows. */
+  const DECISION_ARCHIVED_KEY = "studio_decision_archived_v1";
+  const [archivedIds, setArchivedIds] = React.useState<string[]>(() => {
+    try {
+      const raw = window.localStorage.getItem(DECISION_ARCHIVED_KEY);
+      const v: unknown = raw ? JSON.parse(raw) : null;
+      return Array.isArray(v)
+        ? v.filter((x): x is string => typeof x === "string")
+        : [];
+    } catch {
+      return [];
+    }
+  });
+  const [archivedOpen, setArchivedOpen] = React.useState(false);
+  const writeArchived = React.useCallback((ids: string[]) => {
+    setArchivedIds(ids);
+    try {
+      window.localStorage.setItem(DECISION_ARCHIVED_KEY, JSON.stringify(ids));
+    } catch {
+      /* storage unavailable → archive lasts for this session only */
+    }
+  }, []);
+  const archiveDecision = (id: string) =>
+    writeArchived([...new Set([...archivedIds, id])]);
+  const restoreDecision = (id: string) =>
+    writeArchived(archivedIds.filter((x) => x !== id));
   /* ── mobile bottom nav + panel sheets (2026-10-22, hud-mobile-nav) ──
    * At ≤1100px (the stacking breakpoint) the module tree and the
    * decision stack become bottom sheets driven by this one state —
@@ -656,10 +730,43 @@ export function NeuralLanding({
   const treeRowY = (id: string) =>
     treeRows.find((r) => r.id === id)?.y ?? 0;
   const modById = (id: string) => modules.find((m) => m.id === id);
-  /** Share-bar fill inside the 40-unit track, share of total entries. */
-  const bw = (n: number) =>
-    n <= 0 ? 0 : Math.max(2, Math.round((n / Math.max(total, 1)) * 40));
   const cntFill = (n: number) => (n > 0 ? "#e8f4ff" : "#5f7194");
+  /* Restyle block meter (2026-10-22, hud-restyle): the share track
+   * beside each tree row's number becomes five blocks; lit =
+   * round(share / 20) of the SAME real entry share the filled bars
+   * encoded (sharePct of the live count) — presentation only, the
+   * number is never new. The off-block fill matches
+   * --hud-int-block-off in globals.css. */
+  const treeBlocks = (
+    id: string,
+    count: number | null,
+    y: number,
+    color: string,
+  ) => {
+    const share = sharePct(count);
+    const lit = Math.round(share / 20);
+    return (
+      <g
+        data-testid={`hud-tree-blocks-${id}`}
+        data-lit={lit}
+        data-share={share}
+      >
+        {[0, 1, 2, 3, 4].map((i) => (
+          <rect
+            key={i}
+            x={196 + i * 8.4}
+            y={y - 3}
+            width={6}
+            height={6}
+            fill={i < lit ? color : "#0d1226"}
+            fillOpacity={i < lit ? 1 : 0.55}
+            stroke={color}
+            strokeWidth="0.5"
+          />
+        ))}
+      </g>
+    );
+  };
 
   /* ---- radar polygon: axes scaled to count/13 (mockup caliber) ---- */
   const RC: [number, number] = [79, 84];
@@ -824,6 +931,19 @@ export function NeuralLanding({
   const orderedDecisions = [...scoredDecisions].sort(
     (a, b) => Number(a.decayed) - Number(b.decayed) || b.score - a.score,
   );
+  /* archived rows leave the algorithm ordering entirely (hud-restyle):
+   * the visible stack is the active list; the archived list feeds the
+   * collapsed group at the foot. Pending counts follow the active
+   * list, so archiving a row moves the stack chip and the mobile-nav
+   * badge with it. */
+  const archivedSet = new Set(archivedIds);
+  const activeDecisions = orderedDecisions.filter(
+    (s) => !archivedSet.has(s.d.id),
+  );
+  const archivedDecisions = orderedDecisions.filter((s) =>
+    archivedSet.has(s.d.id),
+  );
+  const pendingCount = activeDecisions.length;
   /* FLIP reorder animation: when the computed order changes (e.g. the
    * health row revives on sync and floats up), rows glide from their
    * previous tops instead of the stack re-rendering in a flash. Tops
@@ -833,7 +953,7 @@ export function NeuralLanding({
   const decisionRowRefs = React.useRef(new Map<string, HTMLButtonElement>());
   const decisionPrevTops = React.useRef<Map<string, number> | null>(null);
   const decisionPrevSig = React.useRef<string | null>(null);
-  const decisionOrderSig = orderedDecisions.map((s) => s.d.id).join(",");
+  const decisionOrderSig = activeDecisions.map((s) => s.d.id).join(",");
   React.useLayoutEffect(() => {
     const panel = stackPanelRef.current;
     if (!panel) return;
@@ -1932,88 +2052,88 @@ export function NeuralLanding({
                     />
                   );
                 })}
-                <line x1="14" y1="24" x2="14" y2="426" stroke="#3d5a86" strokeWidth="1.2" />
+                <line x1="14" y1="24" x2="14" y2="426" stroke="#3d5a86" strokeWidth="1.6" strokeLinecap="square" />
                 <line x1="14" y1="24" x2="14" y2="426" stroke="#00FFFF" strokeWidth="2" className="hud-flow-line" />
-                <circle cx="14" cy="24" r="5.5" fill="#FFEA00" filter="url(#hud-glow)" />
+                <circle cx="14" cy="24" r="6.5" fill="#FFEA00" filter="url(#hud-glow)" />
                 <circle cx="14" cy="24" r="5.5" fill="none" stroke="#FFEA00" strokeWidth="1" className="hud-wave-circle" />
                 <text x="27" y="28" fontSize="11.5" fill="#ffffff" letterSpacing="1">第二大脑</text>
                 <text x="86" y="28" fontSize="8.5" fill="#5f7194" letterSpacing="1">SECOND BRAIN</text>
                 <text x="266" y="28" fontSize="13" fill="#FF007F" textAnchor="end">{total}</text>
-                <line x1="14" y1="56" x2="34" y2="56" stroke="#FF007F" strokeWidth="1.2" />
+                <line x1="14" y1="56" x2="34" y2="56" stroke="#FF007F" strokeWidth="1.5" strokeLinecap="square" />
                 <line x1="14" y1="56" x2="34" y2="56" stroke="#FF007F" strokeWidth="2" className="hud-flow-line" />
-                <circle cx="34" cy="56" r="4" fill="#FF007F" filter="url(#hud-glow)" />
-                <circle cx="34" cy="56" r="4" fill="none" stroke="#FF007F" strokeWidth="0.7" className="hud-wave-circle" style={{ animationDelay: ".6s" }} />
+                <circle cx="34" cy="56" r="5.2" fill="#FF007F" filter="url(#hud-glow)" />
+                <circle cx="34" cy="56" r="5.2" fill="none" stroke="#FF007F" strokeWidth="0.7" className="hud-wave-circle" style={{ animationDelay: ".6s" }} />
                 <text x="46" y="60" fontSize="10.5" fill="#ffb3d6" data-treegroup="create">创作</text>
                 <text x="74" y="60" fontSize="8.5" fill="#5f7194" letterSpacing="1" data-treegroup="create">CREATE</text>
-                <line x1="34" y1="56" x2="34" y2="146" stroke="#7a2b52" strokeWidth="1.1" />
-                <line x1="34" y1="86" x2="56" y2="86" stroke="#00FFFF" strokeWidth="1.1" />
+                <line x1="34" y1="56" x2="34" y2="146" stroke="#7a2b52" strokeWidth="1.5" strokeLinecap="square" />
+                <line x1="34" y1="86" x2="56" y2="86" stroke="#00FFFF" strokeWidth="1.5" strokeLinecap="square" />
                 <circle cx="56" cy="86" r="3.4" fill="#00FFFF" filter="url(#hud-glow)" />
                 <text x="67" y="90" fontSize="10.5" fill="#e8f4ff" className="hud-tree-label" ref={scramble.register("studio")} data-testid="hud-tree-label-studio">创作空间</text>
                 <text x="120" y="90" fontSize="8" fill="#5f7194">STUDIO</text>
                 <text x="266" y="90" fontSize="11" fill="#00FFFF" textAnchor="end">HUB</text>
-                <line x1="34" y1="116" x2="56" y2="116" stroke="#FF007F" strokeWidth="1.1" />
+                <line x1="34" y1="116" x2="56" y2="116" stroke="#FF007F" strokeWidth="1.5" strokeLinecap="square" />
                 <circle cx="56" cy="116" r="3.4" fill="#FF007F" filter="url(#hud-glow)" />
                 <text x="67" y="120" fontSize="10.5" fill="#e8f4ff" className="hud-tree-label" ref={scramble.register("works")} data-testid="hud-tree-label-works">作品库</text>
                 <text x="110" y="120" fontSize="8" fill="#5f7194">WORKS</text>
-                <rect x="196" y="113" width="40" height="4" fill="#0d1226" stroke="#FF007F" strokeWidth="0.5" />
-                <rect x="196" y="113" width={bw(worksN)} height="4" fill="#FF007F" filter="url(#hud-glow)" />
+                {treeBlocks("works", worksN, 116, "#FF007F")}
                 <text x="266" y="120" fontSize="11" fill={cntFill(worksN)} textAnchor="end">{worksN}</text>
-                <line x1="34" y1="146" x2="56" y2="146" stroke="#B200FF" strokeWidth="1.1" />
+                <line x1="34" y1="146" x2="56" y2="146" stroke="#B200FF" strokeWidth="1.5" strokeLinecap="square" />
                 <circle cx="56" cy="146" r="3.4" fill="#B200FF" filter="url(#hud-glow)" />
                 <text x="67" y="150" fontSize="10.5" fill="#e8f4ff" className="hud-tree-label" ref={scramble.register("skills")} data-testid="hud-tree-label-skills">技能库</text>
                 <text x="110" y="150" fontSize="8" fill="#5f7194">SKILLS</text>
-                <rect x="196" y="143" width="40" height="4" fill="#0d1226" stroke="#B200FF" strokeWidth="0.5" />
-                <rect x="196" y="143" width={bw(skillsN)} height="4" fill="#B200FF" filter="url(#hud-glow)" />
+                {treeBlocks("skills", skillsN, 146, "#B200FF")}
                 <text x="266" y="150" fontSize="11" fill={cntFill(skillsN)} textAnchor="end">{skillsN}</text>
-                <line x1="14" y1="196" x2="34" y2="196" stroke="#B200FF" strokeWidth="1.2" />
+                <line x1="14" y1="196" x2="34" y2="196" stroke="#B200FF" strokeWidth="1.5" strokeLinecap="square" />
                 <line x1="14" y1="196" x2="34" y2="196" stroke="#B200FF" strokeWidth="2" className="hud-flow-line" />
-                <circle cx="34" cy="196" r="4" fill="#B200FF" filter="url(#hud-glow)" />
-                <circle cx="34" cy="196" r="4" fill="none" stroke="#B200FF" strokeWidth="0.7" className="hud-wave-circle" style={{ animationDelay: "1.2s" }} />
+                <circle cx="34" cy="196" r="5.2" fill="#B200FF" filter="url(#hud-glow)" />
+                <circle cx="34" cy="196" r="5.2" fill="none" stroke="#B200FF" strokeWidth="0.7" className="hud-wave-circle" style={{ animationDelay: "1.2s" }} />
                 <text x="46" y="200" fontSize="10.5" fill="#e3c2ff" data-treegroup="knowledge">知识</text>
                 <text x="74" y="200" fontSize="8.5" fill="#5f7194" letterSpacing="1" data-treegroup="knowledge">KNOWLEDGE</text>
-                <line x1="34" y1="196" x2="34" y2="256" stroke="#4d2680" strokeWidth="1.1" />
-                <line x1="34" y1="226" x2="56" y2="226" stroke="#00FFFF" strokeWidth="1.1" />
+                <line x1="34" y1="196" x2="34" y2="256" stroke="#4d2680" strokeWidth="1.5" strokeLinecap="square" />
+                <line x1="34" y1="226" x2="56" y2="226" stroke="#00FFFF" strokeWidth="1.5" strokeLinecap="square" />
                 <circle cx="56" cy="226" r="3.4" fill="#00FFFF" filter="url(#hud-glow)" />
                 <text x="67" y="230" fontSize="10.5" fill="#e8f4ff" className="hud-tree-label" ref={scramble.register("database")} data-testid="hud-tree-label-database">数据库</text>
                 <text x="110" y="230" fontSize="8" fill="#5f7194">DATABASE</text>
-                <rect x="196" y="223" width="40" height="4" fill="#0d1226" stroke="#00FFFF" strokeWidth="0.5" />
-                <rect x="196" y="223" width={bw(dbN)} height="4" fill="#00FFFF" filter="url(#hud-glow)" />
+                {treeBlocks("database", dbN, 226, "#00FFFF")}
                 <text x="266" y="230" fontSize="11" fill={cntFill(dbN)} textAnchor="end">{dbN}</text>
-                <line x1="34" y1="256" x2="56" y2="256" stroke="#54678a" strokeWidth="1.1" />
+                <line x1="34" y1="256" x2="56" y2="256" stroke="#54678a" strokeWidth="1.5" strokeLinecap="square" />
                 <circle cx="56" cy="256" r="3.4" fill="#54678a" filter="url(#hud-glow)" />
                 <text x="67" y="260" fontSize="10.5" fill="#e8f4ff" className="hud-tree-label" ref={scramble.register("ontology")} data-testid="hud-tree-label-ontology">本体知识库</text>
                 <text x="132" y="260" fontSize="8" fill="#5f7194">ONTOLOGY</text>
                 <text x="266" y="260" fontSize="11" fill={cntFill(ontoN)} textAnchor="end">{ontoN}</text>
-                <line x1="14" y1="306" x2="34" y2="306" stroke="#00FFFF" strokeWidth="1.2" />
+                {treeBlocks("ontology", ontoN, 256, "#54678a")}
+                <line x1="14" y1="306" x2="34" y2="306" stroke="#00FFFF" strokeWidth="1.5" strokeLinecap="square" />
                 <line x1="14" y1="306" x2="34" y2="306" stroke="#00FFFF" strokeWidth="2" className="hud-flow-line" />
-                <circle cx="34" cy="306" r="4" fill="#00FFFF" filter="url(#hud-glow)" />
-                <circle cx="34" cy="306" r="4" fill="none" stroke="#00FFFF" strokeWidth="0.7" className="hud-wave-circle" style={{ animationDelay: "1.8s" }} />
+                <circle cx="34" cy="306" r="5.2" fill="#00FFFF" filter="url(#hud-glow)" />
+                <circle cx="34" cy="306" r="5.2" fill="none" stroke="#00FFFF" strokeWidth="0.7" className="hud-wave-circle" style={{ animationDelay: "1.8s" }} />
                 <text x="46" y="310" fontSize="10.5" fill="#b3f7ff" data-treegroup="life">生活</text>
                 <text x="74" y="310" fontSize="8.5" fill="#5f7194" letterSpacing="1" data-treegroup="life">LIFE</text>
-                <line x1="34" y1="306" x2="34" y2="426" stroke="#1f5f6b" strokeWidth="1.1" />
-                <line x1="34" y1="336" x2="56" y2="336" stroke="#54678a" strokeWidth="1.1" />
+                <line x1="34" y1="306" x2="34" y2="426" stroke="#1f5f6b" strokeWidth="1.5" strokeLinecap="square" />
+                <line x1="34" y1="336" x2="56" y2="336" stroke="#54678a" strokeWidth="1.5" strokeLinecap="square" />
                 <circle cx="56" cy="336" r="3.4" fill="#54678a" filter="url(#hud-glow)" />
                 <text x="67" y="340" fontSize="10.5" fill="#e8f4ff" className="hud-tree-label" ref={scramble.register("inspiration")} data-testid="hud-tree-label-inspiration">灵感池</text>
                 <text x="110" y="340" fontSize="8" fill="#5f7194">INSPIRATION</text>
                 <text x="266" y="340" fontSize="11" fill={cntFill(ideasN)} textAnchor="end">{ideasN}</text>
-                <line x1="34" y1="366" x2="56" y2="366" stroke="#54678a" strokeWidth="1.1" />
+                {treeBlocks("inspiration", ideasN, 336, "#54678a")}
+                <line x1="34" y1="366" x2="56" y2="366" stroke="#54678a" strokeWidth="1.5" strokeLinecap="square" />
                 <circle cx="56" cy="366" r="3.4" fill="#54678a" filter="url(#hud-glow)" />
                 <text x="67" y="370" fontSize="10.5" fill="#e8f4ff" className="hud-tree-label" ref={scramble.register("calendar")} data-testid="hud-tree-label-calendar">日历表</text>
                 <text x="110" y="370" fontSize="8" fill="#5f7194">CALENDAR</text>
                 <text x="266" y="370" fontSize="11" fill={cntFill(calN)} textAnchor="end">{calN}</text>
-                <line x1="34" y1="396" x2="56" y2="396" stroke="#ffb03a" strokeWidth="1.1" />
+                {treeBlocks("calendar", calN, 366, "#54678a")}
+                <line x1="34" y1="396" x2="56" y2="396" stroke="#ffb03a" strokeWidth="1.5" strokeLinecap="square" />
                 <circle cx="56" cy="396" r="3.4" fill="#ffb03a" filter="url(#hud-glow)" />
                 <text x="67" y="400" fontSize="10.5" fill="#e8f4ff" className="hud-tree-label" ref={scramble.register("health")} data-testid="hud-tree-label-health">身体健康</text>
                 <text x="120" y="400" fontSize="8" fill="#5f7194">HEALTH</text>
                 <text x="266" y="400" fontSize="11" fill="#ffb03a" textAnchor="end">{healthN}</text>
-                <line x1="34" y1="426" x2="56" y2="426" stroke="#FFEA00" strokeWidth="1.1" />
+                {treeBlocks("health", healthN, 396, "#ffb03a")}
+                <line x1="34" y1="426" x2="56" y2="426" stroke="#FFEA00" strokeWidth="1.5" strokeLinecap="square" />
                 <circle cx="56" cy="426" r="3.4" fill="#FFEA00" filter="url(#hud-glow)" />
                 <text x="67" y="430" fontSize="10.5" fill="#e8f4ff" className="hud-tree-label" ref={scramble.register("finance")} data-testid="hud-tree-label-finance">财务系统</text>
                 <text x="120" y="430" fontSize="8" fill="#5f7194">FINANCE</text>
-                <rect x="196" y="423" width="40" height="4" fill="#0d1226" stroke="#FFEA00" strokeWidth="0.5" />
-                <rect x="196" y="423" width={bw(finN)} height="4" fill="#FFEA00" filter="url(#hud-glow)" />
+                {treeBlocks("finance", finN, 426, "#FFEA00")}
                 <text x="266" y="430" fontSize="11" fill={cntFill(finN)} textAnchor="end">{finN}</text>
-                <text x="14" y="462" fontSize="8.5" fill="#41516e" letterSpacing="1">[ DEPTH 3 · NODES 13 · BARS = SHARE ]</text>
+                <text x="14" y="462" fontSize="8.5" fill="#41516e" letterSpacing="1">[ DEPTH 3 · NODES 13 · BLOCKS = SHARE ]</text>
                 {/* hover decode marks: SVG <text> has no ::before/::after,
                  * so the > < pair are real text nodes flanking the label,
                  * lit while the row is hovered. The group is display:none
@@ -2094,13 +2214,29 @@ export function NeuralLanding({
                     : "[--:--] SYNC health-sync.json · STALE"}
                 </div>
                 <div>[BOOT] SKILLS LOADED · {skillsN} ENTRIES</div>
-                {HUD_LOG_FACTS.map((l) => (
-                  <div key={l.text} style={l.color ? { color: l.color } : undefined}>
-                    {l.text}
-                  </div>
-                ))}
+                {HUD_LOG_FACTS.map((l, li) =>
+                  li === HUD_LOG_FACTS.length - 1 ? (
+                    /* newest real event line: typewriter reveal
+                     * (hud-restyle) — content is the existing log
+                     * line itself, never a generated event. */
+                    <div
+                      key={l.text}
+                      data-testid="hud-term-latest"
+                      style={l.color ? { color: l.color } : undefined}
+                    >
+                      {typedTermLatest}
+                    </div>
+                  ) : (
+                    <div key={l.text} style={l.color ? { color: l.color } : undefined}>
+                      {l.text}
+                    </div>
+                  ),
+                )}
                 <div style={{ color: "var(--hud-yellow)" }}>
-                  [NOW] AWAITING COMMAND <span className="hud-blink">_</span>
+                  [NOW] AWAITING COMMAND{" "}
+                  <span className="hud-term-caret" data-testid="hud-term-caret">
+                    &gt;_
+                  </span>
                 </div>
               </div>
             </div>
@@ -2348,11 +2484,11 @@ export function NeuralLanding({
                 <div className="hud-sheet-grip" aria-hidden />
                 <div className="hud-phead">
                   <span className="hud-t">DECISION STACK · 决策栈</span>
-                  <span className="hud-chip hud-c-pink">{decisions.length} 待决</span>
+                  <span className="hud-chip hud-c-pink">{pendingCount} 待决</span>
                   <span className="hud-hex">0xD5TK</span>
                 </div>
               </div>
-              {orderedDecisions.map((s, i) => {
+              {activeDecisions.map((s, i) => {
                 const d = s.d;
                 /* focus linkage: with a module focused, its decision
                  * row highlights (slide-in) and every other row dims —
@@ -2367,6 +2503,7 @@ export function NeuralLanding({
                       related && "hud-srow-rel",
                       dimmed && "is-dim",
                       s.decayed && "is-stale",
+                      d.urgency === 2 && "is-urgent",
                     )}
                     key={d.en}
                     ref={(el) => {
@@ -2409,9 +2546,83 @@ export function NeuralLanding({
                       )}{" "}
                       · {d.target ? "点击进入 →" : "点击看说明 →"}
                     </div>
+                    {/* hover actions (hud-restyle): real semantics —
+                     * [RUN] is this row's own openDecision path,
+                     * [ARCHIVE] files the row into the persisted
+                     * archive. Both swallow pointerdown so the row's
+                     * drag source and click never see the press. */}
+                    <span className="hud-dec-actions">
+                      <span
+                        className="hud-dec-act"
+                        role="button"
+                        aria-label={`运行 ${d.name}`}
+                        data-testid={`hud-decision-run-${d.id}`}
+                        onPointerDown={(e) => e.stopPropagation()}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openDecision(d);
+                        }}
+                      >
+                        [RUN]
+                      </span>
+                      <span
+                        className="hud-dec-act hud-dec-act-alert"
+                        role="button"
+                        aria-label={`归档 ${d.name}`}
+                        data-testid={`hud-decision-archive-${d.id}`}
+                        onPointerDown={(e) => e.stopPropagation()}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          archiveDecision(d.id);
+                        }}
+                      >
+                        [ARCHIVE]
+                      </span>
+                    </span>
                   </button>
                 );
               })}
+              {archivedDecisions.length > 0 && (
+                <div className="hud-arch-group" data-testid="hud-archived-group">
+                  <button
+                    type="button"
+                    className="hud-arch-head"
+                    data-testid="hud-archived-toggle"
+                    aria-expanded={archivedOpen}
+                    onClick={() => setArchivedOpen((v) => !v)}
+                  >
+                    <span aria-hidden>{archivedOpen ? "▾" : "▸"}</span>
+                    <span>
+                      已归档 ·{" "}
+                      <span data-testid="hud-archived-count">
+                        {archivedDecisions.length}
+                      </span>
+                    </span>
+                    <span className="hud-en">ARCHIVED</span>
+                  </button>
+                  {archivedOpen &&
+                    archivedDecisions.map((s) => (
+                      <div
+                        className="hud-arch-row"
+                        key={s.d.id}
+                        data-testid={`hud-archived-row-${s.d.id}`}
+                      >
+                        <span className={`hud-led hud-led-${s.d.led}`} />
+                        <span>{s.d.name}</span>
+                        <span className="hud-en">{s.d.en}</span>
+                        <span
+                          className="hud-dec-act"
+                          role="button"
+                          aria-label={`恢复 ${s.d.name}`}
+                          data-testid={`hud-decision-restore-${s.d.id}`}
+                          onClick={() => restoreDecision(s.d.id)}
+                        >
+                          [RESTORE]
+                        </span>
+                      </div>
+                    ))}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -2424,8 +2635,17 @@ export function NeuralLanding({
                 key={m.id}
                 type="button"
                 className={cn("hud-card", sel === m.id && "hud-card-on")}
-                style={{ color: m.color }}
+                style={
+                  {
+                    color: m.color,
+                    /* telemetry waterline (hud-restyle): --wl is the
+                     * module's real entry share, --beam its beam rgb */
+                    "--wl": `${sharePct(m.count)}%`,
+                    "--beam": beamRgb(m.color),
+                  } as React.CSSProperties
+                }
                 data-module={m.id}
+                data-share={sharePct(m.count)}
                 aria-pressed={sel === m.id}
                 onClick={() => focusOrOpen(m.id)}
               >
@@ -2534,7 +2754,7 @@ export function NeuralLanding({
         sheet={msheet}
         group={treeGroupRef.current}
         home={!viewMod && !noteKind}
-        pending={decisions.length}
+        pending={pendingCount}
         onOverview={() => {
           backToOverview();
           setMsheet("none");
