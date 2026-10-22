@@ -172,6 +172,10 @@ export const SLICES: SliceDef[] = [
   jsonSlice("decisionPicks", "studio_decision_picks_v1", "决策栈意向", (v) =>
     isPlainObject(v) && Object.values(v).every((x) => typeof x === "string"),
   ),
+  /* 决策归档名单（2026-10-22, hud-restyle）：字符串数组（决策 id） */
+  jsonSlice("decisionArchived", "studio_decision_archived_v1", "决策栈归档", arrayOf(
+    (v) => typeof v === "string",
+  )),
   jsonSlice("skillsCollapsed", "studio_skills_collapsed_v1", "技能库折叠", isBoolRecord),
   /* 日历事项 / 灵感池步骤（HUD 与旧层共用同键） */
   jsonSlice("calendarItems", "studio_calendar_items_v1", "日历事项", arrayOf(okCalItem)),

@@ -2934,7 +2934,9 @@ div.studio-orb.studio-orb-bg,
  * stock values until a dedicated migration pass. */
 :root {
   --hud-int-dim-opacity: 0.25;
-  --hud-int-stale-opacity: 0.4;
+  /* stale opacity retuned 0.4 → 0.3 (2026-10-22, hud-restyle —
+   * the user's latest word for the tactical stack restyle). */
+  --hud-int-stale-opacity: 0.3;
   --hud-int-stale: #ffb03a;
   --hud-int-flip-dur: 0.3s;
   --hud-int-slide-dur: 0.25s;
@@ -3005,6 +3007,18 @@ div.studio-orb.studio-orb-bg,
   --hud-int-radial-name: #e8f4ff;
   --hud-int-radial-dur: 0.34s;
   --hud-int-radial-close-dur: 0.12s;
+  /* three-zone restyle (2026-10-22, hud-restyle): tactical decision
+   * stack (urgent edge, hover actions, archive group), card waterline
+   * and terminal typewriter caret. */
+  --hud-int-urgent-bg: linear-gradient(90deg, rgba(255, 0, 127, 0.08), transparent 65%);
+  --hud-int-act-bg: rgba(7, 10, 18, 0.94);
+  --hud-int-act-border: rgba(0, 255, 255, 0.45);
+  --hud-int-act-border-alert: rgba(255, 0, 127, 0.55);
+  --hud-int-act-dur: 0.18s;
+  --hud-int-arch-bg: rgba(0, 0, 0, 0.28);
+  --hud-int-arch-border: rgba(140, 180, 255, 0.14);
+  --hud-int-caret-dur: 1.06s;
+  --hud-int-block-off: #0d1226;
 }
 .hud-root {
   --hud-bg: #07080a;
@@ -3540,9 +3554,9 @@ div.studio-orb.studio-orb-bg,
 .hud-srow.is-dim { opacity: var(--hud-int-dim-opacity); filter: saturate(0.3); }
 /* decision-stack algorithmic decay (2026-10-22, hud-decision-algo):
  * rows untouched > 3 Shanghai calendar days sink to the decayed
- * layer at 40% opacity with an amber STALE · n 天未动 marker. A row
- * that is ALSO linkage-dimmed takes the darker value (.25), never a
- * product of the two. */
+ * layer at reduced opacity (30% since the hud-restyle retune) with
+ * an amber STALE · n 天未动 marker. A row that is ALSO linkage-dimmed
+ * takes the darker value (.25), never a product of the two. */
 .hud-srow.is-stale { opacity: var(--hud-int-stale-opacity); }
 .hud-srow.is-stale.is-dim { opacity: var(--hud-int-dim-opacity); }
 .hud-srow .hud-stale {
@@ -3558,6 +3572,124 @@ div.studio-orb.studio-orb-bg,
 @keyframes hud-slide-in {
   from { opacity: 0; transform: translateX(12px); }
   to { opacity: 1; transform: translateX(0); }
+}
+
+/* ── three-zone restyle (2026-10-22, hud-restyle) ──────────────────
+ * Tactical decision stack: urgency-2 rows carry a magenta left edge
+ * over a faint 90° glow; hover slides in the row's real actions
+ * ([RUN] = the row's own openDecision path, [ARCHIVE] = a persisted
+ * archive list — archived rows leave the algorithm ordering and sink
+ * into the collapsed group at the stack's foot). On touch
+ * (hover: none) the actions stand still-visible instead — the
+ * touch-degradation rule. Card waterline: a beam-tinted level rises
+ * from each console card's base to its real share (--wl). Terminal:
+ * the newest log line types in; the caret blinks in steps. */
+.hud-srow-btn { position: relative; }
+.hud-srow.is-urgent {
+  border-left: 2px solid var(--hud-int-alert);
+  background: var(--hud-int-urgent-bg);
+}
+.hud-dec-actions {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transform: translate(8px, -50%);
+  transition:
+    opacity var(--hud-int-act-dur) ease,
+    transform var(--hud-int-act-dur) ease;
+  pointer-events: none;
+}
+.hud-srow-btn:hover .hud-dec-actions,
+.hud-srow-btn:focus-within .hud-dec-actions {
+  opacity: 1;
+  transform: translate(0, -50%);
+  pointer-events: auto;
+}
+@media (hover: none) {
+  .hud-dec-actions {
+    opacity: 0.85;
+    transform: translate(0, -50%);
+    pointer-events: auto;
+  }
+}
+.hud-dec-act {
+  font-size: 8.5px;
+  letter-spacing: 0.08em;
+  line-height: 1.5;
+  padding: 1px 6px;
+  color: var(--hud-cyan);
+  background: var(--hud-int-act-bg);
+  border: 1px solid var(--hud-int-act-border);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.hud-dec-act:hover { color: #fff; box-shadow: var(--hud-int-chip-glow); }
+.hud-dec-act-alert {
+  color: var(--hud-int-alert);
+  border-color: var(--hud-int-act-border-alert);
+}
+.hud-dec-act-alert:hover { color: #ffb3d1; }
+/* archived group: collapsed by default at the stack's foot */
+.hud-arch-group {
+  border-top: 1px dashed var(--hud-int-arch-border);
+  background: var(--hud-int-arch-bg);
+}
+.hud-arch-head {
+  font: inherit;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  padding: 7px 11px;
+  background: none;
+  border: none;
+  color: var(--hud-dim);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-align: left;
+  cursor: pointer;
+}
+.hud-arch-head:hover { color: #cfe0ff; }
+.hud-arch-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 11px;
+  border-top: 1px dashed rgba(140, 180, 255, 0.08);
+  font-size: 10.5px;
+  color: var(--hud-dim);
+}
+.hud-arch-row .hud-en { font-size: 8.5px; letter-spacing: 0.1em; }
+.hud-arch-row .hud-dec-act { margin-left: auto; }
+/* console card waterline (share-driven, --beam = module beam rgb) */
+.hud-card { overflow: hidden; }
+.hud-card > * { position: relative; z-index: 1; }
+.hud-card::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: var(--wl, 0%);
+  background: linear-gradient(
+    to top,
+    rgb(var(--beam, 0 255 255) / 0.13),
+    transparent
+  );
+  border-top: 1px solid rgb(var(--beam, 0 255 255) / 0.45);
+  pointer-events: none;
+}
+/* terminal caret: hard steps blink on the [NOW] prompt line */
+.hud-term-caret {
+  color: var(--hud-yellow);
+  animation: hud-caret-blink var(--hud-int-caret-dur) steps(1) infinite;
+}
+@keyframes hud-caret-blink {
+  0%, 49% { opacity: 1; }
+  50%, 100% { opacity: 0; }
 }
 
 /* topbar ⌘K chip (also the touch entry point for the palette) */
