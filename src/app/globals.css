@@ -3098,27 +3098,6 @@ div.studio-orb.studio-orb-bg,
    * the dragged chip's lift. */
   /* UX overhaul (2026-10-22, hud-ux-dock): the retired tree
    * panel's placeholder vars (dock vars removed with the dock). */
-  /* Floating capsule nav (2026-10-22, hud-capsule): frosted pill
-   * floating over the topbar's mid zone — glass, rings and glow
-   * follow the user-approved capsule mock; z 40 keeps it above
-   * content, below the drag canvas (65) / mind-map stage (68) /
-   * palette (70) / radial (80). */
-  --hud-int-cap-z: 40;
-  --hud-int-cap-bg: rgba(10, 16, 28, 0.58);
-  --hud-int-cap-bg-open: rgba(10, 18, 32, 0.85);
-  --hud-int-cap-bg-solid: rgba(10, 16, 28, 0.92);
-  --hud-int-cap-border: rgba(110, 190, 255, 0.22);
-  --hud-int-cap-border-open: rgba(110, 210, 255, 0.5);
-  --hud-int-cap-blur: 9px;
-  --hud-int-cap-shadow: 0 10px 34px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(160, 220, 255, 0.14);
-  --hud-int-cap-shadow-open: 0 16px 44px rgba(0, 0, 0, 0.65), 0 0 26px rgba(25, 227, 255, 0.18), inset 0 1px 0 rgba(160, 220, 255, 0.2);
-  --hud-int-cap-btn: 30px;
-  --hud-int-cap-fg: #7fd8ff;
-  --hud-int-cap-label: #a9c8ee;
-  --hud-int-cap-on-bg: rgba(25, 227, 255, 0.16);
-  --hud-int-cap-on-ring: rgba(25, 227, 255, 0.55);
-  --hud-int-cap-on-glow: rgba(25, 227, 255, 0.45);
-  --hud-int-cap-dur: 0.28s;
   --hud-int-tree-ph-border: rgba(140, 180, 255, 0.35);
   --hud-int-tree-ph-fg: #5f7194;
   --hud-int-copy-ok: #37ffb0;
@@ -5702,7 +5681,6 @@ div.studio-orb.studio-orb-bg,
 .hud-root.hud-zen .hud-console,
 .hud-root.hud-zen .hud-ticker,
 .hud-root.hud-zen .hud-mnav,
-.hud-root.hud-zen .hud-capsule,
 .hud-root.hud-zen .hud-drag-rail,
 .hud-root.hud-zen .hud-snap-note {
   opacity: 0;
@@ -6103,21 +6081,8 @@ div.studio-orb.studio-orb-bg,
  * UX overhaul (2026-10-22, hud-ux-dock)
  *  · .hud-marquee-edit — the ticker slogan editor, on the palette
  *    shell (z 70 comes from .hud-pal-mask / .hud-pal).
- * Floating capsule nav (2026-10-22, hud-capsule)
- *  · .hud-viewrow — the module view row; since hud-capsule it is a
- *    plain full-width row (navigation no longer lives inside it).
- *  · .hud-capsule — one frosted pill for the whole studio. Desktop:
- *    absolutely positioned over the topbar's mid zone (its DOM
- *    parent .hud-wrap is the containing block), icon-only at rest;
- *    hover / focus-within / the pinned .hud-cap-open class widen it
- *    and fade in per-button labels. Buttons tile edge-to-edge (no
- *    flex gap) so a pointer crossing the pill never leaves button
- *    hit-boxes and hover can't flicker; the glass between/behind
- *    them is pointer-events:none, so topbar controls underneath
- *    stay clickable everywhere the pill has no button.
- *  · ≤1100px: in-flow centred row under the topbar; expansion is
- *    the pinned class only and wraps into a label panel.
- *  · ≤768px: performance tier — backdrop blur off, glow shed.
+ *  · .hud-viewrow — the module view row; a plain full-width row
+ *    (navigation lives in the ⌘K palette / mobile bottom nav).
  * ══════════════════════════════════════════════════════════════════ */
 .hud-viewrow {
   flex: 1;
@@ -6125,177 +6090,11 @@ div.studio-orb.studio-orb-bg,
   display: flex;
   gap: var(--hud-sp-8);
 }
-.hud-capsule {
-  position: absolute;
-  top: var(--hud-sp-6);
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: var(--hud-int-cap-z);
-  display: flex;
-  align-items: center;
-  padding: var(--hud-sp-6) var(--hud-sp-9);
-  border-radius: var(--hud-sp-999);
-  border: var(--hud-sp-1) solid var(--hud-int-cap-border);
-  background: var(--hud-int-cap-bg);
-  backdrop-filter: blur(var(--hud-int-cap-blur));
-  -webkit-backdrop-filter: blur(var(--hud-int-cap-blur));
-  box-shadow: var(--hud-int-cap-shadow);
-  pointer-events: none;
-  transition: background 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
-}
-.hud-cap-btn {
-  font: inherit;
-  flex: none;
-  height: var(--hud-int-cap-btn);
-  min-width: var(--hud-int-cap-btn);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0 var(--hud-sp-5);
-  border: none;
-  border-radius: var(--hud-sp-999);
-  background: transparent;
-  color: var(--hud-int-cap-fg);
-  cursor: pointer;
-  pointer-events: auto;
-  transition: background 0.2s ease, box-shadow 0.2s ease, color 0.2s ease;
-}
-.hud-cap-btn:hover { color: var(--hud-c-eaf7ff); }
-.hud-cap-btn:focus-visible {
-  outline: var(--hud-sp-1) solid var(--hud-cyan);
-  outline-offset: var(--hud-sp-2);
-  box-shadow: 0 0 var(--hud-sp-10) var(--hud-c-00ffff-a35);
-}
-.hud-cap-ch { font-size: var(--hud-sp-13); line-height: 1; flex: none; }
-.hud-cap-label {
-  font-size: var(--hud-sp-10-5);
-  letter-spacing: 0.06em;
-  color: var(--hud-int-cap-label);
-  white-space: nowrap;
-  overflow: hidden;
-  max-width: 0;
-  opacity: 0;
-  transition: max-width var(--hud-int-cap-dur) ease, opacity 0.2s ease,
-    margin-left var(--hud-int-cap-dur) ease;
-}
-.hud-cap-on {
-  background: var(--hud-int-cap-on-bg);
-  color: var(--hud-c-ffffff);
-  box-shadow: 0 0 var(--hud-sp-14) var(--hud-int-cap-on-glow),
-    inset 0 0 0 var(--hud-sp-1) var(--hud-int-cap-on-ring);
-}
-.hud-cap-on .hud-cap-label { color: var(--hud-c-ffffff); }
-/* the home button carries the divider to the module group inside
- * its own hit-box (a ::after rule), so the pointer path from home
- * to the first module never crosses dead glass */
-.hud-cap-home {
-  color: var(--hud-yellow);
-  position: relative;
-  margin-right: var(--hud-sp-10);
-  box-shadow: inset 0 0 0 var(--hud-sp-1) var(--hud-c-ffea00-a40);
-}
-.hud-cap-home::after {
-  content: "";
-  position: absolute;
-  right: var(--hud-sp-n6);
-  top: 50%;
-  transform: translateY(-50%);
-  width: var(--hud-sp-1);
-  height: var(--hud-sp-18);
-  background: var(--hud-c-78beff-a25);
-  pointer-events: none;
-}
-.hud-cap-home .hud-cap-label { color: var(--hud-c-ffe97a); }
-.hud-cap-home.hud-cap-on {
-  background: var(--hud-c-ffea00-a12);
-  box-shadow: 0 0 var(--hud-sp-14) var(--hud-c-ffea00-a35),
-    inset 0 0 0 var(--hud-sp-1) var(--hud-c-ffea00-a65);
-}
-/* the » label-panel toggle exists only in the ≤1100px form */
-.hud-cap-toggle { display: none; }
-/* expanded states: hover (desktop), keyboard focus, pinned class */
-.hud-capsule:hover,
-.hud-capsule:focus-within,
-.hud-capsule.hud-cap-open {
-  background: var(--hud-int-cap-bg-open);
-  border-color: var(--hud-int-cap-border-open);
-  box-shadow: var(--hud-int-cap-shadow-open);
-}
-.hud-capsule:hover .hud-cap-label,
-.hud-capsule:focus-within .hud-cap-label,
-.hud-capsule.hud-cap-open .hud-cap-label {
-  max-width: var(--hud-sp-46);
-  opacity: 1;
-  margin-left: var(--hud-sp-5);
-}
 
 .hud-marquee-edit { max-width: min(var(--hud-sp-520), calc(100vw - 32px)); }
 
 @media (max-width: 1100px) {
   .hud-viewrow { flex-direction: column; }
-  /* capsule drops into flow: a centred icon row under the topbar.
-   * The glass takes taps here (nothing sits beneath it), hover no
-   * longer expands — the pinned .hud-cap-open class wraps the pill
-   * into a label panel instead. */
-  .hud-capsule {
-    position: relative;
-    top: auto;
-    left: auto;
-    transform: none;
-    align-self: center;
-    flex: none;
-    pointer-events: auto;
-    max-width: calc(100vw - 24px);
-  }
-  .hud-capsule:hover {
-    background: var(--hud-int-cap-bg);
-    border-color: var(--hud-int-cap-border);
-    box-shadow: var(--hud-int-cap-shadow);
-  }
-  .hud-capsule:hover .hud-cap-label { max-width: 0; opacity: 0; margin-left: 0; }
-  .hud-cap-toggle {
-    font: inherit;
-    flex: none;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: var(--hud-sp-22);
-    height: var(--hud-int-cap-btn);
-    border: none;
-    border-radius: var(--hud-sp-999);
-    background: transparent;
-    color: var(--hud-dim);
-    font-size: var(--hud-sp-13);
-    cursor: pointer;
-  }
-  .hud-capsule.hud-cap-open,
-  .hud-capsule:focus-within {
-    flex-wrap: wrap;
-    justify-content: center;
-    row-gap: var(--hud-sp-4);
-    border-radius: var(--hud-sp-20);
-    background: var(--hud-int-cap-bg-open);
-    border-color: var(--hud-int-cap-border-open);
-    box-shadow: var(--hud-int-cap-shadow-open);
-  }
-  .hud-capsule.hud-cap-open .hud-cap-label,
-  .hud-capsule:focus-within .hud-cap-label {
-    max-width: var(--hud-sp-46);
-    opacity: 1;
-    margin-left: var(--hud-sp-5);
-  }
-}
-@media (max-width: 768px) {
-  /* performance tier: backdrop blur off (solid glass), glow shed */
-  .hud-capsule,
-  .hud-capsule.hud-cap-open {
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-    background: var(--hud-int-cap-bg-solid);
-    box-shadow: 0 var(--hud-sp-6) var(--hud-sp-18) var(--hud-c-000000-a50);
-  }
-  .hud-cap-on { box-shadow: inset 0 0 0 var(--hud-sp-1) var(--hud-int-cap-on-ring); }
-  .hud-cap-home.hud-cap-on { box-shadow: inset 0 0 0 var(--hud-sp-1) var(--hud-c-ffea00-a65); }
 }
 
 /* ══════════════════════════════════════════════════════════════════
