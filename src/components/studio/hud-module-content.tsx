@@ -52,10 +52,14 @@ import healthSyncJson from "../../../public/health-sync.json";
  *               拉不到就只显文字，不编造）
  * - ontology  ← 结构与口径：条目源＝第二大脑笔记
  *               （goals/ai-2/hidden_files/notes/，现仅框架 README、
- *               笔记 0 条）→ 如实标建设中
+ *               笔记 0 条）→ 如实标建设中；库内文件带 [ OBSIDIAN ]
+ *               直达（库名本机填写 studio_obsidian_vault_v1，未填
+ *               不拼链接）
  * - inspiration ← 我/AI/Agent 三区（WORKFLOW-ZONES-SPEC），步骤读
  *               studio_workflow_steps_v2（初始为空，三区如实空）
  * - studio    ← HUB 入口卡 + 创作组总览（计数与最近动态，皆真事实）
+ *               + 创作流水线看板（workflow steps 按 status 三泳道
+ *               孵化/制作/待发，拖拽与箭头换道、落盘发总线事件）
  */
 
 type SkillEntry = {
@@ -139,7 +143,26 @@ const FLOW_ZONES: { id: FlowZone; label: string; en: string }[] = [
   { id: "ai", label: "AI", en: "AI" },
   { id: "agent", label: "Agent", en: "AGENT" },
 ];
-type FlowStep = { id: string; title: string; zone: FlowZone; note?: string };
+/* 创作流水线阶段（hud-empower）：status 是在 zone 之外补的字段，
+ * 旧数据没有它——缺省一律按「孵化」（流水线入口）呈现，第一次换道
+ * 时才真正落盘，旧字段（id/title/zone/note）一个不动。 */
+type FlowStage = "incubate" | "produce" | "ready";
+const FLOW_STAGES: { id: FlowStage; label: string; en: string }[] = [
+  { id: "incubate", label: "孵化", en: "INCUBATE" },
+  { id: "produce", label: "制作", en: "PRODUCE" },
+  { id: "ready", label: "待发", en: "READY" },
+];
+
+type FlowStep = {
+  id: string;
+  title: string;
+  zone: FlowZone;
+  note?: string;
+  status?: FlowStage;
+};
+
+const stepStage = (s: FlowStep): FlowStage =>
+  s.status === "produce" || s.status === "ready" ? s.status : "incubate";
 
 function readFlowSteps(): FlowStep[] {
   try {
@@ -155,6 +178,18 @@ function readFlowSteps(): FlowStep[] {
     );
   } catch {
     return [];
+  }
+}
+
+function writeFlowSteps(steps: FlowStep[]): boolean {
+  try {
+    window.localStorage.setItem(
+      "studio_workflow_steps_v2",
+      JSON.stringify(steps),
+    );
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -251,6 +286,61 @@ function SkillsBody() {
   const [collapsed, setCollapsed] = React.useState<Record<string, boolean>>(
     {},
   );
+  /* COPY PROMPT 反馈态（hud-empower）：复制的是哪一类必须如实回显——
+   * detail 技能复制指令全文（prompt），无 detail 的复制拼装调用卡
+   * （card）；writeText 与 execCommand 两级都失败才落 fail。反馈
+   * 1.2 秒后自动复原为 COPY PROMPT。 */
+  const [copyState, setCopyState] = React.useState<{
+    id: string;
+    kind: "prompt" | "card" | "fail";
+  } | null>(null);
+  const copyTimer = React.useRef<number | undefined>(undefined);
+  React.useEffect(
+    () => () => {
+      if (copyTimer.current !== undefined)
+        window.clearTimeout(copyTimer.current);
+    },
+    [],
+  );
+  const copySkill = async (s: SkillEntry) => {
+    const isPrompt = typeof s.detail === "string" && s.detail.length > 0;
+    const text = isPrompt
+      ? (s.detail as string)
+      : [
+          `技能：${s.name}（${s.zh}）`,
+          `标签：${s.tag}`,
+          `来源：${s.source}`,
+          `调用：在对话中点名调用「${s.name}」，由 Luna 读取该技能源文件后执行。`,
+        ].join("\n");
+    let done = false;
+    try {
+      await navigator.clipboard.writeText(text);
+      done = true;
+    } catch {
+      /* 权限/非安全上下文 → textarea + execCommand 降级 */
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.select();
+        done = document.execCommand("copy");
+        document.body.removeChild(ta);
+      } catch {
+        done = false;
+      }
+    }
+    setCopyState({
+      id: s.id,
+      kind: done ? (isPrompt ? "prompt" : "card") : "fail",
+    });
+    if (copyTimer.current !== undefined)
+      window.clearTimeout(copyTimer.current);
+    /* 成功反馈 1.2 秒复原；失败文案留住，等下一次点击再变。 */
+    if (done)
+      copyTimer.current = window.setTimeout(() => setCopyState(null), 1200);
+  };
   React.useEffect(() => {
     try {
       const raw = window.localStorage.getItem(SKILLS_COLLAPSED_KEY);
@@ -387,6 +477,28 @@ function SkillsBody() {
                         <div className="hud-module-row-src">{s.source}</div>
                       </div>
                       <span className="hud-chip hud-c-cyan">{s.tag}</span>
+                      <button
+                        type="button"
+                        className={cn(
+                          "hud-module-toggle hud-module-copy",
+                          copyState?.id === s.id &&
+                            copyState.kind !== "fail" &&
+                            "hud-module-copy-ok",
+                          copyState?.id === s.id &&
+                            copyState.kind === "fail" &&
+                            "hud-module-copy-fail",
+                        )}
+                        data-testid={`hud-skill-copy-${s.id}`}
+                        onClick={() => void copySkill(s)}
+                      >
+                        {copyState?.id === s.id
+                          ? copyState.kind === "prompt"
+                            ? "已复制提示词"
+                            : copyState.kind === "card"
+                              ? "已复制调用卡"
+                              : "复制失败·请检查权限"
+                          : "COPY PROMPT"}
+                      </button>
                       {s.detail ? (
                         <button
                           type="button"
@@ -2907,7 +3019,54 @@ function HealthBody() {
 
 /* ─────────────────────────── 9 · ontology ─────────────────────────── */
 
+/** 本体库名（Obsidian vault）的本机存储键——纯字符串，snapshot.ts
+ * 已登记 obsidianVault 片。库名绝不硬编进代码：用户在自己电脑上
+ * 的 Obsidian 库叫什么只有他知道，未填时不许拼链接乱开。 */
+const OBSIDIAN_VAULT_KEY = "studio_obsidian_vault_v1";
+
+/** 库内真实文件清单（镜像源：goals/ai-2/hidden_files/notes/ 目录，
+ * 与 FINANCE_LEDGER_ENTRIES 镜像 ledger.csv 同例）。当前库内只有
+ * 框架 README 一件——新笔记落盘后往这里补行，file 即文件名，
+ * 也是 obsidian:// 协议里的 file 参数。 */
+const ONTOLOGY_FILES: { file: string; title: string; tag: string }[] = [
+  { file: "README.md", title: "第二大脑 · 框架说明", tag: "框架" },
+];
+
 function OntologyBody() {
+  const [vault, setVault] = React.useState("");
+  const [needVault, setNeedVault] = React.useState(false);
+  const vaultInputRef = React.useRef<HTMLInputElement | null>(null);
+  React.useEffect(() => {
+    try {
+      const v = window.localStorage.getItem(OBSIDIAN_VAULT_KEY);
+      if (typeof v === "string") setVault(v);
+    } catch {
+      /* storage unavailable → 本次会话内填写 */
+    }
+  }, []);
+  const saveVault = (v: string) => {
+    setVault(v);
+    if (v.trim()) setNeedVault(false);
+    try {
+      if (v) window.localStorage.setItem(OBSIDIAN_VAULT_KEY, v);
+      else window.localStorage.removeItem(OBSIDIAN_VAULT_KEY);
+    } catch {
+      /* storage unavailable → 仅本次会话内生效 */
+    }
+  };
+  const openInObsidian = (file: string) => {
+    const v = vault.trim();
+    if (!v) {
+      /* 未填库名：不许乱开链接——聚焦输入框并闪提示 */
+      setNeedVault(true);
+      vaultInputRef.current?.focus();
+      return;
+    }
+    window.open(
+      `obsidian://open?vault=${encodeURIComponent(v)}&file=${encodeURIComponent(file)}`,
+      "_blank",
+    );
+  };
   return (
     <div>
       <SecHead
@@ -2924,12 +3083,65 @@ function OntologyBody() {
       <Kv k="标签体系">灵感 / 干货 / 待办线索 / 人脉 / 消费决策 / 其他</Kv>
       <Kv k="捕获方式">聊天里丢来的链接/截图/灵感由 Luna 归档；对话中的有价值信息同步沉淀</Kv>
       <Kv k="回顾">暂定按需 · 每周 digest 待确认后再设</Kv>
-      <div style={{ marginTop: 12 }}>
-        <EmptyState
-          title="条目 0 条"
-          sub="暂无归档笔记 · 第一条笔记落盘后，这里按标签体系列出"
+      <SecHead
+        title="库内文件"
+        en="VAULT FILES · OBSIDIAN 直达"
+        right={
+          <span className="hud-module-note">
+            点 [OBSIDIAN] 唤起本地 Obsidian 打开该文件
+          </span>
+        }
+      />
+      <div className="hud-vault-row">
+        <label className="hud-vault-label" htmlFor="hud-obsidian-vault">
+          OBSIDIAN 库名
+        </label>
+        <input
+          ref={vaultInputRef}
+          id="hud-obsidian-vault"
+          className="hud-module-input hud-module-input-flex"
+          data-testid="hud-obsidian-vault"
+          type="text"
+          value={vault}
+          onChange={(e) => saveVault(e.target.value)}
+          placeholder="Obsidian 库名"
+          aria-label="Obsidian 库名"
         />
+        {needVault ? (
+          <span className="hud-vault-hint" data-testid="hud-obsidian-need">
+            先填库名
+          </span>
+        ) : null}
       </div>
+      {ONTOLOGY_FILES.map((f) => (
+        <Row key={f.file} testid={`hud-onto-file-${f.file}`}>
+          <div className="hud-module-row-main">
+            <div className="hud-module-row-t">
+              {f.title}
+              <span className="hud-module-row-en">{f.file}</span>
+            </div>
+            <div className="hud-module-row-src">
+              goals/ai-2/hidden_files/notes/{f.file}
+            </div>
+          </div>
+          <span className="hud-chip hud-c-pur">{f.tag}</span>
+          <button
+            type="button"
+            className="hud-module-toggle"
+            data-testid={`hud-obsidian-open-${f.file}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              openInObsidian(f.file);
+            }}
+          >
+            [ OBSIDIAN ]
+          </button>
+        </Row>
+      ))}
+      <p className="hud-module-note">
+        归档笔记仍为 0 篇——上面是库内现有的框架文件；第一条笔记落盘后
+        会按同样的行样式列进这里，[ OBSIDIAN ] 直达随行就有。
+      </p>
     </div>
   );
 }
@@ -2987,6 +3199,224 @@ function InspirationBody() {
 }
 
 /* ─────────────────────────── 7 · studio (creation space) ─────────────────────────── */
+
+/**
+ * 创作流水线看板（hud-empower）：studio_workflow_steps_v2 的步骤按
+ * status 呈三泳道 孵化→制作→待发（zone 是执行者维度、留在芯片上
+ * 显示，两维并存）。换道两条等价路：指针拖拽（6px 阈值、Esc 取消、
+ * 落空回位）与芯片左右箭头（触屏/键盘可达）。落盘成功才发
+ * STUDIO_STAGE_MOVE——总线只记真发生的流转。本看板是模块视图内
+ * 的独立小拖拽，与总览的决策/树行拖拽引擎互不相干。
+ */
+function StudioBoard() {
+  const [steps, setSteps] = React.useState<FlowStep[]>([]);
+  const [drag, setDrag] = React.useState<{
+    idx: number;
+    dx: number;
+    dy: number;
+    active: boolean;
+  } | null>(null);
+  const dragRef = React.useRef<{
+    idx: number;
+    startX: number;
+    startY: number;
+    stage: FlowStage;
+  } | null>(null);
+
+  React.useEffect(() => {
+    setSteps(readFlowSteps());
+  }, []);
+
+  const moveStep = React.useCallback(
+    (idx: number, target: FlowStage) => {
+      const cur = steps[idx];
+      if (!cur || stepStage(cur) === target) return;
+      const next = steps.map((s, i) =>
+        i === idx ? { ...s, status: target } : s,
+      );
+      /* 先落盘、成功才更新状态并发总线（bus 纪律：emit 只挂在动作
+       * 真正完成之后）；落盘失败则不动状态、不假装流转。 */
+      if (!writeFlowSteps(next)) return;
+      setSteps(next);
+      emit("STUDIO_STAGE_MOVE", "studio");
+    },
+    [steps],
+  );
+
+  /* Esc 取消进行中的拖拽 */
+  React.useEffect(() => {
+    if (!drag) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        dragRef.current = null;
+        setDrag(null);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [drag]);
+
+  const onChipPointerDown = (
+    e: React.PointerEvent<HTMLDivElement>,
+    idx: number,
+  ) => {
+    if (e.button !== 0 && e.pointerType === "mouse") return;
+    const s = steps[idx];
+    if (!s) return;
+    dragRef.current = {
+      idx,
+      startX: e.clientX,
+      startY: e.clientY,
+      stage: stepStage(s),
+    };
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+      /* capture 不可用 → 仍可走箭头换道 */
+    }
+    setDrag({ idx, dx: 0, dy: 0, active: false });
+  };
+  const onChipPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const d = dragRef.current;
+    if (!d) return;
+    const dx = e.clientX - d.startX;
+    const dy = e.clientY - d.startY;
+    const active = Math.hypot(dx, dy) > 6;
+    setDrag({ idx: d.idx, dx, dy, active });
+  };
+  const endDrag = (e: React.PointerEvent<HTMLDivElement>, commit: boolean) => {
+    const d = dragRef.current;
+    dragRef.current = null;
+    const wasActive = drag?.active ?? false;
+    setDrag(null);
+    if (!d || !commit || !wasActive) return;
+    /* 拖起时芯片 pointer-events 已关，elementFromPoint 命中其下泳道 */
+    const el = document
+      .elementFromPoint(e.clientX, e.clientY)
+      ?.closest<HTMLElement>("[data-board-lane]");
+    const lane = el?.dataset.boardLane as FlowStage | undefined;
+    if (
+      lane &&
+      (lane === "incubate" || lane === "produce" || lane === "ready") &&
+      lane !== d.stage
+    ) {
+      moveStep(d.idx, lane);
+    }
+    /* 落空/落回原道：不改状态（drag 已清，芯片自动回位） */
+  };
+
+  return (
+    <div>
+      <SecHead
+        title="创作流水线"
+        en="PIPELINE · 拖拽或点箭头换道"
+        right={
+          <span className="hud-module-note">
+            共 {steps.length} 步 · 与灵感池同源 studio_workflow_steps_v2
+          </span>
+        }
+      />
+      <div className="hud-board" data-testid="hud-board">
+        {FLOW_STAGES.map((stage) => {
+          const laneSteps = steps
+            .map((s, i) => ({ s, i }))
+            .filter(({ s }) => stepStage(s) === stage.id);
+          return (
+            <div
+              key={stage.id}
+              className="hud-board-lane"
+              data-board-lane={stage.id}
+              data-testid={`hud-board-lane-${stage.id}`}
+            >
+              <div className="hud-board-lane-h">
+                <span className="hud-board-lane-t">{stage.label}</span>
+                <span className="hud-module-row-en">{stage.en}</span>
+                <span className="hud-module-note">{laneSteps.length}</span>
+              </div>
+              {laneSteps.length > 0 ? (
+                laneSteps.map(({ s, i }) => {
+                  const isDragging = drag?.idx === i;
+                  const stageIdx = FLOW_STAGES.findIndex(
+                    (x) => x.id === stage.id,
+                  );
+                  return (
+                    <div
+                      key={s.id ?? `row-${i}`}
+                      className={cn(
+                        "hud-board-chip",
+                        isDragging && drag.active && "hud-board-chip-drag",
+                      )}
+                      data-testid={`hud-board-chip-${s.id ?? `row-${i}`}`}
+                      style={
+                        isDragging
+                          ? {
+                              transform: `translate(${drag.dx}px, ${drag.dy}px)`,
+                              pointerEvents: drag.active
+                                ? ("none" as const)
+                                : undefined,
+                            }
+                          : undefined
+                      }
+                      onPointerDown={(e) => onChipPointerDown(e, i)}
+                      onPointerMove={onChipPointerMove}
+                      onPointerUp={(e) => endDrag(e, true)}
+                      onPointerCancel={(e) => endDrag(e, false)}
+                    >
+                      <button
+                        type="button"
+                        className="hud-board-arrow"
+                        data-testid={`hud-board-prev-${s.id ?? `row-${i}`}`}
+                        aria-label="移到上一道"
+                        disabled={stageIdx === 0}
+                        onPointerDown={(e) => e.stopPropagation()}
+                        onClick={() =>
+                          moveStep(i, FLOW_STAGES[stageIdx - 1].id)
+                        }
+                      >
+                        ‹
+                      </button>
+                      <div className="hud-board-chip-main">
+                        <div className="hud-board-chip-t">{s.title}</div>
+                        {s.note ? (
+                          <div className="hud-module-row-sub">{s.note}</div>
+                        ) : null}
+                      </div>
+                      <span className="hud-chip hud-c-pur">
+                        {FLOW_ZONES.find((z) => z.id === s.zone)?.label ?? s.zone}
+                        区
+                      </span>
+                      <button
+                        type="button"
+                        className="hud-board-arrow"
+                        data-testid={`hud-board-next-${s.id ?? `row-${i}`}`}
+                        aria-label="移到下一道"
+                        disabled={stageIdx === FLOW_STAGES.length - 1}
+                        onPointerDown={(e) => e.stopPropagation()}
+                        onClick={() =>
+                          moveStep(i, FLOW_STAGES[stageIdx + 1].id)
+                        }
+                      >
+                        ›
+                      </button>
+                    </div>
+                  );
+                })
+              ) : (
+                <div className="hud-module-zone-empty">本道为空</div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      {steps.length === 0 ? (
+        <p className="hud-module-note">
+          流水线 0 步（无 status 的旧步骤一律先归孵化道）·
+          在灵感池新增步骤后回到这里流转。
+        </p>
+      ) : null}
+    </div>
+  );
+}
 
 function StudioBody({ onOpen }: { onOpen: (id: string) => void }) {
   const cards: {
@@ -3056,6 +3486,7 @@ function StudioBody({ onOpen }: { onOpen: (id: string) => void }) {
       <Kv k="技能库">{ALL_SKILLS.length} 个已装技能（grokbot 8 · Luna 5）</Kv>
       <Kv k="最近动态 · 10-18">YouTube EP001 已上传 · 待改公开</Kv>
       <Kv k="最近动态 · 10-19">视频号 ep01 配音定稿（Fish Audio 影视解说男声）· 待发布</Kv>
+      <StudioBoard />
     </div>
   );
 }

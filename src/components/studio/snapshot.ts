@@ -223,6 +223,15 @@ export const SLICES: SliceDef[] = [
     kind: "raw",
     validate: (v) => typeof v === "string" && v.length >= 1 && v.length <= 200,
   },
+  /* Obsidian 库名（2026-10-22, hud-empower）：本体视图直达用的本机
+   * 库名，纯字符串片（raw，与 windowTitle 同编码）。 */
+  {
+    name: "obsidianVault",
+    key: "studio_obsidian_vault_v1",
+    module: "本体知识库·Obsidian 库名",
+    kind: "raw",
+    validate: (v) => typeof v === "string" && v.length >= 1 && v.length <= 200,
+  },
   /* UI 临时态（旧工作台层：抽屉/分区开合记忆） */
   jsonSlice("skillsOpen", "studio_skills_open_v1", "技能库开合·UI态", isBoolRecord),
   jsonSlice("dbOpen", "studio_db_open_v1", "数据库开合·UI态", isBoolRecord),

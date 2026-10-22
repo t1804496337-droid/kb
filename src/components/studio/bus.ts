@@ -17,7 +17,9 @@ export type BusEventType =
   | "DECISION_PICK"
   | "SNAPSHOT_IMPORT"
   /* 拼图三（hud-health-sync）：剪贴板解析口校验通过、manual 落盘后发 */
-  | "HEALTH_SYNC";
+  | "HEALTH_SYNC"
+  /* 拼图二（hud-empower）：创作流水线芯片换道落盘后发 */
+  | "STUDIO_STAGE_MOVE";
 
 export type BusEvent = {
   type: BusEventType;

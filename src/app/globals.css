@@ -3030,6 +3030,17 @@ div.studio-orb.studio-orb-bg,
   --hud-int-term-info: #00ffff;
   --hud-int-paste-area-bg: rgba(0, 255, 255, 0.04);
   --hud-int-paste-area-border: rgba(0, 255, 255, 0.3);
+  /* module empowerment (2026-10-22, hud-empower): skill copy
+   * feedback states, obsidian vault hint, pipeline board lanes and
+   * the dragged chip's lift. */
+  --hud-int-copy-ok: #37ffb0;
+  --hud-int-copy-ok-bg: rgba(55, 255, 176, 0.12);
+  --hud-int-copy-fail: #ff7ab8;
+  --hud-int-copy-fail-bg: rgba(255, 0, 127, 0.12);
+  --hud-int-vault-hint: #ffb03a;
+  --hud-int-lane-bg: rgba(7, 10, 18, 0.55);
+  --hud-int-lane-border: rgba(0, 255, 255, 0.16);
+  --hud-int-chip-drag-shadow: 0 10px 26px rgba(0, 0, 0, 0.6), 0 0 18px rgba(0, 255, 255, 0.28);
 }
 .hud-root {
   --hud-bg: #07080a;
@@ -5172,4 +5183,114 @@ div.studio-orb.studio-orb-bg,
 @media (max-width: 768px) {
   .hud-mm-node { box-shadow: 0 0 8px rgba(0, 255, 255, 0.22); }
   .hud-mm-hint { font-size: 10px; max-width: 92vw; white-space: normal; text-align: center; }
+}
+
+/* ── module empowerment (2026-10-22, hud-empower) ──
+ * skills COPY PROMPT feedback, ontology Obsidian vault row, and the
+ * creation pipeline board (three stage lanes + draggable chips). */
+.hud-module-copy-ok {
+  color: var(--hud-int-copy-ok);
+  border-color: var(--hud-int-copy-ok);
+  background: var(--hud-int-copy-ok-bg);
+}
+.hud-module-copy-fail {
+  color: var(--hud-int-copy-fail);
+  border-color: var(--hud-int-copy-fail);
+  background: var(--hud-int-copy-fail-bg);
+}
+.hud-vault-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.hud-vault-label {
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  color: var(--hud-dim);
+  white-space: nowrap;
+}
+.hud-vault-hint {
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  color: var(--hud-int-vault-hint);
+  white-space: nowrap;
+  animation: hud-vault-flash 0.9s ease-in-out infinite alternate;
+}
+@keyframes hud-vault-flash {
+  from { opacity: 0.45; }
+  to { opacity: 1; }
+}
+.hud-board {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.hud-board-lane {
+  border: 1px solid var(--hud-int-lane-border);
+  background: var(--hud-int-lane-bg);
+  padding: 8px;
+  min-height: 92px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.hud-board-lane-h {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding-bottom: 6px;
+  border-bottom: 1px dashed rgba(0, 255, 255, 0.14);
+}
+.hud-board-lane-t {
+  font-size: 11.5px;
+  color: #e8f4ff;
+  letter-spacing: 0.06em;
+}
+.hud-board-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid rgba(0, 255, 255, 0.22);
+  background: linear-gradient(180deg, rgba(13, 18, 34, 0.72), rgba(6, 8, 16, 0.8));
+  padding: 6px 7px;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.hud-board-chip-drag {
+  cursor: grabbing;
+  z-index: 5;
+  box-shadow: var(--hud-int-chip-drag-shadow);
+  border-color: rgba(0, 255, 255, 0.6);
+}
+.hud-board-chip-main { flex: 1; min-width: 0; }
+.hud-board-chip-t {
+  font-size: 11px;
+  color: #e8f4ff;
+  line-height: 1.45;
+  word-break: break-word;
+}
+.hud-board-arrow {
+  font: inherit;
+  font-size: 13px;
+  line-height: 1;
+  color: var(--hud-cyan);
+  background: rgba(0, 255, 255, 0.05);
+  border: 1px solid rgba(0, 255, 255, 0.3);
+  width: 20px;
+  height: 22px;
+  padding: 0;
+  cursor: pointer;
+  flex: none;
+}
+.hud-board-arrow:hover:not(:disabled) { background: rgba(0, 255, 255, 0.16); }
+.hud-board-arrow:disabled { opacity: 0.28; cursor: default; }
+@media (max-width: 768px) {
+  .hud-board { grid-template-columns: 1fr; }
+  .hud-board-lane { min-height: 64px; }
+  .hud-board-chip { box-shadow: none; }
+  .hud-board-chip-drag { box-shadow: 0 6px 16px rgba(0, 0, 0, 0.55); }
 }
