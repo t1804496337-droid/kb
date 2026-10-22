@@ -16,20 +16,23 @@
  * starts EMPTY by design — no fabricated seed nodes; the empty state
  * shows the gesture primer instead.
  *
- * Painters deliberately mirror the overview drag engine
- * (neural-landing drawDragFrame): a 1px near-invisible glass rail
- * under a flowing dashed stream, and a 600ms comet pulse — white-hot
- * head, beam-colour trail of fading samples — when an edge is born.
- * The frame loop runs ONLY during gestures and pulses; a static
- * scene costs zero rAF.
+ * Render layer (2026-10-22, hud-mm-render): nodes are adaptive-width
+ * text blocks hanging off a glowing anchor dot on their left edge —
+ * the node's world point IS the dot. Edges are quadratic Bézier
+ * curves with a distance-based gravitational sag, stroked as flowing
+ * dashed streams; the comet pulse rides the same curve. While a link
+ * drag passes within 40px (screen) of another node's anchor, that
+ * node magnetises (expanding ring + glow) and the in-flight curve's
+ * end snaps to its anchor. The dash flow keeps the frame loop alive
+ * for the whole time the stage is open; closing the stage stops it.
  *
  * Gesture contract:
  *  · dblclick empty space — create a node there and edit it at once
  *  · node — click selects, drag (>4px) moves, dblclick edits,
  *    the × chip (or Delete) removes it with its edges
- *  · port (right edge of a node, shown on hover/selection) — drag
- *    out a link; release over another node creates the edge and
- *    fires the comet; self-links and duplicates are refused
+ *  · anchor dot (left edge of a node) — drag out a link; release
+ *    over another node creates the edge and fires the comet;
+ *    self-links and duplicates are refused
  *  · wheel — zoom anchored at the cursor; middle / right drag, or
  *    one-finger drag on empty space — pan; two fingers — pinch zoom
  *  · right-click inside never reaches the radial wheel: the wheel
@@ -54,6 +57,7 @@ const MIN_S = 0.3;
 const MAX_S = 2.5;
 const PULSE_MS = 600;
 const NODE_HIT_R = 58; /* world units: link-drop catch radius */
+const MAGNET_PX = 40; /* screen px: link-drag magnet radius (anchor-centred) */
 const EDGE_HIT_PX = 7; /* screen px: edge pick tolerance */
 const LINK_COL = "#00ffff";
 
@@ -108,6 +112,23 @@ function loadState(): MMState {
 
 type Pt = { x: number; y: number };
 
+/* ── Bézier edge geometry (hud-mm-render) ──
+ * Every edge bows downward: the control point is the chord midpoint
+ * pushed down by a sag proportional to the chord length, clamped so
+ * short hops stay taut and long spans never droop absurdly. */
+const edgeCtrl = (a: Pt, b: Pt): Pt => {
+  const d = Math.hypot(b.x - a.x, b.y - a.y);
+  const sag = Math.min(56, Math.max(6, d * 0.16));
+  return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 + sag };
+};
+const quadAt = (a: Pt, c: Pt, b: Pt, t: number): Pt => {
+  const u = 1 - t;
+  return {
+    x: u * u * a.x + 2 * u * t * c.x + t * t * b.x,
+    y: u * u * a.y + 2 * u * t * c.y + t * t * b.y,
+  };
+};
+
 type Gesture =
   | {
       kind: "pan";
@@ -159,6 +180,10 @@ export function MindMap({
     fresh: boolean;
   } | null>(null);
   const [topOff, setTopOff] = React.useState(36);
+  /* link-drag magnet target (hud-mm-render): state mirror for the
+   * data-magnet attribute, ref for the canvas painter. */
+  const [magnetId, setMagnetId] = React.useState<string | null>(null);
+  const [editW, setEditW] = React.useState(190);
 
   const rootRef = React.useRef<HTMLDivElement | null>(null);
   const canvasRef = React.useRef<HTMLCanvasElement | null>(null);
@@ -167,6 +192,13 @@ export function MindMap({
   const gestureRef = React.useRef<Gesture | null>(null);
   const pointersRef = React.useRef(new Map<number, Pt>());
   const pulsesRef = React.useRef<Pulse[]>([]);
+  const openRef = React.useRef(false);
+  const magnetRef = React.useRef<string | null>(null);
+  const setMagnet = React.useCallback((id: string | null) => {
+    if (magnetRef.current === id) return;
+    magnetRef.current = id;
+    setMagnetId(id);
+  }, []);
   const rafRef = React.useRef(0);
   const selEdgeRef = React.useRef<string | null>(null);
   const editInputRef = React.useRef<HTMLInputElement | null>(null);
@@ -248,38 +280,51 @@ export function MindMap({
       ctx.clearRect(0, 0, c.width, c.height);
       ctx.setTransform(dpr * s, 0, 0, dpr * s, dpr * tx, dpr * ty);
       const byId = new Map(st.nodes.map((n) => [n.id, n]));
-      /* settled edges */
+      /* settled edges: sagging Bézier curves in flowing dash —
+       * the offset runs off the frame clock, so the stream only
+       * moves while the stage's loop is alive. */
       for (const e of st.edges) {
         const a = byId.get(e.from);
         const b = byId.get(e.to);
         if (!a || !b) continue;
         const hot = e.id === selEdgeRef.current;
+        const c = edgeCtrl(a, b);
         ctx.beginPath();
         ctx.moveTo(a.x, a.y);
-        ctx.lineTo(b.x, b.y);
+        ctx.quadraticCurveTo(c.x, c.y, b.x, b.y);
         ctx.strokeStyle = hot ? "#ffea00" : "rgba(0, 255, 255, 0.45)";
         ctx.lineWidth = (hot ? 2.4 : 1.4) / s;
+        ctx.setLineDash([10 / s, 8 / s]);
+        ctx.lineDashOffset = -now / 22;
         if (hot) {
           ctx.shadowColor = "#ffea00";
           ctx.shadowBlur = 8;
         }
         ctx.stroke();
         ctx.shadowBlur = 0;
+        ctx.setLineDash([]);
       }
-      /* in-flight link: glass rail + flowing dash stream */
+      /* in-flight link: glass rail + flowing dash stream, curved
+       * like a settled edge; the free end snaps to the magnet
+       * target's anchor while one is caught. */
       const g = gestureRef.current;
       if (g?.kind === "link") {
         const from = byId.get(g.fromId);
         if (from) {
+          const magnetNode = magnetRef.current
+            ? byId.get(magnetRef.current)
+            : undefined;
+          const end = magnetNode ?? { x: g.x, y: g.y };
+          const c = edgeCtrl(from, end);
           ctx.beginPath();
           ctx.moveTo(from.x, from.y);
-          ctx.lineTo(g.x, g.y);
+          ctx.quadraticCurveTo(c.x, c.y, end.x, end.y);
           ctx.strokeStyle = "rgba(0, 255, 255, 0.14)";
           ctx.lineWidth = 1 / s;
           ctx.stroke();
           ctx.beginPath();
           ctx.moveTo(from.x, from.y);
-          ctx.lineTo(g.x, g.y);
+          ctx.quadraticCurveTo(c.x, c.y, end.x, end.y);
           ctx.strokeStyle = LINK_COL;
           ctx.lineWidth = 2 / s;
           ctx.setLineDash([10 / s, 8 / s]);
@@ -290,21 +335,24 @@ export function MindMap({
           ctx.shadowBlur = 0;
           ctx.setLineDash([]);
           ctx.beginPath();
-          ctx.arc(g.x, g.y, 3 / s, 0, Math.PI * 2);
+          ctx.arc(end.x, end.y, 3 / s, 0, Math.PI * 2);
           ctx.fillStyle = LINK_COL;
           ctx.fill();
         }
       }
-      /* comet pulses along newborn edges */
+      /* comet pulses ride the newborn edge's Bézier curve */
       pulsesRef.current = pulsesRef.current.filter(
         (p) => now - p.start < PULSE_MS,
       );
       for (const p of pulsesRef.current) {
         const t = Math.min(1, Math.max(0, (now - p.start) / PULSE_MS));
         const ease = 1 - (1 - t) * (1 - t);
+        const p0 = { x: p.x0, y: p.y0 };
+        const p1 = { x: p.x1, y: p.y1 };
+        const c = edgeCtrl(p0, p1);
         ctx.beginPath();
         ctx.moveTo(p.x0, p.y0);
-        ctx.lineTo(p.x1, p.y1);
+        ctx.quadraticCurveTo(c.x, c.y, p.x1, p.y1);
         ctx.strokeStyle = "rgba(0, 255, 255, 0.12)";
         ctx.lineWidth = 1 / s;
         ctx.stroke();
@@ -313,27 +361,25 @@ export function MindMap({
         for (let i = trailN; i >= 1; i -= 1) {
           const tt = ease - i * 0.026;
           if (tt < 0) continue;
-          const px = p.x0 + (p.x1 - p.x0) * tt;
-          const py = p.y0 + (p.y1 - p.y0) * tt;
+          const ptOn = quadAt(p0, c, p1, tt);
           const f = 1 - i / (trailN + 1);
           ctx.beginPath();
-          ctx.arc(px, py, (0.6 + 4.4 * f) / s, 0, Math.PI * 2);
+          ctx.arc(ptOn.x, ptOn.y, (0.6 + 4.4 * f) / s, 0, Math.PI * 2);
           ctx.globalAlpha = 0.75 * f * f;
           ctx.fillStyle = LINK_COL;
           ctx.fill();
         }
-        const hx = p.x0 + (p.x1 - p.x0) * ease;
-        const hy = p.y0 + (p.y1 - p.y0) * ease;
+        const head = quadAt(p0, c, p1, ease);
         ctx.globalAlpha = 1;
         ctx.beginPath();
-        ctx.arc(hx, hy, 7 / s, 0, Math.PI * 2);
+        ctx.arc(head.x, head.y, 7 / s, 0, Math.PI * 2);
         ctx.fillStyle = LINK_COL;
         ctx.shadowColor = LINK_COL;
         ctx.shadowBlur = 16;
         ctx.fill();
         ctx.shadowBlur = 0;
         ctx.beginPath();
-        ctx.arc(hx, hy, 2.8 / s, 0, Math.PI * 2);
+        ctx.arc(head.x, head.y, 2.8 / s, 0, Math.PI * 2);
         ctx.fillStyle = "#ffffff";
         ctx.fill();
       }
@@ -345,15 +391,22 @@ export function MindMap({
     (now: number) => {
       rafRef.current = 0;
       draw(now);
-      const busy =
-        gestureRef.current !== null || pulsesRef.current.length > 0;
-      if (busy) rafRef.current = requestAnimationFrame(loop);
+      /* the dash flow keeps frames coming for as long as the stage
+       * is open; unmount flips openRef and the loop dies with it */
+      if (openRef.current) rafRef.current = requestAnimationFrame(loop);
     },
     [draw],
   );
   const ensureLoop = React.useCallback(() => {
     if (!rafRef.current) rafRef.current = requestAnimationFrame(loop);
   }, [loop]);
+  React.useEffect(() => {
+    openRef.current = true;
+    ensureLoop();
+    return () => {
+      openRef.current = false;
+    };
+  }, [ensureLoop]);
 
   /* repaint on settled-state changes (no loop while idle) */
   React.useEffect(() => {
@@ -427,6 +480,12 @@ export function MindMap({
   );
   React.useEffect(() => {
     if (editing) {
+      /* editor width = the node block's own layout width (world px),
+       * so the input covers the text block exactly at any zoom */
+      const nodeEl = rootRef.current?.querySelector<HTMLElement>(
+        `[data-node-id="${editing.id}"]`,
+      );
+      if (nodeEl) setEditW(Math.max(90, nodeEl.offsetWidth));
       const el = editInputRef.current;
       if (el) {
         el.focus();
@@ -499,13 +558,24 @@ export function MindMap({
       const a = st.nodes.find((n) => n.id === e.from);
       const b = st.nodes.find((n) => n.id === e.to);
       if (!a || !b) continue;
-      const vx = b.x - a.x;
-      const vy = b.y - a.y;
-      const len2 = vx * vx + vy * vy || 1;
-      let t = ((wp.x - a.x) * vx + (wp.y - a.y) * vy) / len2;
-      t = Math.max(0, Math.min(1, t));
-      const d = Math.hypot(wp.x - (a.x + vx * t), wp.y - (a.y + vy * t));
-      if (d <= tol && (!best || d < best.d)) best = { id: e.id, d };
+      /* distance to the drawn curve: walk the Bézier in 24 samples
+       * and take the closest point-to-segment distance */
+      const c = edgeCtrl(a, b);
+      let prev = quadAt(a, c, b, 0);
+      for (let i = 1; i <= 24; i += 1) {
+        const cur = quadAt(a, c, b, i / 24);
+        const vx = cur.x - prev.x;
+        const vy = cur.y - prev.y;
+        const len2 = vx * vx + vy * vy || 1;
+        let t = ((wp.x - prev.x) * vx + (wp.y - prev.y) * vy) / len2;
+        t = Math.max(0, Math.min(1, t));
+        const d = Math.hypot(
+          wp.x - (prev.x + vx * t),
+          wp.y - (prev.y + vy * t),
+        );
+        if (d <= tol && (!best || d < best.d)) best = { id: e.id, d };
+        prev = cur;
+      }
     }
     return best?.id ?? null;
   };
@@ -632,6 +702,21 @@ export function MindMap({
       const wp = s2w(pt);
       g.x = wp.x;
       g.y = wp.y;
+      /* magnet: nearest other anchor within MAGNET_PX on screen */
+      let bestId: string | null = null;
+      let bestD = MAGNET_PX;
+      for (const n of st.nodes) {
+        if (n.id === g.fromId) continue;
+        const d = Math.hypot(
+          n.x * st.view.s + st.view.tx - pt.x,
+          n.y * st.view.s + st.view.ty - pt.y,
+        );
+        if (d <= bestD) {
+          bestD = d;
+          bestId = n.id;
+        }
+      }
+      setMagnet(bestId);
     }
   };
 
@@ -666,12 +751,16 @@ export function MindMap({
     }
     if (g.kind === "link") {
       const from = st.nodes.find((n) => n.id === g.fromId);
+      /* drop catch = the looser of the legacy world radius and the
+       * 40px magnet radius expressed in world units */
+      const catchR = Math.max(NODE_HIT_R, MAGNET_PX / st.view.s);
       const target = st.nodes.find(
         (n) =>
           n.id !== g.fromId &&
-          Math.hypot(n.x - wp.x, n.y - wp.y) <= NODE_HIT_R,
+          Math.hypot(n.x - wp.x, n.y - wp.y) <= catchR,
       );
       gestureRef.current = null;
+      setMagnet(null);
       if (from && target) {
         const dup = st.edges.some(
           (ed) =>
@@ -692,7 +781,10 @@ export function MindMap({
   };
   const onPointerCancel = (e: React.PointerEvent) => {
     pointersRef.current.delete(e.pointerId);
-    if (pointersRef.current.size === 0) gestureRef.current = null;
+    if (pointersRef.current.size === 0) {
+      gestureRef.current = null;
+      setMagnet(null);
+    }
   };
 
   const onRootDoubleClick = (e: React.MouseEvent) => {
@@ -736,7 +828,7 @@ export function MindMap({
     ensureLoop();
   };
 
-  const onPortPointerDown = (e: React.PointerEvent, n: MMNode) => {
+  const onAnchorPointerDown = (e: React.PointerEvent, n: MMNode) => {
     if (editing) return;
     e.stopPropagation();
     e.preventDefault();
@@ -784,6 +876,7 @@ export function MindMap({
         {nodes.map((n) => {
           const isSel = n.id === selNode;
           const isEditing = editing?.id === n.id;
+          const isMagnet = n.id === magnetId;
           return (
             <div
               key={n.id}
@@ -791,11 +884,13 @@ export function MindMap({
                 "hud-mm-node",
                 isSel ? "is-sel" : "",
                 isEditing ? "is-editing" : "",
+                isMagnet ? "is-magnet" : "",
               ]
                 .filter(Boolean)
                 .join(" ")}
               data-testid="hud-mm-node"
               data-node-id={n.id}
+              data-magnet={isMagnet ? "1" : undefined}
               style={{ left: n.x, top: n.y }}
               onPointerDown={(e) => onNodePointerDown(e, n)}
               onDoubleClick={(e) => {
@@ -803,13 +898,13 @@ export function MindMap({
                 if (!editing) startEdit(n.id, false);
               }}
             >
-              <span className="hud-mm-node-text">{n.text}</span>
               <span
-                className="hud-mm-port"
+                className="hud-mm-anchor"
                 data-testid="hud-mm-port"
                 aria-hidden
-                onPointerDown={(e) => onPortPointerDown(e, n)}
+                onPointerDown={(e) => onAnchorPointerDown(e, n)}
               />
+              <span className="hud-mm-node-text">{n.text}</span>
               {isSel && !isEditing && (
                 <button
                   type="button"
@@ -840,6 +935,9 @@ export function MindMap({
           style={{
             left: view.tx + editNode.x * view.s,
             top: view.ty + editNode.y * view.s,
+            width: editW,
+            transform: `translate(-10px, -50%) scale(${view.s})`,
+            transformOrigin: "10px 50%",
           }}
           onKeyDown={(e) => {
             if (e.key === "Enter") {
@@ -864,7 +962,7 @@ export function MindMap({
 
       {empty && !editing && (
         <div className="hud-mm-hint" data-testid="hud-mm-hint">
-          双击空白新建节点 · 滚轮缩放 · 右键拖拽平移 · 节点右缘圆点拉线连线 ·
+          双击空白新建节点 · 滚轮缩放 · 右键拖拽平移 · 节点左侧圆点拉线连线 ·
           Esc 退出
         </div>
       )}

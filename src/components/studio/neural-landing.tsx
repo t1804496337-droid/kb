@@ -2640,7 +2640,7 @@ export function NeuralLanding({
                 <br />Δ +{total} / 30D
               </div>
             </div>
-            <div className="hud-stage">
+            <div className={`hud-stage${mmOpen ? " is-mm-open" : ""}`}>
               <div className="hud-sphere-glow" aria-hidden />
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img

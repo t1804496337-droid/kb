@@ -3002,6 +3002,7 @@ div.studio-orb.studio-orb-bg,
   --hud-int-mm-node-sel-glow: 0 0 18px rgba(255, 234, 0, 0.45);
   --hud-int-mm-port: #00ffff;
   --hud-int-mm-hint: #9fd8e8;
+  --hud-int-mm-sphere-dim: 0.1;
   --hud-int-radial-bg: rgba(0, 255, 255, 0.07);
   --hud-int-radial-border: rgba(0, 255, 255, 0.5);
   --hud-int-radial-hub-bg: rgba(7, 10, 18, 0.94);
@@ -3439,6 +3440,16 @@ div.studio-orb.studio-orb-bg,
   mask-image: radial-gradient(circle, #000 55%, transparent 70%);
   animation: hud-spin 120s linear infinite;
   pointer-events: none;
+  transition: opacity 0.35s ease;
+}
+/* topology open (hud-mm-render): the whole sphere cluster yields the
+ * stage — sphere, jellies and halo forced down to 10% so the mind-map
+ * nodes own the visual field; restores on exit. */
+.hud-stage.is-mm-open .hud-sphere { opacity: var(--hud-int-mm-sphere-dim); }
+.hud-stage.is-mm-open .hud-jelly { opacity: var(--hud-int-mm-sphere-dim); }
+.hud-stage.is-mm-open .hud-sphere-glow {
+  animation: none;
+  opacity: var(--hud-int-mm-sphere-dim);
 }
 .hud-jelly {
   position: absolute;
@@ -5084,8 +5095,13 @@ div.studio-orb.studio-orb-bg,
 }
 .hud-mm-node {
   position: absolute;
-  transform: translate(-50%, -50%);
-  padding: 5px 12px;
+  /* the node's world point is its anchor dot: the block hangs off
+   * the dot (dot centre sits 10px in from the block's left edge) */
+  transform: translate(-10px, -50%);
+  display: flex;
+  align-items: center;
+  width: max-content;
+  padding: 5px 12px 5px 3px;
   background: var(--hud-int-mm-node-bg);
   border: 1px solid var(--hud-int-mm-node-border);
   box-shadow: var(--hud-int-mm-node-glow);
@@ -5106,27 +5122,64 @@ div.studio-orb.studio-orb-bg,
   text-shadow: 0 0 8px rgba(0, 255, 255, 0.75);
   pointer-events: none;
 }
-.hud-mm-port {
-  position: absolute;
-  right: -17px;
-  top: 50%;
-  width: 13px;
-  height: 13px;
-  margin-top: -6.5px;
-  border-radius: 50%;
-  border: 1px solid var(--hud-int-mm-port);
-  background: rgba(3, 6, 12, 0.9);
-  box-shadow: 0 0 7px rgba(0, 255, 255, 0.7);
+/* link anchor: the glowing dot on the node's left edge — successor
+ * of the old hover port; always visible, it IS the connection point */
+.hud-mm-anchor {
+  flex: none;
+  width: 14px;
+  align-self: stretch;
+  margin-right: 4px;
+  position: relative;
   cursor: crosshair;
-  opacity: 0;
-  transition: opacity 0.15s ease;
   touch-action: none;
 }
-.hud-mm-node:hover .hud-mm-port,
-.hud-mm-node.is-sel .hud-mm-port { opacity: 1; }
+.hud-mm-anchor::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 9px;
+  height: 9px;
+  margin: -4.5px 0 0 -4.5px;
+  border-radius: 50%;
+  background: var(--hud-int-mm-port);
+  box-shadow:
+    0 0 9px rgba(0, 255, 255, 0.95),
+    0 0 2px rgba(255, 255, 255, 0.9);
+}
+.hud-mm-node.is-sel .hud-mm-anchor::before {
+  background: #d8ffff;
+  box-shadow:
+    0 0 14px rgba(0, 255, 255, 1),
+    0 0 4px rgba(255, 255, 255, 1);
+}
+/* magnetic snap target while a link drag passes within 40px */
+.hud-mm-node.is-magnet {
+  border-color: var(--hud-int-mm-port);
+  box-shadow:
+    0 0 24px rgba(0, 255, 255, 0.65),
+    var(--hud-int-mm-node-glow);
+}
+.hud-mm-node.is-magnet .hud-mm-anchor::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 12px;
+  height: 12px;
+  margin: -6px 0 0 -6px;
+  border-radius: 50%;
+  border: 1.5px solid var(--hud-int-mm-port);
+  animation: hud-mm-magnet 0.7s ease-out infinite;
+  pointer-events: none;
+}
+@keyframes hud-mm-magnet {
+  from { transform: scale(0.55); opacity: 1; }
+  to { transform: scale(2.3); opacity: 0; }
+}
 .hud-mm-del {
   position: absolute;
-  left: -11px;
+  right: -11px;
   top: -11px;
   width: 17px;
   height: 17px;
@@ -5141,9 +5194,10 @@ div.studio-orb.studio-orb-bg,
 }
 .hud-mm-edit {
   position: absolute;
-  transform: translate(-50%, -50%);
-  width: 190px;
-  padding: 5px 10px;
+  /* width / transform / font-size arrive inline from the component:
+   * measured off the node's own block so the editor sits exactly
+   * where the text block sits, at the stage's current zoom. */
+  padding: 5px 12px 5px 21px;
   background: rgba(3, 6, 12, 0.96);
   border: 1px solid var(--hud-int-mm-node-sel-border);
   box-shadow: var(--hud-int-mm-node-sel-glow);
@@ -5151,7 +5205,7 @@ div.studio-orb.studio-orb-bg,
   font: inherit;
   font-size: 13px;
   letter-spacing: 0.06em;
-  text-align: center;
+  text-align: left;
   outline: none;
   z-index: 3;
 }
