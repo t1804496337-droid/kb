@@ -3328,17 +3328,17 @@ function FinanceBody() {
   );
 }
 
-/* ── 晨间古法健身流（2026-10-22, hud-finale）──
+/* ── 晨间古法健身流（2026-10-22, hud-finale；
+ * 2026-10-22 晚 hud-fitness-shaer：五卡退役换莎儿系列）──
  * 打卡只落本机 localStorage studio_ancient_checkins_v1
  * （{ 'YYYY-MM-DD': true } 映射），snapshot.ts 已登记
  * ancientCheckins 片；连续/累计天数只从该映射实算，不预填。
  * 教程链接铁律：逐条来自 B 站真实搜索结果（官方搜索接口
- * 2026-10-22 实测返回，BV 号与标题/作者一一对应）——八段锦
- * BV1PoWwzxEeN《八段锦·国体版（全套12分钟）》/ 易筋经
- * BV1sF411F7Tg《健身气功易筋经国家体育总局标准版》/ 五禽戏
- * BV1Xy421e7td《五禽戏全套系统教学（国体版）》/ 站桩
- * BV1vw411o7mP《站桩入门 · 15 个要求》/ 六字诀 BV1mS411w72r
- * 《健身气功·六字诀全套口令演示版》。站内不嵌播放器。 */
+ * 2026-10-22 实测返回，BV 号与标题/作者一一对应）——
+ * BV1mb7z6qEcC（20 分钟版）/ BV1cr421N7DX（10 分钟短版）/
+ * BV1ynSBY2EeM（35 分钟旗舰版）/ BV1KYwVe1EYd（30 分钟版），
+ * 均为「爱运动的莎儿」（抖音 88287815120）古法健身操跟练。
+ * 站内不嵌播放器；抖音原站入口仅一条文字链。 */
 const ANCIENT_CHECKIN_KEY = "studio_ancient_checkins_v1";
 const ANCIENT_MOVES: {
   id: string;
@@ -3348,11 +3348,10 @@ const ANCIENT_MOVES: {
   dose: string;
   bv: string;
 }[] = [
-  { id: "baduanjin", name: "八段锦", en: "BADUANJIN", tags: ["腹式呼吸", "升降开合", "意守丹田"], dose: "全套 1 遍 · 约 12 分钟", bv: "BV1PoWwzxEeN" },
-  { id: "yijinjing", name: "易筋经", en: "YIJINJING", tags: ["抻筋拔骨", "呼吸配合动作", "韦驮十二势"], dose: "全套 1 遍 · 约 15 分钟", bv: "BV1sF411F7Tg" },
-  { id: "wuqinxi", name: "五禽戏", en: "WUQINXI", tags: ["仿生导引", "起吸落呼", "虎鹿熊猿鸟"], dose: "全套 1 遍 · 约 15 分钟", bv: "BV1Xy421e7td" },
-  { id: "zhanzhuang", name: "站桩", en: "ZHANZHUANG", tags: ["混元桩", "松静自然", "意守下丹田"], dose: "10–20 分钟 · 每日 1 次", bv: "BV1vw411o7mP" },
-  { id: "liuzijue", name: "六字诀", en: "LIUZIJUE", tags: ["嘘呵呼呬吹嘻", "吐纳导引", "呼吸深长匀"], dose: "全套 1 遍 · 约 12 分钟", bv: "BV1mS411w72r" },
+  { id: "shaer-wd20", name: "工作日默认 · 20 分钟跟练", en: "WEEKDAY DEFAULT", tags: ["站立跟练", "无器械", "零基础可跟"], dose: "每日 1 套 · 约 20 分钟", bv: "BV1mb7z6qEcC" },
+  { id: "shaer-wd10", name: "工作日 10 分钟短版", en: "WEEKDAY QUICK", tags: ["赶时间降档", "保住不断档"], dose: "降档选项 · 约 10 分钟", bv: "BV1cr421N7DX" },
+  { id: "shaer-wk35", name: "周末 35 分钟旗舰版", en: "WEEKEND FLAGSHIP", tags: ["长版", "最完整一版"], dose: "周末 1 套 · 约 35 分钟", bv: "BV1ynSBY2EeM" },
+  { id: "shaer-wk30", name: "周末 30 分钟版", en: "WEEKEND ALT", tags: ["长版备选", "想短点用它"], dose: "周末备选 · 约 30 分钟", bv: "BV1KYwVe1EYd" },
 ];
 
 function readAncientCheckins(): Record<string, boolean> {
@@ -3418,13 +3417,31 @@ function AncientFitness() {
     <div data-testid="hud-ancient">
       <SecHead
         title="晨间古法健身流"
-        en="ANCIENT FITNESS · LONGEVITY ROUTINE"
+        en="ANCIENT FITNESS · SHAER FOLLOW-ALONG"
         right={
           <span className="hud-module-note">
             起床后空腹练 · 与塑形主训练错开
           </span>
         }
       />
+      <p className="hud-module-text">
+        博主「爱运动的莎儿」· 抖音 88287815120 ·{" "}
+        <a
+          className="hud-module-toggle hud-module-toggle-link"
+          href="https://v.douyin.com/6h1_YtZQUrU/"
+          target="_blank"
+          rel="noreferrer"
+        >
+          抖音原站跟练 ↗
+        </a>
+      </p>
+      <p className="hud-module-note">
+        定位：工作日默认 20 分钟版；赶时间降档 10 分钟短版保住不断档；周末换
+        35 分钟旗舰版，想短点用 30 分钟版。
+      </p>
+      <p className="hud-module-note">
+        导引抻拉类跟练：站立、无器械、低强度，负责唤醒与活动度；塑形靠晚间训练，本区不承诺减脂见效。
+      </p>
       <div className="hud-ancient-bar">
         <div>
           <div className="hud-ancient-state" data-testid="hud-ancient-state">
