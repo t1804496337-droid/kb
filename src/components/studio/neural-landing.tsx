@@ -79,6 +79,125 @@ type HealthState = {
   ok: boolean;
 };
 
+/* ── scramble hover decode (2026-10-22, hud-interactions) ──
+ * rAF-driven text scramble for the module-tree labels: on hover the
+ * label dissolves into glyph noise and re-resolves to the real text
+ * within 14 frames. Two width disciplines keep the row box frozen:
+ * (1) the replacement pool is width-matched per character — CJK
+ * slots take full-width radicals, ASCII slots take ASCII (a CJK
+ * glyph is 2× an ASCII advance and falls back to a different font,
+ * so mixing them per-slot would jitter the width); (2) the label's
+ * rendered length is locked with SVG textLength for the whole run
+ * and released on finish/cancel. */
+const SCRAMBLE_ASCII: string[] = [..."0x!f@#%&/<>"];
+const SCRAMBLE_RADICALS: string[] = [
+  "氵", "艹", "阝", "钅", "纟", "爿", "灬", "訁", "飠",
+];
+const scramblePoolFor = (ch: string): string[] =>
+  ch.charCodeAt(0) > 0xff ? SCRAMBLE_RADICALS : SCRAMBLE_ASCII;
+
+function useScramble() {
+  const els = React.useRef(new Map<string, SVGTextElement>());
+  const frames = React.useRef(new Map<string, number>());
+
+  const releaseLock = (el: SVGTextElement) => {
+    el.removeAttribute("textLength");
+    el.removeAttribute("lengthAdjust");
+  };
+
+  const stop = React.useCallback((id: string, restore?: string) => {
+    const f = frames.current.get(id);
+    if (f !== undefined) cancelAnimationFrame(f);
+    frames.current.delete(id);
+    const el = els.current.get(id);
+    if (el) {
+      releaseLock(el);
+      if (restore !== undefined) el.textContent = restore;
+    }
+  }, []);
+
+  const play = React.useCallback(
+    (id: string, text: string) => {
+      const el = els.current.get(id);
+      if (!el || !text) return;
+      stop(id);
+      /* lock the rendered length before the first mutated frame */
+      try {
+        const w = el.getComputedTextLength();
+        if (Number.isFinite(w) && w > 0) {
+          el.setAttribute("textLength", String(w));
+          el.setAttribute("lengthAdjust", "spacing");
+        }
+      } catch {
+        /* measurement unavailable — width-matched pools still apply */
+      }
+      const TOTAL = 14;
+      let frame = 0;
+      const tick = () => {
+        frame += 1;
+        const done = Math.floor((frame / TOTAL) * text.length);
+        let out = text.slice(0, done);
+        for (let i = done; i < text.length; i += 1) {
+          const pool = scramblePoolFor(text[i]);
+          out += pool[(Math.random() * pool.length) | 0];
+        }
+        el.textContent = out;
+        if (frame < TOTAL) {
+          frames.current.set(id, requestAnimationFrame(tick));
+        } else {
+          el.textContent = text;
+          releaseLock(el);
+          frames.current.delete(id);
+        }
+      };
+      frames.current.set(id, requestAnimationFrame(tick));
+    },
+    [stop],
+  );
+
+  const finePointer = () =>
+    typeof window !== "undefined" &&
+    window.matchMedia("(hover: hover) and (pointer: fine)").matches;
+
+  /* Mouse path: hover-capable devices only (media-gated). */
+  const start = React.useCallback(
+    (id: string, text: string) => {
+      if (finePointer()) play(id, text);
+    },
+    [play],
+  );
+
+  /* Touch path (2026-10-22 rule: every hover effect needs a touch
+   * equivalent): a tap plays the scramble once, in the same frame as
+   * the row's click behaviour — it never blocks or delays selection.
+   * On fine-pointer devices the hover path owns the effect, so tap
+   * stays a no-op there. */
+  const tap = React.useCallback(
+    (id: string, text: string) => {
+      if (!finePointer()) play(id, text);
+    },
+    [play],
+  );
+
+  React.useEffect(() => {
+    const pending = frames.current;
+    return () => {
+      pending.forEach((f) => cancelAnimationFrame(f));
+      pending.clear();
+    };
+  }, []);
+
+  const register = React.useCallback(
+    (id: string) => (el: SVGTextElement | null) => {
+      if (el) els.current.set(id, el);
+      else els.current.delete(id);
+    },
+    [],
+  );
+
+  return { register, start, tap, stop };
+}
+
 export function NeuralLanding({
   nodes,
   leaving,
@@ -280,6 +399,7 @@ export function NeuralLanding({
    * above — same caliber as the overview, never invented. ---- */
   const [sel, setSel] = React.useState<string | null>(null);
   const [hov, setHov] = React.useState<string | null>(null);
+  const scramble = useScramble();
   /* Module content view (2026-10-21): clicking a tree row / console card
    * opens that module's real content in place of the overview; the back
    * button returns. Selection linkage above still applies — opening a
@@ -288,6 +408,17 @@ export function NeuralLanding({
   const openModule = (id: string) => {
     setSel(id);
     setView(id);
+  };
+  /* Overview focus toggle: clicking the already-focused module's tree
+   * row / console card again clears the focus (back to the plain
+   * overview — decision stack undims, CORE MAP tags reset). Any other
+   * module opens its content view as before. */
+  const focusOrOpen = (id: string) => {
+    if (sel === id) {
+      setSel(null);
+      return;
+    }
+    openModule(id);
   };
   const viewMod = view ? (modules.find((m) => m.id === view) ?? null) : null;
   /* Decision-stack note views (X 恢复 / 小红书去向）: no module behind
@@ -402,22 +533,26 @@ export function NeuralLanding({
     wait: string;
     target?: string;
     note?: "x" | "xhs";
+    /** Owning module for the focus linkage (2026-10-22): when that
+     * module is focused on the overview, this row highlights and the
+     * others dim. Note-only items (X / XHS) have no module. */
+    module?: string;
   }[] = [
     {
       led: "p", name: "EP001 公开", en: "YOUTUBE PUBLISH", tag: "待公开",
-      tagCls: "hud-c-pink", target: "works",
+      tagCls: "hud-c-pink", target: "works", module: "works",
       fact: "已上传 · 待手机端改公开",
       wait: "等你 · 手机操作",
     },
     {
       led: "a", name: "健康数据同步", en: "HEALTH SYNC", tag: healthTag,
-      tagCls: healthTagCls, target: "health",
+      tagCls: healthTagCls, target: "health", module: "health",
       fact: healthFact,
       wait: "等数据 · 手机同步",
     },
     {
       led: "g", name: `待办票 ×${ticketsN}`, en: "CALENDAR TICKETS", tag: "待清",
-      tagCls: "hud-c-cyan", target: "calendar",
+      tagCls: "hud-c-cyan", target: "calendar", module: "calendar",
       fact: "日历模块待办票未清",
       wait: "等你 · 随手清",
     },
@@ -429,7 +564,7 @@ export function NeuralLanding({
     },
     {
       led: "d", name: "本体知识库填充", en: "ONTOLOGY BUILD", tag: "建设中",
-      tagCls: "hud-c-pur", target: "ontology",
+      tagCls: "hud-c-pur", target: "ontology", module: "ontology",
       fact: "空壳已上线 · 条目 0 · 细节待排期",
       wait: "等排期",
     },
@@ -443,6 +578,171 @@ export function NeuralLanding({
   const openDecision = (d: (typeof decisions)[number]) => {
     if (d.target) openModule(d.target);
     else if (d.note) setView(`note:${d.note}`);
+  };
+
+  /* ── command palette (2026-10-22, hud-interactions) ──
+   * Cmd+K / Ctrl+K toggles from anywhere (even mid-typing in a form —
+   * the listener is on window and the chord is checked first), Esc
+   * closes, the topbar ⌘K chip opens it too (touch equivalent). Items
+   * reuse the existing actions only: openModule for modules,
+   * openDecision for decisions, back/clear-focus for 返回总览. On
+   * ≤768px the panel becomes a bottom sheet (see globals.css). */
+  type PalItem = {
+    tid: string;
+    kind: "导航" | "模块" | "决策";
+    label: string;
+    en: string;
+    hint?: string;
+    run: () => void;
+  };
+  const [palOpen, setPalOpen] = React.useState(false);
+  const [palQuery, setPalQuery] = React.useState("");
+  const [palIdx, setPalIdx] = React.useState(0);
+  const palInputRef = React.useRef<HTMLInputElement | null>(null);
+  const palPanelRef = React.useRef<HTMLDivElement | null>(null);
+  const palItemEls = React.useRef(new Map<string, HTMLButtonElement>());
+  const palReturnFocus = React.useRef<HTMLElement | null>(null);
+  const palOpenRef = React.useRef(false);
+  React.useEffect(() => {
+    palOpenRef.current = palOpen;
+  }, [palOpen]);
+
+  React.useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      /* pass-through rule (2026-10-22): keystrokes originating in
+       * INPUT / TEXTAREA / SELECT / contentEditable are never
+       * intercepted — the single exception is the Cmd/Ctrl+K chord
+       * itself, which must also work mid-typing. Escape only acts
+       * while the palette is open (its input is the focus then). */
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setPalOpen((v) => !v);
+      } else if (e.key === "Escape" && palOpenRef.current) {
+        setPalOpen(false);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  const palItems: PalItem[] = [
+    {
+      tid: "overview",
+      kind: "导航",
+      label: "返回总览",
+      en: "OVERVIEW",
+      hint: view ? "退出当前视图" : sel ? "清除聚焦" : "总览",
+      run: () => {
+        if (view) setView(null);
+        else setSel(null);
+      },
+    },
+    ...modules.map((m) => ({
+      tid: `mod-${m.id}`,
+      kind: "模块" as const,
+      label: m.label,
+      en: m.en,
+      hint: m.countText ?? `条目 ${m.count ?? 0}`,
+      run: () => openModule(m.id),
+    })),
+    ...decisions.map((d) => ({
+      tid: `dec-${d.note ?? d.target ?? d.en}`,
+      kind: "决策" as const,
+      label: d.name,
+      en: d.en,
+      hint: d.tag,
+      run: () => openDecision(d),
+    })),
+  ];
+  const palQ = palQuery.trim().toLowerCase();
+  const palList = palItems.filter(
+    (it) => !palQ || `${it.label} ${it.en}`.toLowerCase().includes(palQ),
+  );
+
+  React.useEffect(() => {
+    if (palOpen) {
+      /* remember who had focus so close can hand it back */
+      palReturnFocus.current =
+        document.activeElement instanceof HTMLElement
+          ? document.activeElement
+          : null;
+      setPalQuery("");
+      setPalIdx(0);
+      const raf = requestAnimationFrame(() => palInputRef.current?.focus());
+      return () => cancelAnimationFrame(raf);
+    }
+    const back = palReturnFocus.current;
+    palReturnFocus.current = null;
+    if (back && document.contains(back)) back.focus();
+    return undefined;
+  }, [palOpen]);
+
+  /* focus trap: Tab / Shift+Tab cycle inside the panel only */
+  const onPalPanelKey = (e: React.KeyboardEvent) => {
+    if (e.key !== "Tab") return;
+    const root = palPanelRef.current;
+    if (!root) return;
+    const focusables = [
+      ...root.querySelectorAll<HTMLElement>("input, button"),
+    ].filter((el) => !el.hasAttribute("disabled"));
+    if (focusables.length === 0) return;
+    const first = focusables[0];
+    const last = focusables[focusables.length - 1];
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  };
+
+  React.useEffect(() => {
+    if (palIdx >= palList.length) {
+      setPalIdx(Math.max(0, palList.length - 1));
+    }
+  }, [palIdx, palList.length]);
+
+  React.useEffect(() => {
+    if (!palOpen) return;
+    const it = palList[palIdx];
+    if (it) {
+      palItemEls.current.get(it.tid)?.scrollIntoView({ block: "nearest" });
+    }
+    // palList is rebuilt per render; index/open changes are the trigger.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [palIdx, palOpen]);
+
+  const palRun = (it: PalItem) => {
+    setPalOpen(false);
+    it.run();
+  };
+  const onPalKey = (e: React.KeyboardEvent) => {
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setPalIdx((i) => (palList.length ? (i + 1) % palList.length : 0));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setPalIdx((i) =>
+        palList.length ? (i - 1 + palList.length) % palList.length : 0,
+      );
+    } else if (e.key === "Enter") {
+      const it = palList[palIdx];
+      if (it) palRun(it);
+    }
+  };
+  /* bottom-sheet drag-down to close: tracked on the sheet head
+   * (grip + input), never on the scrolling list. */
+  const palTouchY = React.useRef<number | null>(null);
+  const onPalTouchStart = (e: React.TouchEvent) => {
+    palTouchY.current = e.touches[0]?.clientY ?? null;
+  };
+  const onPalTouchEnd = (e: React.TouchEvent) => {
+    const y0 = palTouchY.current;
+    palTouchY.current = null;
+    if (y0 == null) return;
+    const y1 = e.changedTouches[0]?.clientY ?? y0;
+    if (y1 - y0 > 56) setPalOpen(false);
   };
 
   return (
@@ -505,6 +805,15 @@ export function NeuralLanding({
               · HEALTH-SYNC → MAIN
             </div>
             <div className="hud-metric">0x3F9A · SEC 07</div>
+            <button
+              type="button"
+              className="hud-cmdk"
+              data-testid="hud-cmdk-hint"
+              onClick={() => setPalOpen(true)}
+              aria-label="打开命令面板 (Cmd+K)"
+            >
+              ⌘K
+            </button>
             <div className="hud-clock" data-testid="hud-clock">
               {clock}
             </div>
@@ -598,19 +907,19 @@ export function NeuralLanding({
                 <line x1="34" y1="56" x2="34" y2="146" stroke="#7a2b52" strokeWidth="1.1" />
                 <line x1="34" y1="86" x2="56" y2="86" stroke="#00FFFF" strokeWidth="1.1" />
                 <circle cx="56" cy="86" r="3.4" fill="#00FFFF" filter="url(#hud-glow)" />
-                <text x="67" y="90" fontSize="10.5" fill="#e8f4ff">创作空间</text>
+                <text x="67" y="90" fontSize="10.5" fill="#e8f4ff" className="hud-tree-label" ref={scramble.register("studio")} data-testid="hud-tree-label-studio">创作空间</text>
                 <text x="120" y="90" fontSize="8" fill="#5f7194">STUDIO</text>
                 <text x="266" y="90" fontSize="11" fill="#00FFFF" textAnchor="end">HUB</text>
                 <line x1="34" y1="116" x2="56" y2="116" stroke="#FF007F" strokeWidth="1.1" />
                 <circle cx="56" cy="116" r="3.4" fill="#FF007F" filter="url(#hud-glow)" />
-                <text x="67" y="120" fontSize="10.5" fill="#e8f4ff">作品库</text>
+                <text x="67" y="120" fontSize="10.5" fill="#e8f4ff" className="hud-tree-label" ref={scramble.register("works")} data-testid="hud-tree-label-works">作品库</text>
                 <text x="110" y="120" fontSize="8" fill="#5f7194">WORKS</text>
                 <rect x="196" y="113" width="40" height="4" fill="#0d1226" stroke="#FF007F" strokeWidth="0.5" />
                 <rect x="196" y="113" width={bw(worksN)} height="4" fill="#FF007F" filter="url(#hud-glow)" />
                 <text x="266" y="120" fontSize="11" fill={cntFill(worksN)} textAnchor="end">{worksN}</text>
                 <line x1="34" y1="146" x2="56" y2="146" stroke="#B200FF" strokeWidth="1.1" />
                 <circle cx="56" cy="146" r="3.4" fill="#B200FF" filter="url(#hud-glow)" />
-                <text x="67" y="150" fontSize="10.5" fill="#e8f4ff">技能库</text>
+                <text x="67" y="150" fontSize="10.5" fill="#e8f4ff" className="hud-tree-label" ref={scramble.register("skills")} data-testid="hud-tree-label-skills">技能库</text>
                 <text x="110" y="150" fontSize="8" fill="#5f7194">SKILLS</text>
                 <rect x="196" y="143" width="40" height="4" fill="#0d1226" stroke="#B200FF" strokeWidth="0.5" />
                 <rect x="196" y="143" width={bw(skillsN)} height="4" fill="#B200FF" filter="url(#hud-glow)" />
@@ -624,14 +933,14 @@ export function NeuralLanding({
                 <line x1="34" y1="196" x2="34" y2="256" stroke="#4d2680" strokeWidth="1.1" />
                 <line x1="34" y1="226" x2="56" y2="226" stroke="#00FFFF" strokeWidth="1.1" />
                 <circle cx="56" cy="226" r="3.4" fill="#00FFFF" filter="url(#hud-glow)" />
-                <text x="67" y="230" fontSize="10.5" fill="#e8f4ff">数据库</text>
+                <text x="67" y="230" fontSize="10.5" fill="#e8f4ff" className="hud-tree-label" ref={scramble.register("database")} data-testid="hud-tree-label-database">数据库</text>
                 <text x="110" y="230" fontSize="8" fill="#5f7194">DATABASE</text>
                 <rect x="196" y="223" width="40" height="4" fill="#0d1226" stroke="#00FFFF" strokeWidth="0.5" />
                 <rect x="196" y="223" width={bw(dbN)} height="4" fill="#00FFFF" filter="url(#hud-glow)" />
                 <text x="266" y="230" fontSize="11" fill={cntFill(dbN)} textAnchor="end">{dbN}</text>
                 <line x1="34" y1="256" x2="56" y2="256" stroke="#54678a" strokeWidth="1.1" />
                 <circle cx="56" cy="256" r="3.4" fill="#54678a" filter="url(#hud-glow)" />
-                <text x="67" y="260" fontSize="10.5" fill="#e8f4ff">本体知识库</text>
+                <text x="67" y="260" fontSize="10.5" fill="#e8f4ff" className="hud-tree-label" ref={scramble.register("ontology")} data-testid="hud-tree-label-ontology">本体知识库</text>
                 <text x="132" y="260" fontSize="8" fill="#5f7194">ONTOLOGY</text>
                 <text x="266" y="260" fontSize="11" fill={cntFill(ontoN)} textAnchor="end">{ontoN}</text>
                 <line x1="14" y1="306" x2="34" y2="306" stroke="#00FFFF" strokeWidth="1.2" />
@@ -643,27 +952,59 @@ export function NeuralLanding({
                 <line x1="34" y1="306" x2="34" y2="426" stroke="#1f5f6b" strokeWidth="1.1" />
                 <line x1="34" y1="336" x2="56" y2="336" stroke="#54678a" strokeWidth="1.1" />
                 <circle cx="56" cy="336" r="3.4" fill="#54678a" filter="url(#hud-glow)" />
-                <text x="67" y="340" fontSize="10.5" fill="#e8f4ff">灵感池</text>
+                <text x="67" y="340" fontSize="10.5" fill="#e8f4ff" className="hud-tree-label" ref={scramble.register("inspiration")} data-testid="hud-tree-label-inspiration">灵感池</text>
                 <text x="110" y="340" fontSize="8" fill="#5f7194">INSPIRATION</text>
                 <text x="266" y="340" fontSize="11" fill={cntFill(ideasN)} textAnchor="end">{ideasN}</text>
                 <line x1="34" y1="366" x2="56" y2="366" stroke="#54678a" strokeWidth="1.1" />
                 <circle cx="56" cy="366" r="3.4" fill="#54678a" filter="url(#hud-glow)" />
-                <text x="67" y="370" fontSize="10.5" fill="#e8f4ff">日历表</text>
+                <text x="67" y="370" fontSize="10.5" fill="#e8f4ff" className="hud-tree-label" ref={scramble.register("calendar")} data-testid="hud-tree-label-calendar">日历表</text>
                 <text x="110" y="370" fontSize="8" fill="#5f7194">CALENDAR</text>
                 <text x="266" y="370" fontSize="11" fill={cntFill(calN)} textAnchor="end">{calN}</text>
                 <line x1="34" y1="396" x2="56" y2="396" stroke="#ffb03a" strokeWidth="1.1" />
                 <circle cx="56" cy="396" r="3.4" fill="#ffb03a" filter="url(#hud-glow)" />
-                <text x="67" y="400" fontSize="10.5" fill="#e8f4ff">身体健康</text>
+                <text x="67" y="400" fontSize="10.5" fill="#e8f4ff" className="hud-tree-label" ref={scramble.register("health")} data-testid="hud-tree-label-health">身体健康</text>
                 <text x="120" y="400" fontSize="8" fill="#5f7194">HEALTH</text>
                 <text x="266" y="400" fontSize="11" fill="#ffb03a" textAnchor="end">{healthN}</text>
                 <line x1="34" y1="426" x2="56" y2="426" stroke="#FFEA00" strokeWidth="1.1" />
                 <circle cx="56" cy="426" r="3.4" fill="#FFEA00" filter="url(#hud-glow)" />
-                <text x="67" y="430" fontSize="10.5" fill="#e8f4ff">财务系统</text>
+                <text x="67" y="430" fontSize="10.5" fill="#e8f4ff" className="hud-tree-label" ref={scramble.register("finance")} data-testid="hud-tree-label-finance">财务系统</text>
                 <text x="120" y="430" fontSize="8" fill="#5f7194">FINANCE</text>
                 <rect x="196" y="423" width="40" height="4" fill="#0d1226" stroke="#FFEA00" strokeWidth="0.5" />
                 <rect x="196" y="423" width={bw(finN)} height="4" fill="#FFEA00" filter="url(#hud-glow)" />
                 <text x="266" y="430" fontSize="11" fill={cntFill(finN)} textAnchor="end">{finN}</text>
                 <text x="14" y="462" fontSize="8.5" fill="#41516e" letterSpacing="1">[ DEPTH 3 · NODES 13 · BARS = SHARE ]</text>
+                {/* hover decode marks: SVG <text> has no ::before/::after,
+                 * so the > < pair are real text nodes flanking the label,
+                 * lit while the row is hovered. The group is display:none
+                 * unless (hover:hover) and (pointer:fine) — see globals. */}
+                <g className="hud-tree-marks" aria-hidden>
+                  {treeRows.map((r) => {
+                    const m = modById(r.id);
+                    if (!m) return null;
+                    return (
+                      <React.Fragment key={r.id}>
+                        <text
+                          className="hud-tree-mark"
+                          x={60.5}
+                          y={r.y + 4}
+                          fontSize="9"
+                          style={{ opacity: hov === r.id ? 1 : 0 }}
+                        >
+                          {">"}
+                        </text>
+                        <text
+                          className="hud-tree-mark"
+                          x={67 + m.label.length * 10.5 + 3}
+                          y={r.y + 4}
+                          fontSize="9"
+                          style={{ opacity: hov === r.id ? 1 : 0 }}
+                        >
+                          {"<"}
+                        </text>
+                      </React.Fragment>
+                    );
+                  })}
+                </g>
                 {treeRows.map((r) => (
                   <rect
                     key={r.id}
@@ -673,9 +1014,19 @@ export function NeuralLanding({
                     height="28"
                     fill="transparent"
                     style={{ cursor: "pointer" }}
-                    onClick={() => openModule(r.id)}
-                    onMouseEnter={() => setHov(r.id)}
-                    onMouseLeave={() => setHov(null)}
+                    data-testid={`hud-tree-row-${r.id}`}
+                    onClick={() => {
+                      scramble.tap(r.id, modById(r.id)?.label ?? "");
+                      focusOrOpen(r.id);
+                    }}
+                    onMouseEnter={() => {
+                      setHov(r.id);
+                      scramble.start(r.id, modById(r.id)?.label ?? "");
+                    }}
+                    onMouseLeave={() => {
+                      setHov(null);
+                      scramble.stop(r.id, modById(r.id)?.label ?? "");
+                    }}
                   >
                     <title>{modById(r.id)?.label}</title>
                   </rect>
@@ -931,26 +1282,41 @@ export function NeuralLanding({
                 <span className="hud-chip hud-c-pink">{decisions.length} 待决</span>
                 <span className="hud-hex">0xD5TK</span>
               </div>
-              {decisions.map((d) => (
-                <button
-                  type="button"
-                  className="hud-srow hud-srow-btn"
-                  key={d.en}
-                  data-testid={`hud-decision-${d.note ?? d.target ?? d.en}`}
-                  onClick={() => openDecision(d)}
-                >
-                  <div className="hud-r1">
-                    <span className={`hud-led hud-led-${d.led}`} />
-                    <span className="hud-name">{d.name}</span>
-                    <span className="hud-en">{d.en}</span>
-                    <span className={`hud-tag hud-chip ${d.tagCls}`}>{d.tag}</span>
-                  </div>
-                  <div className="hud-en" style={{ marginTop: 4 }}>
-                    {d.fact} · <span className="hud-wait">{d.wait}</span> ·{" "}
-                    {d.target ? "点击进入 →" : "点击看说明 →"}
-                  </div>
-                </button>
-              ))}
+              {decisions.map((d, i) => {
+                /* focus linkage: with a module focused, its decision
+                 * row highlights (slide-in) and every other row dims —
+                 * dimmed, never hidden or removed. */
+                const related = sel != null && d.module === sel;
+                const dimmed = sel != null && !related;
+                return (
+                  <button
+                    type="button"
+                    className={cn(
+                      "hud-srow hud-srow-btn",
+                      related && "hud-srow-rel",
+                      dimmed && "is-dim",
+                    )}
+                    key={d.en}
+                    data-testid={`hud-decision-${d.note ?? d.target ?? d.en}`}
+                    data-related={related ? "1" : undefined}
+                    style={
+                      related ? { animationDelay: `${i * 45}ms` } : undefined
+                    }
+                    onClick={() => openDecision(d)}
+                  >
+                    <div className="hud-r1">
+                      <span className={`hud-led hud-led-${d.led}`} />
+                      <span className="hud-name">{d.name}</span>
+                      <span className="hud-en">{d.en}</span>
+                      <span className={`hud-tag hud-chip ${d.tagCls}`}>{d.tag}</span>
+                    </div>
+                    <div className="hud-en" style={{ marginTop: 4 }}>
+                      {d.fact} · <span className="hud-wait">{d.wait}</span> ·{" "}
+                      {d.target ? "点击进入 →" : "点击看说明 →"}
+                    </div>
+                  </button>
+                );
+              })}
             </div>
           </div>
         </div>
@@ -966,7 +1332,7 @@ export function NeuralLanding({
                 style={{ color: m.color }}
                 data-module={m.id}
                 aria-pressed={sel === m.id}
-                onClick={() => openModule(m.id)}
+                onClick={() => focusOrOpen(m.id)}
               >
                 <div className="hud-ic">{m.icon}</div>
                 <div className="hud-nm">{m.label}</div>
@@ -993,6 +1359,77 @@ export function NeuralLanding({
           </div>
         </div>
           </>
+        )}
+
+        {/* ══ COMMAND PALETTE (Cmd+K) — bottom sheet on ≤768px ══ */}
+        {palOpen && (
+          <div
+            className="hud-pal-mask"
+            data-testid="hud-palette-mask"
+            onClick={() => setPalOpen(false)}
+          >
+            <div
+              className="hud-pal"
+              role="dialog"
+              aria-modal="true"
+              aria-label="命令面板"
+              data-testid="hud-palette"
+              ref={palPanelRef}
+              onKeyDown={onPalPanelKey}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div
+                className="hud-pal-head"
+                onTouchStart={onPalTouchStart}
+                onTouchEnd={onPalTouchEnd}
+              >
+                <div className="hud-pal-grip" aria-hidden />
+                <input
+                  ref={palInputRef}
+                  className="hud-pal-input"
+                  data-testid="hud-palette-input"
+                  type="text"
+                  value={palQuery}
+                  onChange={(e) => {
+                    setPalQuery(e.target.value);
+                    setPalIdx(0);
+                  }}
+                  onKeyDown={onPalKey}
+                  placeholder="搜索模块 / 决策 · ↑↓ 选择 · Enter 执行"
+                  aria-label="搜索命令"
+                />
+              </div>
+              <div className="hud-pal-list" role="listbox" aria-label="命令列表">
+                {palList.map((it, i) => (
+                  <button
+                    key={it.tid}
+                    type="button"
+                    role="option"
+                    aria-selected={i === palIdx}
+                    ref={(el) => {
+                      if (el) palItemEls.current.set(it.tid, el);
+                      else palItemEls.current.delete(it.tid);
+                    }}
+                    className={cn(
+                      "hud-pal-item",
+                      i === palIdx && "hud-pal-item-on",
+                    )}
+                    data-testid={`hud-palette-item-${it.tid}`}
+                    onMouseEnter={() => setPalIdx(i)}
+                    onClick={() => palRun(it)}
+                  >
+                    <span className="hud-pal-kind">{it.kind}</span>
+                    <span className="hud-pal-label">{it.label}</span>
+                    <span className="hud-pal-en">{it.en}</span>
+                    {it.hint && <span className="hud-pal-hint">{it.hint}</span>}
+                  </button>
+                ))}
+                {palList.length === 0 && (
+                  <div className="hud-pal-empty">无匹配项</div>
+                )}
+              </div>
+            </div>
+          </div>
         )}
       </div>
     </div>
