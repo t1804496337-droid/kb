@@ -518,7 +518,7 @@ export function NeuralLanding({
   } | null>(null);
   const treePanelRef = React.useRef<HTMLDivElement | null>(null);
   const openTreeGroup = (g: string) => {
-    setView(null);
+    backToOverview();
     if (msheet === "tree" && treeGroupRef.current === g) {
       setMsheet("none");
       return;
@@ -563,23 +563,31 @@ export function NeuralLanding({
 
   /* Module content view (2026-10-21): clicking a tree row / console card
    * opens that module's real content in place of the overview; the back
-   * button returns. Selection linkage above still applies — opening a
-   * module also focuses it, and the focus survives the trip back. */
+   * button returns.
+   * Focus semantics (revised 2026-10-22, hud-sel-fix): focus is an
+   * overview-only, post-return state. Entering ANY view ends the focus
+   * (openModule clears sel); backToOverview focuses the module just
+   * left, which is what drives the decision-stack linkage after a trip.
+   * Before this fix openModule parked sel=id across the whole trip, so
+   * the first overview click on that module afterwards was swallowed
+   * by focusOrOpen's toggle-off branch and the view would not reopen. */
   const [view, setView] = React.useState<string | null>(null);
   const openModule = (id: string) => {
-    setSel(id);
+    setSel(null);
     setView(id);
     setMsheet("none");
   };
-  /* Overview focus toggle: clicking the already-focused module's tree
-   * row / console card again clears the focus (back to the plain
-   * overview — decision stack undims, CORE MAP tags reset). Any other
-   * module opens its content view as before. */
+  /* Return to the overview: leaving a module view focuses the module
+   * just left (tags / telemetry / decision linkage keep its context);
+   * note views and "already on the overview" leave no focus behind. */
+  const backToOverview = () => {
+    if (view) setSel(modules.some((m) => m.id === view) ? view : null);
+    setView(null);
+  };
+  /* Overview tree rows / console cards always enter the module — there
+   * is no toggle-off click anymore. Focus is cleared by entering any
+   * view, or in place via the palette's 返回总览 item. */
   const focusOrOpen = (id: string) => {
-    if (sel === id) {
-      setSel(null);
-      return;
-    }
     openModule(id);
   };
   const viewMod = view ? (modules.find((m) => m.id === view) ?? null) : null;
@@ -748,6 +756,7 @@ export function NeuralLanding({
   const openDecision = (d: (typeof decisions)[number]) => {
     if (d.target) openModule(d.target);
     else if (d.note) {
+      setSel(null);
       setMsheet("none");
       setView(`note:${d.note}`);
     }
@@ -882,7 +891,7 @@ export function NeuralLanding({
       en: "OVERVIEW",
       hint: view ? "退出当前视图" : sel ? "清除聚焦" : "总览",
       run: () => {
-        if (view) setView(null);
+        if (view) backToOverview();
         else setSel(null);
       },
     },
@@ -1747,11 +1756,11 @@ export function NeuralLanding({
             color={viewMod.color}
             count={viewMod.count}
             countText={viewMod.countText}
-            onBack={() => setView(null)}
+            onBack={backToOverview}
             onOpen={openModule}
           />
         ) : noteKind ? (
-          <HudDecisionNote kind={noteKind} onBack={() => setView(null)} />
+          <HudDecisionNote kind={noteKind} onBack={backToOverview} />
         ) : (
           <>
         {/* ══ MAIN ══ */}
@@ -2384,12 +2393,12 @@ export function NeuralLanding({
         home={!viewMod && !noteKind}
         pending={decisions.length}
         onOverview={() => {
-          setView(null);
+          backToOverview();
           setMsheet("none");
         }}
         onGroup={openTreeGroup}
         onDecisions={() => {
-          setView(null);
+          backToOverview();
           setMsheet(msheet === "decisions" ? "none" : "decisions");
         }}
       />
