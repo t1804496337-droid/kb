@@ -12,6 +12,7 @@ import {
   restorePreImport,
   hasPreImportBackup,
 } from "@/components/studio/snapshot";
+import { RadialMenu } from "@/components/studio/radial-menu";
 
 export type LandingNode = {
   key: string;
@@ -1499,11 +1500,63 @@ export function NeuralLanding({
     (d.module ? modById(d.module)?.color : undefined) ??
     (d.note === "xhs" ? "#B200FF" : d.note === "x" ? "#FF007F" : "#00FFFF");
 
+  /* ── radial menu + zen mode (2026-10-22, hud-radial) ──
+   * The wheel (radial-menu.tsx) and the palette are mutually
+   * exclusive: its onOpenChange closes the palette here, and
+   * siblingOpen={palOpen} force-closes the wheel there. A long-press
+   * summon cancels the press the drag engine is still holding
+   * (below-threshold, never activated) and arms the same one-shot
+   * click suppression a completed drag uses, so the release that
+   * picks a sector can't also click the row underneath. Zen is a
+   * temporary visual state only — never persisted, refresh exits. */
+  const [zen, setZen] = React.useState(false);
+  const radialOpenRef = React.useRef(false);
+  const cancelPendingDrag = React.useCallback(() => {
+    const s = dragRef.current;
+    if (s) {
+      const wasActive = s.active;
+      s.cleanup();
+      dragRef.current = null;
+      if (wasActive) {
+        document
+          .querySelector(".hud-root")
+          ?.classList.remove("hud-dragging");
+        clearDragCanvas();
+      }
+    }
+    dragSuppressRef.current = true;
+    window.setTimeout(() => {
+      dragSuppressRef.current = false;
+    }, 400);
+  }, []);
+  /* Esc leaves zen — unless the wheel or the palette is open, in
+   * which case Esc belongs to that layer first. */
+  React.useEffect(() => {
+    if (!zen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (
+        e.key === "Escape" &&
+        !radialOpenRef.current &&
+        !palOpenRef.current
+      ) {
+        setZen(false);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [zen]);
+
   return (
     <div
-      className={cn("hud-root", leaving && "hud-leaving", quick && "hud-quick")}
+      className={cn(
+        "hud-root",
+        leaving && "hud-leaving",
+        quick && "hud-quick",
+        zen && "hud-zen",
+      )}
       data-testid="studio-landing"
       data-quick={quick ? "1" : "0"}
+      data-zen={zen ? "1" : "0"}
       data-msheet={msheet}
     >
       <div className="hud-wrap">
@@ -2348,6 +2401,27 @@ export function NeuralLanding({
         className="hud-drag-canvas"
         data-testid="hud-drag-canvas"
         aria-hidden
+      />
+
+      {/* ══ RADIAL MENU — right-click (desktop) / long-press (touch) ══ */}
+      <RadialMenu
+        zenActive={zen}
+        siblingOpen={palOpen}
+        onOpenChange={(o) => {
+          radialOpenRef.current = o;
+          if (o) setPalOpen(false);
+        }}
+        onLongPressSummon={cancelPendingDrag}
+        actions={{
+          exportSnap: () => {
+            exportState();
+            showSnapNote("快照已导出（second-brain 备份文件）。");
+          },
+          importSnap: () => snapFileRef.current?.click(),
+          newTicket: () => openModule("calendar"),
+          toggleZen: () => setZen((v) => !v),
+          openPalette: () => setPalOpen(true),
+        }}
       />
     </div>
   );

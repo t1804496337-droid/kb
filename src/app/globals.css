@@ -2980,6 +2980,16 @@ div.studio-orb.studio-orb-bg,
   --hud-int-panel-shadow-mobile: 0 0 14px rgba(0, 255, 255, 0.05);
   --hud-int-panel-pink-shadow-mobile: 0 0 14px rgba(255, 0, 127, 0.08);
   --hud-int-panel-purple-shadow-mobile: 0 0 14px rgba(178, 0, 255, 0.09);
+  /* radial menu (2026-10-22, hud-radial) */
+  --hud-int-yellow: #ffea00;
+  --hud-int-radial-bg: rgba(0, 255, 255, 0.07);
+  --hud-int-radial-border: rgba(0, 255, 255, 0.5);
+  --hud-int-radial-hub-bg: rgba(7, 10, 18, 0.94);
+  --hud-int-radial-label: #9fd8e8;
+  --hud-int-radial-label-hot: #10131a;
+  --hud-int-radial-name: #e8f4ff;
+  --hud-int-radial-dur: 0.34s;
+  --hud-int-radial-close-dur: 0.12s;
 }
 .hud-root {
   --hud-bg: #07080a;
@@ -4647,4 +4657,110 @@ div.studio-orb.studio-orb-bg,
   .hud-sheet-grip { box-shadow: none; }
   .hud-rail-chip.hud-drop-hot { box-shadow: 0 0 10px rgba(255, 0, 127, 0.35); }
   .hud-tree, .hud-stack { box-shadow: none; }
+}
+
+/* ══════════════════════════════════════════════════════════════════
+ * RADIAL MENU + ZEN MODE (2026-10-22, hud-radial)
+ * The wheel is one fixed 240×240 SVG centred on the summon point
+ * (translate -50%,-50%); sectors are annular paths whose CSS pop
+ * animation scales/rotates them around the view-box centre with a
+ * spring cubic-bezier and a per-sector stagger (delay = --i × 28ms).
+ * Closing is a single container fade/scale — .12s, no stagger.
+ * Zen mode (.hud-zen on the root) fades every panel except the
+ * Core Map stage; the topbar keeps only the logo and the clock.
+ * ══════════════════════════════════════════════════════════════════ */
+/* long-press must never raise the OS text-selection callout */
+.hud-root { -webkit-touch-callout: none; }
+
+.hud-radial {
+  position: fixed;
+  z-index: 80;
+  width: 240px;
+  height: 240px;
+  transform: translate(-50%, -50%);
+  filter: drop-shadow(0 0 26px rgba(0, 255, 255, 0.16));
+}
+.hud-radial-closing {
+  animation: hud-radial-out var(--hud-int-radial-close-dur) ease-in both;
+}
+@keyframes hud-radial-out {
+  from { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  to { opacity: 0; transform: translate(-50%, -50%) scale(0.85); }
+}
+.hud-radial-svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.hud-radial-sec {
+  fill: var(--hud-int-radial-bg);
+  stroke: var(--hud-int-radial-border);
+  stroke-width: 1.2;
+  transform-box: view-box;
+  transform-origin: center;
+  animation: hud-radial-pop var(--hud-int-radial-dur)
+    cubic-bezier(0.2, 1.45, 0.32, 1) both;
+  animation-delay: calc(var(--i) * 28ms);
+  transition: fill 0.12s ease, stroke 0.12s ease;
+}
+@keyframes hud-radial-pop {
+  from { transform: scale(0.55) rotate(-8deg); opacity: 0; }
+  to { transform: scale(1) rotate(0deg); opacity: 1; }
+}
+.hud-radial-sec.is-hot {
+  fill: var(--hud-int-yellow);
+  stroke: var(--hud-int-yellow);
+}
+.hud-radial-sec.is-on { stroke: var(--hud-cyan); stroke-width: 2; }
+.hud-radial-sec-label {
+  fill: var(--hud-int-radial-label);
+  font-size: 13px;
+  letter-spacing: 3px;
+  text-anchor: middle;
+  pointer-events: none;
+  animation: hud-radial-fade 0.2s ease 0.08s both;
+}
+.hud-radial-sec-label.is-hot {
+  fill: var(--hud-int-radial-label-hot);
+  font-weight: 700;
+}
+.hud-radial-hub {
+  fill: var(--hud-int-radial-hub-bg);
+  stroke: var(--hud-int-radial-border);
+  stroke-width: 1;
+  animation: hud-radial-fade 0.2s ease 0.05s both;
+}
+.hud-radial-dot {
+  fill: var(--hud-cyan);
+  filter: var(--hud-int-mark-glow);
+  animation: hud-radial-fade 0.2s ease 0.05s both;
+}
+.hud-radial-name {
+  fill: var(--hud-int-radial-name);
+  font-size: 12px;
+  letter-spacing: 1px;
+  text-anchor: middle;
+  pointer-events: none;
+  animation: hud-radial-fade 0.2s ease 0.05s both;
+}
+@keyframes hud-radial-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* ── zen mode: sphere only ── */
+.hud-root.hud-zen .hud-tree,
+.hud-root.hud-zen .hud-right,
+.hud-root.hud-zen .hud-console,
+.hud-root.hud-zen .hud-ticker,
+.hud-root.hud-zen .hud-mnav,
+.hud-root.hud-zen .hud-drag-rail,
+.hud-root.hud-zen .hud-snap-note {
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.3s ease, visibility 0s linear 0.3s;
+}
+.hud-root.hud-zen .hud-topbar .hud-metric,
+.hud-root.hud-zen .hud-topbar .hud-spark,
+.hud-root.hud-zen .hud-topbar .hud-snap-group,
+.hud-root.hud-zen .hud-topbar .hud-cmdk {
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.3s ease, visibility 0s linear 0.3s;
 }
