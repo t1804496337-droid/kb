@@ -87,6 +87,17 @@ const okFlowStep = (s: unknown): boolean =>
 const okModuleRow = (r: unknown): boolean =>
   isPlainObject(r) && typeof r.id === "string" && typeof r.title === "string";
 
+/* 作品本体（2026-10-22, hud-crud-p0）：id/title/platform/status 必备
+ * 字符串，note/url 为加性可选字符串——形状外一律拒。 */
+const okWorkItem = (w: unknown): boolean =>
+  isPlainObject(w) &&
+  typeof w.id === "string" &&
+  typeof w.title === "string" &&
+  typeof w.platform === "string" &&
+  typeof w.status === "string" &&
+  (w.note === undefined || typeof w.note === "string") &&
+  (w.url === undefined || typeof w.url === "string");
+
 const okBudget = (v: unknown): boolean => budgetNumber(v) !== null;
 
 /** 预算归一：接受数字、数字字符串、或带数字字段的历史对象形状。 */
@@ -226,6 +237,9 @@ export const SLICES: SliceDef[] = [
   jsonSlice("worksChannelsIntent", "studio_works_channels_intent_v1", "作品库·视频号意向", (v) =>
     isPlainObject(v) && Object.values(v).every((x) => typeof x === "boolean"),
   ),
+  /* 作品本体（2026-10-22, hud-crud-p0）：WorksBody 的本地作品数据，
+   * 首次由两件真实作品播种，之后增删改全落此键。 */
+  jsonSlice("worksItems", "studio_works_items_v1", "作品库作品", arrayOf(okWorkItem)),
   /* 自定义模块与枢纽行（旧工作台层，page.tsx） */
   jsonSlice("customModules", "studio_custom_modules_v1", "自定义模块", arrayOf(
     (m) => isPlainObject(m) && typeof m.id === "string" && typeof m.label === "string",

@@ -36,8 +36,10 @@ import healthSyncJson from "../../../public/health-sync.json";
  *               （Luna 5 个带 detail 长文；grokbot 8 个源文件无 desc）
  * - database  ← 总索引三区：技能（skills-sync.json 13）/ 流程（灵感池
  *               同源 studio_workflow_steps_v2）/ 条目（作品·台账·睡眠）
- * - works     ← 作品区（YouTube EP001 真链接 + 视频号 ep01 槽位）与
- *               待办票分区；平台同步六平台如实标未接入
+ * - works     ← 作品区（本体已数据化：localStorage
+ *               studio_works_items_v1，首访以 EP001/视频号 ep01 两件
+ *               真实作品播种，站内增删改+状态流转）与待办票分区；
+ *               平台同步六平台如实标未接入
  * - calendar  ← 2026-10 月历 + 事项（localStorage
  *               studio_calendar_items_v1，可增删，本地保存）+ 待办票
  * - finance   ← 旧版五区接回（概览/记账明细/月度报告/负债管理/
@@ -56,7 +58,8 @@ import healthSyncJson from "../../../public/health-sync.json";
  *               直达（库名本机填写 studio_obsidian_vault_v1，未填
  *               不拼链接）
  * - inspiration ← 我/AI/Agent 三区（WORKFLOW-ZONES-SPEC），步骤读
- *               studio_workflow_steps_v2（初始为空，三区如实空）
+ *               studio_workflow_steps_v2；页内增删改全闭环
+ *               （hud-crud-p0），与创作看板/数据库流程索引同源
  * - studio    ← HUB 入口卡 + 创作组总览（计数与最近动态，皆真事实）
  *               + 创作流水线看板（workflow steps 按 status 三泳道
  *               孵化/制作/待发，拖拽与箭头换道、落盘发总线事件）
@@ -790,11 +793,252 @@ function readChannelsIntent(): Record<string, boolean> {
   }
 }
 
+/* ── 作品本体数据化（2026-10-22, hud-crud-p0）──
+ * 新键 studio_works_items_v1：{id,title,platform,status,note?,url?}，
+ * snapshot.ts 已登记 worksItems 片。键不存在（首次加载）才以两件
+ * 真实作品播种落盘；键存在（含被删空的空数组）一律照读，删除不
+ * 复活。状态口径：自由文本字段，表单给五个常用预设 + 自定义；
+ * 状态筹颜色由状态文本派生（已发布/已同步=绿、待公开/待发布=粉、
+ * 制作中=黄、其余=暗）。本地条目未经平台同步通道 → 恒带「未同步」
+ * 筹（与下方 works-sync.json 同步区相对），唯状态本身为「已同步」
+ * 时不再叠加，避免同行自相矛盾。 */
+type WorkItem = {
+  id: string;
+  title: string;
+  platform: string;
+  status: string;
+  note?: string;
+  url?: string;
+};
+const WORKS_ITEMS_KEY = "studio_works_items_v1";
+const WORK_STATUS_PRESETS = ["待公开", "待发布", "已发布", "已同步", "制作中"];
+const WORK_SEED_ITEMS: WorkItem[] = [
+  {
+    id: "yt-ep01",
+    title: "YouTube EP001 · Latent Space 首片",
+    platform: "youtube",
+    status: "待公开",
+    note: "2026-10-18 上传 · 私享状态 · 待改公开（手机端 YouTube Studio 操作）",
+    url: "https://www.youtube.com/watch?v=nmMQWsG5w3k",
+  },
+  {
+    id: "sph-ep01",
+    title: "视频号 ep01",
+    platform: "channels",
+    status: "待发布",
+    note: "配音已定稿（Fish Audio 影视解说男声 · 2026-10-19）· 成片槽位 · 待本人点发",
+  },
+];
+function readWorksItems(): WorkItem[] | null {
+  try {
+    const raw = window.localStorage.getItem(WORKS_ITEMS_KEY);
+    if (raw === null) return null;
+    const v = JSON.parse(raw) as unknown;
+    if (!Array.isArray(v)) return [];
+    return v.filter(
+      (w): w is WorkItem =>
+        !!w &&
+        typeof w === "object" &&
+        typeof (w as WorkItem).id === "string" &&
+        typeof (w as WorkItem).title === "string" &&
+        typeof (w as WorkItem).platform === "string" &&
+        typeof (w as WorkItem).status === "string",
+    );
+  } catch {
+    return [];
+  }
+}
+function writeWorksItems(items: WorkItem[]): boolean {
+  try {
+    window.localStorage.setItem(WORKS_ITEMS_KEY, JSON.stringify(items));
+    return true;
+  } catch {
+    return false;
+  }
+}
+const workStatusCls = (status: string): string =>
+  status === "已发布" || status === "已同步"
+    ? "hud-c-grn"
+    : status === "待公开" || status === "待发布"
+      ? "hud-c-pink"
+      : status === "制作中"
+        ? "hud-c-yel"
+        : "hud-c-dim";
+/** sph 种子行沿用历史 testid hud-work-slot-ep01（qa-finale 锚点），
+ * 其余条目一律 hud-work-<id>。 */
+const workRowTestid = (w: WorkItem): string =>
+  w.id === "sph-ep01" ? "hud-work-slot-ep01" : `hud-work-${w.id}`;
+
+/** 作品新增/编辑共用表单（fp = testid 前缀 hud-work-f / hud-work-e）。 */
+function WorkItemForm({
+  boxTestid,
+  fp,
+  title,
+  setTitle,
+  platform,
+  setPlatform,
+  status,
+  setStatus,
+  statusCustom,
+  setStatusCustom,
+  note,
+  setNote,
+  url,
+  setUrl,
+  onSave,
+  onCancel,
+}: {
+  boxTestid: string;
+  fp: string;
+  title: string;
+  setTitle: (v: string) => void;
+  platform: string;
+  setPlatform: (v: string) => void;
+  status: string;
+  setStatus: (v: string) => void;
+  statusCustom: string;
+  setStatusCustom: (v: string) => void;
+  note: string;
+  setNote: (v: string) => void;
+  url: string;
+  setUrl: (v: string) => void;
+  onSave: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div className="hud-module-editbox" data-testid={boxTestid}>
+      <div className="hud-module-form">
+        <input
+          className="hud-module-input hud-module-input-flex"
+          data-testid={`${fp}-title`}
+          type="text"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") onSave();
+          }}
+          placeholder="作品标题（必填）"
+          aria-label="作品标题"
+        />
+        <input
+          className="hud-module-input hud-module-input-flex"
+          data-testid={`${fp}-note`}
+          type="text"
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          placeholder="备注（选填）"
+          aria-label="作品备注"
+        />
+      </div>
+      <div className="hud-module-form">
+        <label className="hud-module-flabel">
+          <span className="hud-module-note">平台</span>
+          <select
+            className="hud-module-input hud-module-select"
+            data-testid={`${fp}-platform`}
+            value={platform}
+            onChange={(e) => setPlatform(e.target.value)}
+            aria-label="作品平台"
+          >
+            {SYNC_PLATFORMS.map((p) => (
+              <option key={p.slug} value={p.slug}>
+                {p.name}
+              </option>
+            ))}
+            {SYNC_PLATFORMS.some((p) => p.slug === platform) ? null : (
+              <option value={platform}>{platform}</option>
+            )}
+          </select>
+        </label>
+        <label className="hud-module-flabel">
+          <span className="hud-module-note">状态</span>
+          <select
+            className="hud-module-input hud-module-select"
+            data-testid={`${fp}-status`}
+            value={status}
+            onChange={(e) => setStatus(e.target.value)}
+            aria-label="作品状态"
+          >
+            {WORK_STATUS_PRESETS.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+            <option value="__custom">自定义…</option>
+          </select>
+        </label>
+        {status === "__custom" ? (
+          <input
+            className="hud-module-input hud-module-input-flex"
+            data-testid={`${fp}-status-custom`}
+            type="text"
+            value={statusCustom}
+            onChange={(e) => setStatusCustom(e.target.value)}
+            placeholder="自定义状态（必填）"
+            aria-label="自定义状态"
+          />
+        ) : null}
+        <input
+          className="hud-module-input hud-module-input-flex"
+          data-testid={`${fp}-url`}
+          type="text"
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+          placeholder="链接（选填）"
+          aria-label="作品链接"
+        />
+        <button
+          type="button"
+          className="hud-module-toggle"
+          data-testid={`${fp}-save`}
+          onClick={onSave}
+        >
+          保存
+        </button>
+        <button
+          type="button"
+          className="hud-module-toggle"
+          data-testid={`${fp}-cancel`}
+          onClick={onCancel}
+        >
+          取消
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function WorksBody() {
   const [synced, setSynced] = React.useState<SyncedWork[] | null>(null);
   const [intent, setIntent] = React.useState<Record<string, boolean>>({});
+  const [items, setItems] = React.useState<WorkItem[]>([]);
+  /* 新增表单态（hud-crud-p0） */
+  const [adding, setAdding] = React.useState(false);
+  const [fTitle, setFTitle] = React.useState("");
+  const [fPlatform, setFPlatform] = React.useState("youtube");
+  const [fStatus, setFStatus] = React.useState("待发布");
+  const [fStatusCustom, setFStatusCustom] = React.useState("");
+  const [fNote, setFNote] = React.useState("");
+  const [fUrl, setFUrl] = React.useState("");
+  /* 行内编辑态：editId 非空时该行换成编辑表单 */
+  const [editId, setEditId] = React.useState<string | null>(null);
+  const [eTitle, setETitle] = React.useState("");
+  const [ePlatform, setEPlatform] = React.useState("youtube");
+  const [eStatus, setEStatus] = React.useState("待发布");
+  const [eStatusCustom, setEStatusCustom] = React.useState("");
+  const [eNote, setENote] = React.useState("");
+  const [eUrl, setEUrl] = React.useState("");
   React.useEffect(() => {
     setIntent(readChannelsIntent());
+    /* 作品本体：键不存在才播种两件真实作品并落盘；键存在（含空
+     * 数组）照读——删除不复活（hud-crud-p0）。 */
+    const cur = readWorksItems();
+    if (cur === null) {
+      writeWorksItems(WORK_SEED_ITEMS);
+      setItems(WORK_SEED_ITEMS);
+    } else {
+      setItems(cur);
+    }
     let live = true;
     fetch("/works-sync.json", { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null))
@@ -833,49 +1077,194 @@ function WorksBody() {
       {intent[workId] ? "视频号意向 · 已标记" : "标为视频号意向"}
     </button>
   );
+  /* ── 作品 CRUD（hud-crud-p0）：落盘成功才更新状态（同站内纪律）── */
+  const commitItems = (next: WorkItem[]): boolean => {
+    if (!writeWorksItems(next)) return false;
+    setItems(next);
+    return true;
+  };
+  const resolveStatus = (sel: string, custom: string): string =>
+    sel === "__custom" ? custom.trim() : sel;
+  const addItem = () => {
+    const t = fTitle.trim();
+    const st = resolveStatus(fStatus, fStatusCustom);
+    if (!t || !st) return;
+    const item: WorkItem = {
+      id: `w-${Date.now()}`,
+      title: t,
+      platform: fPlatform,
+      status: st,
+    };
+    const note = fNote.trim();
+    if (note) item.note = note;
+    const url = fUrl.trim();
+    if (url) item.url = url;
+    if (commitItems([...items, item])) {
+      setFTitle("");
+      setFNote("");
+      setFUrl("");
+      setFStatusCustom("");
+      setFStatus("待发布");
+      setFPlatform("youtube");
+      setAdding(false);
+    }
+  };
+  const startEdit = (w: WorkItem) => {
+    setEditId(w.id);
+    setETitle(w.title);
+    setEPlatform(w.platform);
+    if (WORK_STATUS_PRESETS.includes(w.status)) {
+      setEStatus(w.status);
+      setEStatusCustom("");
+    } else {
+      setEStatus("__custom");
+      setEStatusCustom(w.status);
+    }
+    setENote(w.note ?? "");
+    setEUrl(w.url ?? "");
+  };
+  const saveEdit = () => {
+    if (!editId) return;
+    const t = eTitle.trim();
+    const st = resolveStatus(eStatus, eStatusCustom);
+    if (!t || !st) return;
+    const next = items.map((w) => {
+      if (w.id !== editId) return w;
+      const copy: WorkItem = { ...w, title: t, platform: ePlatform, status: st };
+      const note = eNote.trim();
+      if (note) copy.note = note;
+      else delete copy.note;
+      const url = eUrl.trim();
+      if (url) copy.url = url;
+      else delete copy.url;
+      return copy;
+    });
+    if (commitItems(next)) setEditId(null);
+  };
+  const delItem = (w: WorkItem) => {
+    if (editId === w.id) setEditId(null);
+    commitItems(items.filter((x) => x.id !== w.id));
+  };
   return (
     <div>
       <SecHead
         title="作品"
         en="WORKS"
-        right={<span className="hud-module-note">已产出 / 待发布 · 2 件</span>}
+        right={
+          <span className="hud-module-note">
+            已产出 / 待发布 · {items.length} 件
+          </span>
+        }
       />
-      <Row testid="hud-work-yt-ep01">
-        <div className="hud-module-row-main">
-          <div className="hud-module-row-t">
-            YouTube EP001 · Latent Space 首片
-          </div>
-          <div className="hud-module-row-sub">
-            2026-10-18 上传 · 私享状态 · 待改公开（手机端 YouTube Studio 操作）
-          </div>
-          <a
-            className="hud-module-link"
-            href="https://www.youtube.com/watch?v=nmMQWsG5w3k"
-            target="_blank"
-            rel="noreferrer"
+      <div className="hud-module-form">
+        {!adding ? (
+          <button
+            type="button"
+            className="hud-module-toggle"
+            data-testid="hud-work-add"
+            onClick={() => setAdding(true)}
           >
-            youtube.com/watch?v=nmMQWsG5w3k ↗
-          </a>
-        </div>
-        <span className="hud-chip hud-c-cyan">[YT]</span>
-        <span className="hud-chip hud-c-pink">待公开</span>
-        <span className="hud-chip hud-c-dim">未同步</span>
-        {intentBtn("yt-ep01")}
-      </Row>
-      <Row testid="hud-work-slot-ep01">
-        <div className="hud-module-row-main">
-          <div className="hud-module-row-t">视频号 ep01 · 待发布</div>
-          <div className="hud-module-row-sub">
-            配音已定稿（Fish Audio 影视解说男声 · 2026-10-19）· 成片槽位 ·
-            待本人点发
-          </div>
-        </div>
-        <span className="hud-module-note">2026-10</span>
-        <span className="hud-chip hud-c-cyan">[SPH]</span>
-        <span className="hud-chip hud-c-pink">待发布</span>
-        <span className="hud-chip hud-c-dim">未同步</span>
-        {intentBtn("sph-ep01")}
-      </Row>
+            + 新增作品
+          </button>
+        ) : null}
+        <span className="hud-module-note">
+          本地作品数据 studio_works_items_v1 · 增删改即时落盘
+        </span>
+      </div>
+      {adding ? (
+        <WorkItemForm
+          boxTestid="hud-work-form"
+          fp="hud-work-f"
+          title={fTitle}
+          setTitle={setFTitle}
+          platform={fPlatform}
+          setPlatform={setFPlatform}
+          status={fStatus}
+          setStatus={setFStatus}
+          statusCustom={fStatusCustom}
+          setStatusCustom={setFStatusCustom}
+          note={fNote}
+          setNote={setFNote}
+          url={fUrl}
+          setUrl={setFUrl}
+          onSave={addItem}
+          onCancel={() => setAdding(false)}
+        />
+      ) : null}
+      {items.length === 0 ? (
+        <EmptyState
+          title="暂无本地作品"
+          sub="点『+ 新增作品』登记第一件 · 平台同步接入后同步条目在下方分区呈现"
+        />
+      ) : null}
+      {items.map((w) =>
+        editId === w.id ? (
+          <WorkItemForm
+            key={w.id}
+            boxTestid={`hud-work-eform-${w.id}`}
+            fp="hud-work-e"
+            title={eTitle}
+            setTitle={setETitle}
+            platform={ePlatform}
+            setPlatform={setEPlatform}
+            status={eStatus}
+            setStatus={setEStatus}
+            statusCustom={eStatusCustom}
+            setStatusCustom={setEStatusCustom}
+            note={eNote}
+            setNote={setENote}
+            url={eUrl}
+            setUrl={setEUrl}
+            onSave={saveEdit}
+            onCancel={() => setEditId(null)}
+          />
+        ) : (
+          <Row key={w.id} testid={workRowTestid(w)}>
+            <div className="hud-module-row-main">
+              <div className="hud-module-row-t">{w.title}</div>
+              {w.note ? (
+                <div className="hud-module-row-sub">{w.note}</div>
+              ) : null}
+              {w.url ? (
+                <a
+                  className="hud-module-link"
+                  href={w.url}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  {w.url.replace(/^https?:\/\//, "")} ↗
+                </a>
+              ) : null}
+            </div>
+            <span className="hud-chip hud-c-cyan">
+              [{workPlatformTag(w.platform)}]
+            </span>
+            <span className={cn("hud-chip", workStatusCls(w.status))}>
+              {w.status}
+            </span>
+            {w.status !== "已同步" ? (
+              <span className="hud-chip hud-c-dim">未同步</span>
+            ) : null}
+            {intentBtn(w.id)}
+            <button
+              type="button"
+              className="hud-module-toggle"
+              data-testid={`hud-work-edit-${w.id}`}
+              onClick={() => startEdit(w)}
+            >
+              编辑
+            </button>
+            <InlineConfirmButton
+              label="删除"
+              confirmLabel="确认删除"
+              testId={`hud-work-del-${w.id}`}
+              ariaLabel={`删除作品 ${w.title}`}
+              className="hud-module-del"
+              onConfirm={() => delItem(w)}
+            />
+          </Row>
+        ),
+      )}
       <SecHead
         title="待办票"
         en="PENDING TICKETS"
@@ -3460,11 +3849,225 @@ function OntologyBody() {
 
 /* ─────────────────────────── 8 · inspiration ─────────────────────────── */
 
+/** 步骤新增/编辑共用表单（fp = testid 前缀 hud-step-f / hud-step-e）。 */
+function FlowStepForm({
+  boxTestid,
+  fp,
+  title,
+  setTitle,
+  note,
+  setNote,
+  zone,
+  setZone,
+  status,
+  setStatus,
+  platform,
+  setPlatform,
+  onSave,
+  onCancel,
+}: {
+  boxTestid: string;
+  fp: string;
+  title: string;
+  setTitle: (v: string) => void;
+  note: string;
+  setNote: (v: string) => void;
+  zone: FlowZone;
+  setZone: (v: FlowZone) => void;
+  status: FlowStage;
+  setStatus: (v: FlowStage) => void;
+  platform: FlowPlatform | "";
+  setPlatform: (v: FlowPlatform | "") => void;
+  onSave: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div className="hud-module-editbox" data-testid={boxTestid}>
+      <div className="hud-module-form">
+        <input
+          className="hud-module-input hud-module-input-flex"
+          data-testid={`${fp}-title`}
+          type="text"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") onSave();
+          }}
+          placeholder="步骤标题（必填）"
+          aria-label="步骤标题"
+        />
+        <input
+          className="hud-module-input hud-module-input-flex"
+          data-testid={`${fp}-note`}
+          type="text"
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          placeholder="备注（选填）"
+          aria-label="步骤备注"
+        />
+      </div>
+      <div className="hud-module-form">
+        <label className="hud-module-flabel">
+          <span className="hud-module-note">所属区</span>
+          <select
+            className="hud-module-input hud-module-select"
+            data-testid={`${fp}-zone`}
+            value={zone}
+            onChange={(e) => setZone(e.target.value as FlowZone)}
+            aria-label="步骤所属区"
+          >
+            {FLOW_ZONES.map((z) => (
+              <option key={z.id} value={z.id}>
+                {z.label} · {z.en}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="hud-module-flabel">
+          <span className="hud-module-note">状态</span>
+          <select
+            className="hud-module-input hud-module-select"
+            data-testid={`${fp}-status`}
+            value={status}
+            onChange={(e) => setStatus(e.target.value as FlowStage)}
+            aria-label="步骤状态"
+          >
+            {FLOW_STAGES.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.label} · {s.en}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="hud-module-flabel">
+          <span className="hud-module-note">平台</span>
+          <select
+            className="hud-module-input hud-module-select"
+            data-testid={`${fp}-platform`}
+            value={platform}
+            onChange={(e) => setPlatform(e.target.value as FlowPlatform | "")}
+            aria-label="步骤平台标签"
+          >
+            <option value="">无平台</option>
+            {FLOW_PLATFORMS.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button
+          type="button"
+          className="hud-module-toggle"
+          data-testid={`${fp}-save`}
+          onClick={onSave}
+        >
+          保存
+        </button>
+        <button
+          type="button"
+          className="hud-module-toggle"
+          data-testid={`${fp}-cancel`}
+          onClick={onCancel}
+        >
+          取消
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function InspirationBody() {
   const [steps, setSteps] = React.useState<FlowStep[]>([]);
+  /* 新增表单态（hud-crud-p0） */
+  const [adding, setAdding] = React.useState(false);
+  const [fTitle, setFTitle] = React.useState("");
+  const [fNote, setFNote] = React.useState("");
+  const [fZone, setFZone] = React.useState<FlowZone>("me");
+  const [fStatus, setFStatus] = React.useState<FlowStage>("incubate");
+  const [fPlatform, setFPlatform] = React.useState<FlowPlatform | "">("");
+  /* 行内编辑态：editIdx = 全量数组下标（旧数据可能无 id，按下标定位） */
+  const [editIdx, setEditIdx] = React.useState<number | null>(null);
+  const [eTitle, setETitle] = React.useState("");
+  const [eNote, setENote] = React.useState("");
+  const [eZone, setEZone] = React.useState<FlowZone>("me");
+  const [eStatus, setEStatus] = React.useState<FlowStage>("incubate");
+  const [ePlatform, setEPlatform] = React.useState<FlowPlatform | "">("");
   React.useEffect(() => {
     setSteps(readFlowSteps());
   }, []);
+  /* 落盘纪律与创作看板一致：writeFlowSteps 成功才更新状态并发总线。
+   * 事件口径（hud-crud-p0）：复用既有 STUDIO_STAGE_MOVE（不新增事件
+   * 类型、不动 bus.ts 与终端模板），moduleId=inspiration，detail 带
+   * 新增/编辑/删除前缀——终端渲染为「[创作] 新增步骤 · 标题」。 */
+  const commit = (next: FlowStep[], detail: string): boolean => {
+    if (!writeFlowSteps(next)) return false;
+    setSteps(next);
+    emit("STUDIO_STAGE_MOVE", "inspiration", detail);
+    return true;
+  };
+  const addStep = () => {
+    const t = fTitle.trim();
+    if (!t) return;
+    const step: FlowStep = {
+      id: `step-${Date.now()}`,
+      title: t,
+      zone: fZone,
+      status: fStatus,
+    };
+    const note = fNote.trim();
+    if (note) step.note = note;
+    if (fPlatform) step.platform = fPlatform;
+    if (commit([...steps, step], `新增步骤 · ${t}`)) {
+      setFTitle("");
+      setFNote("");
+      setFZone("me");
+      setFStatus("incubate");
+      setFPlatform("");
+      setAdding(false);
+    }
+  };
+  const startEdit = (gi: number) => {
+    const s = steps[gi];
+    if (!s) return;
+    setEditIdx(gi);
+    setETitle(s.title);
+    setENote(s.note ?? "");
+    setEZone(s.zone);
+    setEStatus(stepStage(s));
+    setEPlatform(s.platform ?? "");
+  };
+  const saveEdit = () => {
+    if (editIdx === null) return;
+    const t = eTitle.trim();
+    if (!t) return;
+    const next = steps.map((s, i) => {
+      if (i !== editIdx) return s;
+      const copy: FlowStep = {
+        ...s,
+        id: s.id ?? `step-${Date.now()}`,
+        title: t,
+        zone: eZone,
+        status: eStatus,
+      };
+      const note = eNote.trim();
+      if (note) copy.note = note;
+      else delete copy.note;
+      if (ePlatform) copy.platform = ePlatform;
+      else delete copy.platform;
+      return copy;
+    });
+    if (commit(next, `编辑步骤 · ${t}`)) setEditIdx(null);
+  };
+  const delStep = (gi: number) => {
+    const s = steps[gi];
+    if (!s) return;
+    if (editIdx === gi) setEditIdx(null);
+    commit(
+      steps.filter((_, i) => i !== gi),
+      `删除步骤 · ${s.title}`,
+    );
+  };
   return (
     <div>
       <SecHead
@@ -3476,8 +4079,43 @@ function InspirationBody() {
           </span>
         }
       />
+      <div className="hud-module-form">
+        {!adding ? (
+          <button
+            type="button"
+            className="hud-module-toggle"
+            data-testid="hud-step-add"
+            onClick={() => setAdding(true)}
+          >
+            + 新增步骤
+          </button>
+        ) : null}
+        <span className="hud-module-note">
+          增删改即时落盘 · 创作看板与数据库流程索引同源同步
+        </span>
+      </div>
+      {adding ? (
+        <FlowStepForm
+          boxTestid="hud-step-form"
+          fp="hud-step-f"
+          title={fTitle}
+          setTitle={setFTitle}
+          note={fNote}
+          setNote={setFNote}
+          zone={fZone}
+          setZone={setFZone}
+          status={fStatus}
+          setStatus={setFStatus}
+          platform={fPlatform}
+          setPlatform={setFPlatform}
+          onSave={addStep}
+          onCancel={() => setAdding(false)}
+        />
+      ) : null}
       {FLOW_ZONES.map((z) => {
-        const list = steps.filter((s) => s.zone === z.id);
+        const list = steps
+          .map((s, gi) => ({ s, gi }))
+          .filter(({ s }) => s.zone === z.id);
         return (
           <div key={z.id} className="hud-module-group" data-testid={`hud-zone-${z.id}`}>
             <div className="hud-module-group-h">
@@ -3486,24 +4124,64 @@ function InspirationBody() {
               <span className="hud-module-note">{list.length} 步</span>
             </div>
             {list.length > 0 ? (
-              list.map((s) => (
-                <Row key={s.id} testid={`hud-step-${s.id}`}>
-                  <div className="hud-module-row-main">
-                    <div className="hud-module-row-t">{s.title}</div>
-                    {s.note ? (
-                      <div className="hud-module-row-sub">{s.note}</div>
-                    ) : null}
-                  </div>
-                  {platformOf(s.platform) ? (
-                    <span
-                      className="hud-chip hud-c-cyan"
-                      data-testid={`hud-step-plat-${s.id}`}
-                    >
-                      [{platformOf(s.platform)?.tag}]
+              list.map(({ s, gi }) => {
+                const rowKey = s.id ?? `idx${gi}`;
+                return editIdx === gi ? (
+                  <FlowStepForm
+                    key={rowKey}
+                    boxTestid={`hud-step-eform-${rowKey}`}
+                    fp="hud-step-e"
+                    title={eTitle}
+                    setTitle={setETitle}
+                    note={eNote}
+                    setNote={setENote}
+                    zone={eZone}
+                    setZone={setEZone}
+                    status={eStatus}
+                    setStatus={setEStatus}
+                    platform={ePlatform}
+                    setPlatform={setEPlatform}
+                    onSave={saveEdit}
+                    onCancel={() => setEditIdx(null)}
+                  />
+                ) : (
+                  <Row key={rowKey} testid={`hud-step-${rowKey}`}>
+                    <div className="hud-module-row-main">
+                      <div className="hud-module-row-t">{s.title}</div>
+                      {s.note ? (
+                        <div className="hud-module-row-sub">{s.note}</div>
+                      ) : null}
+                    </div>
+                    <span className="hud-chip hud-c-dim">
+                      {FLOW_STAGES.find((x) => x.id === stepStage(s))?.label}
                     </span>
-                  ) : null}
-                </Row>
-              ))
+                    {platformOf(s.platform) ? (
+                      <span
+                        className="hud-chip hud-c-cyan"
+                        data-testid={`hud-step-plat-${rowKey}`}
+                      >
+                        [{platformOf(s.platform)?.tag}]
+                      </span>
+                    ) : null}
+                    <button
+                      type="button"
+                      className="hud-module-toggle"
+                      data-testid={`hud-step-edit-${rowKey}`}
+                      onClick={() => startEdit(gi)}
+                    >
+                      编辑
+                    </button>
+                    <InlineConfirmButton
+                      label="删除"
+                      confirmLabel="确认删除"
+                      testId={`hud-step-del-${rowKey}`}
+                      ariaLabel={`删除步骤 ${s.title}`}
+                      className="hud-module-del"
+                      onConfirm={() => delStep(gi)}
+                    />
+                  </Row>
+                );
+              })
             ) : (
               <div className="hud-module-zone-empty">暂无步骤 · 本区为空</div>
             )}
@@ -3512,7 +4190,8 @@ function InspirationBody() {
       })}
       <p className="hud-module-note">
         旧 8 步 AIGC 流水线已于 2026-10-20 按用户要求清空（git
-        历史可恢复）；三区结构就位，新步骤从本机数据新增后在此呈现。
+        历史可恢复）；点上方『+ 新增步骤』即可在本页新建，创作空间
+        看板与数据库流程索引同源同步呈现。
       </p>
     </div>
   );
@@ -3792,6 +4471,14 @@ function StudioBoard() {
 }
 
 function StudioBody({ onOpen }: { onOpen: (id: string) => void }) {
+  /* 作品计数与作品库同源派生（hud-crud-p0）：挂载时直读
+   * studio_works_items_v1（惰性初始化，无 effect），键不存在时按
+   * 种子 2 件计（WorksBody 首次打开即播种落盘）。 */
+  const [worksN] = React.useState<number>(() => {
+    if (typeof window === "undefined") return WORK_SEED_ITEMS.length;
+    const cur = readWorksItems();
+    return cur === null ? WORK_SEED_ITEMS.length : cur.length;
+  });
   const cards: {
     id: string;
     label: string;
@@ -3813,7 +4500,7 @@ function StudioBody({ onOpen }: { onOpen: (id: string) => void }) {
       label: "作品库",
       en: "WORKS",
       desc: "YouTube EP001 待公开 · 视频号 ep01 配音定稿待发布",
-      meta: "2 件作品",
+      meta: `${worksN} 件作品`,
       target: "works",
     },
     {
@@ -3858,7 +4545,7 @@ function StudioBody({ onOpen }: { onOpen: (id: string) => void }) {
         en="GROUP OVERVIEW"
         right={<span className="hud-module-note">计数与最近动态 · 皆为真事实</span>}
       />
-      <Kv k="作品库">2 件作品 · 另有待办票 {PENDING_TICKETS.length} 张</Kv>
+      <Kv k="作品库">{worksN} 件作品 · 另有待办票 {PENDING_TICKETS.length} 张</Kv>
       <Kv k="技能库">{ALL_SKILLS.length} 个已装技能（grokbot 8 · Luna 5）</Kv>
       <Kv k="最近动态 · 10-18">YouTube EP001 已上传 · 待改公开</Kv>
       <Kv k="最近动态 · 10-19">视频号 ep01 配音定稿（Fish Audio 影视解说男声）· 待发布</Kv>
