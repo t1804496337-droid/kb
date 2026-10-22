@@ -2987,6 +2987,12 @@ div.studio-orb.studio-orb-bg,
   --hud-int-panel-purple-shadow-mobile: 0 0 14px rgba(178, 0, 255, 0.09);
   /* radial menu (2026-10-22, hud-radial) */
   --hud-int-yellow: #ffea00;
+  /* left overview panel (2026-10-22, hud-left-panel): FUI accent
+   * colours from the approved mock — energy-bar green/cyan and the
+   * status-tag error red (tag text only, never a filled dot). */
+  --hud-int-ov-green: #2eff8f;
+  --hud-int-ov-cyan: #19e3ff;
+  --hud-int-ov-err: #ff5470;
   /* terminal EXEC log (2026-10-22, hud-bus-pulse): the log line box
    * caps here and scrolls — the newest line stays pinned visible. */
   --hud-int-log-max-h: 172px;
@@ -5364,8 +5370,9 @@ div.studio-orb.studio-orb-bg,
  *  · .hud-viewrow + .hud-dock — persistent module navigation inside
  *    a module view (desktop: 52px vertical bar at the row's left;
  *    ≤1100px: horizontal scrollable strip on top of the view).
- *  · .hud-tree-placeholder — the retired left tree panel's honest
- *    empty state (dashed frame + one line, no invented numbers).
+ *  · .hud-tree-placeholder — retired in hud-left-panel, which
+ *    replaced the placeholder with the real overview panel
+ *    (styles at the end of this file).
  *  · .hud-marquee-edit — the ticker slogan editor, on the palette
  *    shell (z 70 comes from .hud-pal-mask / .hud-pal).
  * ══════════════════════════════════════════════════════════════════ */
@@ -5437,17 +5444,6 @@ div.studio-orb.studio-orb-bg,
 }
 .hud-dock-on .hud-dock-en { color: #cfe0ff; }
 
-.hud-tree-placeholder {
-  border: 1px dashed var(--hud-int-tree-ph-border);
-  color: var(--hud-int-tree-ph-fg);
-  font-size: 10.5px;
-  letter-spacing: 0.22em;
-  text-align: center;
-  padding: 44px 10px;
-  margin: 6px 2px;
-  user-select: none;
-}
-
 .hud-marquee-edit { max-width: min(520px, calc(100vw - 32px)); }
 
 @media (max-width: 1100px) {
@@ -5477,4 +5473,238 @@ div.studio-orb.studio-orb-bg,
   /* performance tier: the dock keeps its shape, loses its glow */
   .hud-dock { box-shadow: none; }
   .hud-dock-on { box-shadow: none; text-shadow: none; }
+}
+
+/* ══════════════════════════════════════════════════════════════════
+ * Left overview panel (2026-10-22, hud-left-panel)
+ * The retired tree's slot, rebuilt as the FUI command panel the
+ * user approved layer by layer (庚 structure, 辛 skin):
+ *  · alert box with OPEN borders — top/bottom yellow rules only,
+ *    sides open — over faint diagonal warning stripes;
+ *  · section cards with NO closed border: a 3% white wash, a 1px
+ *    top light-line that fades out at 75%, one ⌟ corner tick;
+ *  · body gauges as 10 skewed segments (lit = target progress);
+ *  · the 7-day matrix as flat glow bars in five opacity levels —
+ *    digits inside cells are forbidden;
+ *  · status as monospace bracket tags — colour lives on the tag
+ *    text only, never on a filled dot.
+ * ══════════════════════════════════════════════════════════════════ */
+.hud-ov {
+  display: flex;
+  flex-direction: column;
+  padding: 2px 2px 4px;
+}
+.hud-ov-next {
+  font: inherit;
+  text-align: left;
+  width: 100%;
+  border: none;
+  border-top: 1px solid var(--hud-int-yellow);
+  border-bottom: 1px solid var(--hud-int-yellow);
+  background:
+    repeating-linear-gradient(45deg, rgba(255, 234, 0, 0.045) 0 10px, rgba(0, 0, 0, 0) 10px 20px),
+    linear-gradient(180deg, #161b09, #0a0d14);
+  padding: 7px 10px;
+  cursor: pointer;
+  color: inherit;
+}
+div.hud-ov-next { cursor: default; }
+.hud-ov-next-h {
+  color: var(--hud-int-yellow);
+  font-size: 9px;
+  letter-spacing: 2px;
+}
+.hud-ov-next-b {
+  font-size: 15px;
+  color: #fff;
+  font-weight: 700;
+  line-height: 1.4;
+  margin-top: 2px;
+}
+.hud-ov-next-s {
+  font-size: 10px;
+  color: #8fa8cf;
+  margin-top: 2px;
+}
+.hud-ov-sec {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: #e8f4ff;
+  font-weight: 700;
+  margin: 8px 0 4px;
+  border-bottom: 1px dashed #1a2a49;
+  padding-bottom: 3px;
+}
+.hud-ov-sec span:last-child {
+  font-size: 8px;
+  color: #43597e;
+  letter-spacing: 1px;
+  font-weight: 400;
+  font-family: "DejaVu Sans Mono", ui-monospace, monospace;
+}
+.hud-ov-cards { display: flex; gap: 7px; }
+.hud-ov-card {
+  flex: 1;
+  min-width: 0;
+  background: rgba(255, 255, 255, 0.03);
+  padding: 7px 8px 5px;
+  position: relative;
+}
+.hud-ov-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, rgba(25, 227, 255, 0.8), transparent 75%);
+}
+.hud-ov-card::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 9px;
+  height: 9px;
+  border-right: 2px solid var(--hud-int-ov-cyan);
+  border-bottom: 2px solid var(--hud-int-ov-cyan);
+  opacity: 0.85;
+}
+.hud-ov-lab { font-size: 9px; color: #8fa8cf; letter-spacing: 1px; }
+.hud-ov-num {
+  font-family: "DejaVu Sans Mono", ui-monospace, monospace;
+  font-size: 25px;
+  font-weight: 700;
+  color: #fff;
+  line-height: 1.15;
+}
+.hud-ov-num-c { text-shadow: 0 0 13px rgba(25, 227, 255, 0.4); }
+.hud-ov-num-p { text-shadow: 0 0 13px rgba(255, 0, 127, 0.4); }
+.hud-ov-num-y { text-shadow: 0 0 13px rgba(255, 234, 0, 0.4); }
+.hud-ov-sub { font-size: 8px; color: #5f7396; }
+.hud-ov-gauges { display: flex; flex-direction: column; gap: 7px; }
+.hud-ov-gauge {
+  background: rgba(255, 255, 255, 0.03);
+  padding: 6px 9px;
+  position: relative;
+}
+.hud-ov-gauge::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, rgba(46, 255, 143, 0.8), transparent 75%);
+}
+.hud-ov-gauge::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 9px;
+  height: 9px;
+  border-right: 2px solid var(--hud-int-ov-green);
+  border-bottom: 2px solid var(--hud-int-ov-green);
+  opacity: 0.85;
+}
+.hud-ov-gtop {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+.hud-ov-gl { font-size: 10px; color: #8fa8cf; letter-spacing: 1px; }
+.hud-ov-gv {
+  font-family: "DejaVu Sans Mono", ui-monospace, monospace;
+  font-size: 19px;
+  color: #fff;
+  font-weight: 700;
+}
+.hud-ov-gs { font-size: 9px; color: #5f7396; margin-top: 5px; }
+.hud-ov-segbar { display: flex; gap: 3px; margin-top: 5px; }
+.hud-ov-segbar i {
+  flex: 1;
+  height: 10px;
+  background: #131e33;
+  transform: skewX(-14deg);
+  display: block;
+}
+.hud-ov-segbar i.on-g {
+  background: var(--hud-int-ov-green);
+  box-shadow: 0 0 6px rgba(46, 255, 143, 0.53);
+}
+.hud-ov-segbar i.on-c {
+  background: var(--hud-int-ov-cyan);
+  box-shadow: 0 0 6px rgba(25, 227, 255, 0.53);
+}
+.hud-ov-mx { border-collapse: separate; border-spacing: 2px; width: 100%; }
+.hud-ov-mx th {
+  font-size: 8px;
+  color: #5f7396;
+  font-weight: 400;
+  font-family: "DejaVu Sans Mono", ui-monospace, monospace;
+}
+.hud-ov-mx-lab {
+  font-size: 9px;
+  color: #9db1d6;
+  white-space: nowrap;
+  padding-right: 4px;
+}
+.hud-ov-mx-c { height: 11px; padding: 0 1px; }
+.hud-ov-mx-c i {
+  display: block;
+  height: 4px;
+  border-radius: 0;
+  background: var(--hud-int-ov-cyan);
+}
+.hud-ov-mx-c i.lv0 { opacity: 0.08; }
+.hud-ov-mx-c i.lv1 { opacity: 0.28; }
+.hud-ov-mx-c i.lv2 { opacity: 0.5; }
+.hud-ov-mx-c i.lv3 { opacity: 0.78; box-shadow: 0 0 5px rgba(25, 227, 255, 0.47); }
+.hud-ov-mx-c i.lv4 { opacity: 1; box-shadow: 0 0 8px var(--hud-int-ov-cyan); }
+.hud-ov-feed { position: relative; }
+.hud-ov-livetag {
+  font-family: "DejaVu Sans Mono", ui-monospace, monospace;
+  font-size: 9.5px;
+  color: var(--hud-int-yellow);
+  letter-spacing: 1px;
+}
+.hud-ov-fl {
+  font-family: "DejaVu Sans Mono", ui-monospace, "Noto Sans CJK SC", monospace;
+  font-size: 10.5px;
+  color: #a9bede;
+  line-height: 1.62;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.hud-ov-fl-empty { color: #5f7396; }
+.hud-ov-status {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 14px;
+  font-family: "DejaVu Sans Mono", ui-monospace, "Noto Sans CJK SC", monospace;
+  font-size: 10.5px;
+  color: #a9bede;
+}
+.hud-ov-strow { white-space: nowrap; overflow: hidden; }
+.hud-ov-status b { color: #e8f4ff; font-weight: 700; float: right; }
+.hud-ov-st {
+  font-family: "DejaVu Sans Mono", ui-monospace, monospace;
+  font-size: 9.5px;
+  margin-right: 5px;
+}
+.hud-ov-st.ok { color: var(--hud-int-ov-green); }
+.hud-ov-st.wait { color: var(--hud-int-yellow); }
+.hud-ov-st.stop { color: var(--hud-int-yellow); }
+.hud-ov-st.err { color: var(--hud-int-ov-err); }
+@media (max-width: 768px) {
+  /* performance tier: the panel keeps its shape, loses its glow */
+  .hud-ov-num-c, .hud-ov-num-p, .hud-ov-num-y { text-shadow: none; }
+  .hud-ov-segbar i.on-g, .hud-ov-segbar i.on-c { box-shadow: none; }
+  .hud-ov-mx-c i.lv3, .hud-ov-mx-c i.lv4 { box-shadow: none; }
 }
