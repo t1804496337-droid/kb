@@ -11,6 +11,7 @@ import {
   importState,
   restorePreImport,
   hasPreImportBackup,
+  SLICES,
 } from "@/components/studio/snapshot";
 import {
   emit as busEmit,
@@ -98,6 +99,14 @@ type HealthState = {
     hours?: number;
   } | null;
   ok: boolean;
+  /** steps.today verbatim from health-sync.json (hud-left-panel). */
+  stepsToday: number | null;
+  /** YYYY-MM-DD of the file's updated_at — the day stepsToday
+   * belongs to, as stamped by the sync that wrote the file. */
+  stepsDate: string | null;
+  /** Every date carrying a sleep record (sleep.last7 + sleep.last,
+   * deduped) — the left panel matrix's health-row source. */
+  sleepDays: string[];
 };
 
 /* ── decision-stack algorithm helpers (2026-10-22, hud-decision-algo) ──
@@ -118,6 +127,17 @@ const todayShNum = (): number => {
   return Math.floor(Date.UTC(get("year"), get("month") - 1, get("day")) / 864e5);
 };
 const ageDaysOf = (iso: string): number => todayShNum() - shDayNum(iso);
+/** Day-number (Shanghai calendar, see shDayNum) → YYYY-MM-DD. */
+const dayISOofNum = (dayNum: number): string =>
+  new Date(dayNum * 864e5).toISOString().slice(0, 10);
+/** Epoch ms → the Asia/Shanghai calendar day (YYYY-MM-DD) it falls on. */
+const shISOofTs = (ts: number): string =>
+  new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Shanghai",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date(ts));
 const daysUntilOf = (iso: string): number => shDayNum(iso) - todayShNum();
 
 /* ── three-zone restyle helpers (2026-10-22, hud-restyle) ──
@@ -389,6 +409,378 @@ function HudDock({
   );
 }
 
+/* ── left overview panel (2026-10-22, hud-left-panel) ──
+ * Replaces the hud-ux-dock placeholder in the left column (desktop)
+ * and in the ≤1100px tree sheet — same DOM, same content. Design
+ * source of truth: the user-approved FUI mock (庚 structure in the
+ * 辛 skin): open-border alert box, segmented energy bars, a
+ * numberless glow matrix, monospace bracket status tags.
+ *
+ * Every figure derives from the same live sources as the rest of
+ * the overview — never a private copy, never invented:
+ *  · NEXT ACTION = activeDecisions[0] (the stack's own ordering),
+ *    clicked through the same openDecision path;
+ *  · 今日变动 = EXEC-log items whose Shanghai day is today;
+ *  · body gauges read effHealth (file + clipboard-manual merge);
+ *  · the 7-day matrix counts only records carrying a real date:
+ *      财务 — finance entries by their `date`, plus
+ *        FINANCE_DELETE_ENTRY log items (a deletion leaves no
+ *        entry behind, so the log item is its only trace);
+ *      健康 — sleep-record days from health-sync.json (sleep.last7
+ *        + sleep.last, plus the manual record's day when it
+ *        applies) + HEALTH_SYNC log items;
+ *      创作 — STUDIO_STAGE_MOVE log items;
+ *      图谱 — MINDMAP_NODE / MINDMAP_EDGE log items;
+ *      灵感池 — workflow steps carry no timestamp anywhere in the
+ *        app, so this row has no dated source: every cell stays at
+ *        the darkest level (= no record), by design.
+ *    Levels: 0 → darkest, 1/2/3, ≥4 → brightest. Cells render a
+ *    bare glow bar — digits inside cells are forbidden (user rule).
+ */
+const OV_FIN_KEY = "studio_finance_entries_v1";
+const OV_ROWS: { id: string; label: string }[] = [
+  { id: "inspiration", label: "灵感池" },
+  { id: "finance", label: "财务系统" },
+  { id: "health", label: "身体健康" },
+  { id: "studio", label: "创作空间" },
+  { id: "mindmap", label: "灵感图谱" },
+];
+const OV_WEEK = ["日", "一", "二", "三", "四", "五", "六"];
+const readOvFinDates = (): string[] => {
+  try {
+    const raw = window.localStorage.getItem(OV_FIN_KEY);
+    const v: unknown = raw ? JSON.parse(raw) : null;
+    if (!Array.isArray(v)) return [];
+    return v.flatMap((e) =>
+      typeof e === "object" &&
+      e !== null &&
+      typeof (e as { date?: unknown }).date === "string"
+        ? [(e as { date: string }).date]
+        : [],
+    );
+  } catch {
+    return [];
+  }
+};
+/** Snapshot readiness: any registered slice present locally means
+ * the snapshot system holds real data it can export. */
+const readOvSnapReady = (): boolean => {
+  try {
+    return SLICES.some((s) => window.localStorage.getItem(s.key) != null);
+  } catch {
+    return false;
+  }
+};
+
+function HudOverviewPanel({
+  top,
+  onOpenTop,
+  total,
+  pending,
+  pendingStale,
+  todayChanges,
+  sleep,
+  steps,
+  feed,
+  healthOk,
+  execLog,
+  sleepDays,
+  manualSleepDay,
+}: {
+  top: { name: string; tag: string; wait: string; age: number } | null;
+  onOpenTop: () => void;
+  total: number;
+  pending: number;
+  pendingStale: number;
+  todayChanges: number;
+  sleep: HealthState["sleep"];
+  steps: { value: number; date: string | null } | null;
+  feed: { ts: number; text: string; kind: string }[];
+  healthOk: boolean;
+  execLog: ExecLogItem[];
+  sleepDays: string[];
+  manualSleepDay: string | null;
+}) {
+  /* Finance entry dates — refreshed whenever the EXEC log moves
+   * (every finance mutation emits on the bus first, and the landing
+   * appends the log item) and on cross-tab storage events. */
+  const [finDates, setFinDates] = React.useState<string[]>(readOvFinDates);
+  React.useEffect(() => {
+    setFinDates(readOvFinDates());
+  }, [execLog]);
+  React.useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === OV_FIN_KEY) setFinDates(readOvFinDates());
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
+  /* Snapshot readiness — re-checked when the log moves and shortly
+   * after mount (page-level seed writes land just after the
+   * landing's first paint). */
+  const [snapReady, setSnapReady] = React.useState(false);
+  React.useEffect(() => {
+    const check = () => setSnapReady(readOvSnapReady());
+    check();
+    const id = window.setTimeout(check, 1600);
+    return () => window.clearTimeout(id);
+  }, [execLog]);
+
+  /* 7-day matrix (see the header comment for the caliber). */
+  const todayNum = todayShNum();
+  const dayNums = Array.from({ length: 7 }, (_, i) => todayNum - 6 + i);
+  const dayISOs = dayNums.map(dayISOofNum);
+  const counts: Record<string, number[]> = {
+    inspiration: dayNums.map(() => 0),
+    finance: dayNums.map(() => 0),
+    health: dayNums.map(() => 0),
+    studio: dayNums.map(() => 0),
+    mindmap: dayNums.map(() => 0),
+  };
+  const bump = (row: string, iso: string) => {
+    const i = dayISOs.indexOf(iso);
+    if (i >= 0) counts[row][i] += 1;
+  };
+  finDates.forEach((d) => bump("finance", d));
+  sleepDays.forEach((d) => bump("health", d));
+  if (manualSleepDay && !sleepDays.includes(manualSleepDay))
+    bump("health", manualSleepDay);
+  for (const item of execLog) {
+    if (!("type" in item)) continue;
+    const iso = shISOofTs(item.ts);
+    if (item.type === "FINANCE_DELETE_ENTRY") bump("finance", iso);
+    else if (item.type === "HEALTH_SYNC") bump("health", iso);
+    else if (item.type === "STUDIO_STAGE_MOVE") bump("studio", iso);
+    else if (item.type === "MINDMAP_NODE" || item.type === "MINDMAP_EDGE")
+      bump("mindmap", iso);
+  }
+  const levelOf = (n: number) => (n <= 0 ? 0 : n >= 4 ? 4 : n);
+
+  const sleepSegs =
+    sleep?.hours != null
+      ? Math.max(0, Math.min(10, Math.round((sleep.hours / 8) * 10)))
+      : 0;
+  const stepSegs = steps
+    ? Math.max(0, Math.min(10, Math.round((steps.value / 8000) * 10)))
+    : 0;
+
+  return (
+    <div className="hud-ov" data-testid="hud-ov-panel">
+      {/* alert box — open borders, warning stripes (user spec) */}
+      {top ? (
+        <button
+          type="button"
+          className="hud-ov-next"
+          data-testid="hud-ov-next"
+          onClick={onOpenTop}
+        >
+          <div className="hud-ov-next-h">▶ 下一件 · NEXT ACTION</div>
+          <div className="hud-ov-next-b" data-testid="hud-ov-next-title">
+            {top.name}
+          </div>
+          <div className="hud-ov-next-s">
+            {top.tag} · {top.wait}
+            {top.age > 0 ? ` · ${top.age} 天未动` : ""}
+          </div>
+        </button>
+      ) : (
+        <div className="hud-ov-next" data-testid="hud-ov-next">
+          <div className="hud-ov-next-h">▶ 下一件 · NEXT ACTION</div>
+          <div className="hud-ov-next-b">暂无待决事项</div>
+          <div className="hud-ov-next-s">决策栈已清空</div>
+        </div>
+      )}
+
+      {/* 0xA1 · core gauges */}
+      <div className="hud-ov-sec">
+        <span>核心仪表</span>
+        <span>0xA1 · GAUGES</span>
+      </div>
+      <div className="hud-ov-cards">
+        <div className="hud-ov-card">
+          <div className="hud-ov-lab">条目总数</div>
+          <div
+            className="hud-ov-num hud-ov-num-c"
+            data-testid="hud-ov-total"
+          >
+            {total}
+          </div>
+          <div className="hud-ov-sub">九大模块合计</div>
+        </div>
+        <div className="hud-ov-card">
+          <div className="hud-ov-lab">待决事项</div>
+          <div
+            className="hud-ov-num hud-ov-num-p"
+            data-testid="hud-ov-pending"
+          >
+            {pending}
+          </div>
+          <div className="hud-ov-sub">
+            {pendingStale > 0 ? `${pendingStale} 条衰减中` : "无衰减条目"}
+          </div>
+        </div>
+        <div className="hud-ov-card">
+          <div className="hud-ov-lab">今日变动</div>
+          <div className="hud-ov-num hud-ov-num-y" data-testid="hud-ov-today">
+            {todayChanges}
+          </div>
+          <div className="hud-ov-sub">播报流计数</div>
+        </div>
+      </div>
+
+      {/* 0xA2 · body */}
+      <div className="hud-ov-sec">
+        <span>身体状态</span>
+        <span>0xA2 · BODY</span>
+      </div>
+      <div className="hud-ov-gauges">
+        <div className="hud-ov-gauge">
+          <div className="hud-ov-gtop">
+            <span className="hud-ov-gl">
+              睡眠 · SLEEP{sleep ? ` · ${sleep.date.slice(5)}` : ""}
+            </span>
+            <span className="hud-ov-gv" data-testid="hud-ov-sleep-val">
+              {sleep?.hours != null
+                ? `${Math.round(sleep.hours * 10) / 10}h`
+                : "—"}
+            </span>
+          </div>
+          <div
+            className="hud-ov-segbar"
+            data-testid="hud-ov-sleep-bar"
+            data-on={sleepSegs}
+          >
+            {Array.from({ length: 10 }, (_, i) => (
+              <i key={i} className={i < sleepSegs ? "on-g" : undefined} />
+            ))}
+          </div>
+          <div className="hud-ov-gs">
+            {sleep
+              ? `目标 8h${sleep.start && sleep.end ? ` · ${sleep.start} 入睡 · ${sleep.end} 起床` : ""}`
+              : "暂无完整记录 · 待同步"}
+          </div>
+        </div>
+        <div className="hud-ov-gauge">
+          <div className="hud-ov-gtop">
+            <span className="hud-ov-gl">
+              步数 · STEPS{steps?.date ? ` · ${steps.date.slice(5)}` : ""}
+            </span>
+            <span className="hud-ov-gv" data-testid="hud-ov-steps-val">
+              {steps ? steps.value : "—"}
+            </span>
+          </div>
+          <div
+            className="hud-ov-segbar"
+            data-testid="hud-ov-steps-bar"
+            data-on={stepSegs}
+          >
+            {Array.from({ length: 10 }, (_, i) => (
+              <i key={i} className={i < stepSegs ? "on-c" : undefined} />
+            ))}
+          </div>
+          <div className="hud-ov-gs">
+            {steps
+              ? `目标 8000 · 达成 ${Math.round((steps.value / 8000) * 100)}%`
+              : "暂无步数记录 · 待同步"}
+          </div>
+        </div>
+      </div>
+
+      {/* 0xA3 · 7-day activity matrix — glow bars, never digits */}
+      <div className="hud-ov-sec">
+        <span>七日活跃</span>
+        <span>0xA3 · MATRIX</span>
+      </div>
+      <table className="hud-ov-mx" data-testid="hud-ov-matrix">
+        <thead>
+          <tr>
+            <th aria-hidden />
+            {dayNums.map((dn, i) => (
+              <th key={dn}>
+                {i === 6 ? "今" : OV_WEEK[new Date(dn * 864e5).getUTCDay()]}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {OV_ROWS.map((r) => (
+            <tr key={r.id}>
+              <td className="hud-ov-mx-lab">{r.label}</td>
+              {counts[r.id].map((n, i) => (
+                <td
+                  key={i}
+                  className="hud-ov-mx-c"
+                  data-testid={`hud-ov-cell-${r.id}-${i}`}
+                  data-level={levelOf(n)}
+                  data-count={n}
+                >
+                  <i className={`lv${levelOf(n)}`} />
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      {/* 0xA4 · live feed — the terminal's newest lines, same text */}
+      <div className="hud-ov-sec">
+        <span>实时播报</span>
+        <span>0xA4 · FEED</span>
+      </div>
+      <div className="hud-ov-feed">
+        <span className="hud-ov-livetag">[LIVE]</span>
+        {feed.length > 0 ? (
+          feed.map((f, i) => (
+            <div
+              key={`${f.ts}-${i}`}
+              className="hud-ov-fl"
+              data-testid="hud-ov-feed-line"
+              data-kind={f.kind}
+            >
+              {f.text}
+            </div>
+          ))
+        ) : (
+          <div className="hud-ov-fl hud-ov-fl-empty">
+            暂无播报 · 业务动作完成后在此滚动
+          </div>
+        )}
+      </div>
+
+      {/* 0xA5 · system status — bracket tags only, never dots */}
+      <div className="hud-ov-sec">
+        <span>系统状态</span>
+        <span>0xA5 · STATUS</span>
+      </div>
+      <div className="hud-ov-status">
+        <div className="hud-ov-strow" data-testid="hud-ov-st-health">
+          <span className={`hud-ov-st ${healthOk ? "ok" : "wait"}`}>
+            {healthOk ? "[ OK ]" : "[WAIT]"}
+          </span>
+          健康同步<b>{sleep ? sleep.date.slice(5) : "待同步"}</b>
+        </div>
+        <div className="hud-ov-strow" data-testid="hud-ov-st-ep001">
+          <span className="hud-ov-st wait">[WAIT]</span>
+          EP001<b>待公开</b>
+        </div>
+        <div className="hud-ov-strow" data-testid="hud-ov-st-x">
+          <span className="hud-ov-st stop">[STOP]</span>X 运营<b>已暂停</b>
+        </div>
+        <div className="hud-ov-strow" data-testid="hud-ov-st-xhs">
+          <span className="hud-ov-st err">[ERR_]</span>
+          小红书<b>已封禁</b>
+        </div>
+        <div className="hud-ov-strow" data-testid="hud-ov-st-snap">
+          <span className={`hud-ov-st ${snapReady ? "ok" : "wait"}`}>
+            {snapReady ? "[ OK ]" : "[WAIT]"}
+          </span>
+          快照备份<b>{snapReady ? "可导出" : "无本地数据"}</b>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ── ticker slogan store (2026-10-22, hud-ux-dock) ──
  * The ticker splits in two: a user-editable SLOGAN segment (this
  * store — localStorage studio_marquee_v1, registered in snapshot.ts
@@ -448,6 +840,9 @@ export function NeuralLanding({
     sleepLast: null,
     sleep: null,
     ok: false,
+    stepsToday: null,
+    stepsDate: null,
+    sleepDays: [],
   });
   React.useEffect(() => {
     let live = true;
@@ -464,13 +859,22 @@ export function NeuralLanding({
                 end?: unknown;
                 hours?: unknown;
               };
+              last7?: { date?: unknown }[];
             };
+            steps?: { today?: unknown };
           } | null,
         ) => {
           if (!live || !j) return;
           const upd = typeof j.updated_at === "string" ? j.updated_at : "";
           const last = j.sleep?.last;
           const sleepDate = last?.date;
+          const daySet = new Set<string>();
+          if (Array.isArray(j.sleep?.last7)) {
+            for (const r of j.sleep.last7) {
+              if (typeof r?.date === "string") daySet.add(r.date);
+            }
+          }
+          if (typeof sleepDate === "string") daySet.add(sleepDate);
           setHealth({
             syncTime: upd.length >= 16 ? upd.slice(11, 16) : null,
             sleepLast: typeof sleepDate === "string" ? sleepDate.slice(5) : null,
@@ -485,6 +889,13 @@ export function NeuralLanding({
                   }
                 : null,
             ok: true,
+            stepsToday:
+              typeof j.steps?.today === "number" &&
+              Number.isFinite(j.steps.today)
+                ? j.steps.today
+                : null,
+            stepsDate: upd.length >= 10 ? upd.slice(0, 10) : null,
+            sleepDays: [...daySet],
           });
         },
       )
@@ -521,6 +932,9 @@ export function NeuralLanding({
     ? {
         ok: true,
         syncTime: health.syncTime,
+        stepsToday: health.stepsToday,
+        stepsDate: health.stepsDate,
+        sleepDays: health.sleepDays,
         sleepLast: (manualHealth as ManualHealth).date.slice(5),
         sleep: {
           date: (manualHealth as ManualHealth).date,
@@ -1037,6 +1451,35 @@ export function NeuralLanding({
     archivedSet.has(s.d.id),
   );
   const pendingCount = activeDecisions.length;
+  /* ── left overview panel feeds (2026-10-22, hud-left-panel) ──
+   * All derived from the same live sources as the stack and the
+   * terminal — the panel (HudOverviewPanel) only renders them. */
+  const ovTop = activeDecisions[0] ?? null;
+  const ovTodayChanges = execLog.filter(
+    (it) => shISOofTs(it.ts) === dayISOofNum(todayShNum()),
+  ).length;
+  const ovFeed = [
+    ...execLog.map((it) => ({
+      ts: it.ts,
+      text: execLineText(it),
+      kind: "exec",
+    })),
+    ...termNotes.map((n) => ({
+      ts: n.ts,
+      text: n.text,
+      kind: n.kind as string,
+    })),
+  ]
+    .sort((a, b) => b.ts - a.ts)
+    .slice(0, 3);
+  const ovSteps =
+    manualApplies && manualHealth && manualHealth.steps != null
+      ? { value: manualHealth.steps, date: manualHealth.date as string | null }
+      : health.stepsToday != null
+        ? { value: health.stepsToday, date: health.stepsDate }
+        : null;
+  const ovHealthOk =
+    effHealth.sleep != null && ageDaysOf(effHealth.sleep.date) <= 2;
   /* FLIP reorder animation: when the computed order changes (e.g. the
    * health row revives on sync and floats up), rows glide from their
    * previous tops instead of the stack re-rendering in a flash. Tops
@@ -2475,23 +2918,51 @@ export function NeuralLanding({
             >
               <div className="hud-sheet-grip" aria-hidden />
               <div className="hud-phead">
-                <span className="hud-t">THE ORB · 模块树</span>
-                <span className="hud-chip hud-c-cyan">TREE</span>
-                <span className="hud-hex">0x0RB1</span>
+                <span className="hud-t">概览 · 指挥中枢</span>
+                <span className="hud-chip hud-c-cyan">OVERVIEW</span>
+                <span className="hud-hex">0x0VW1</span>
               </div>
             </div>
             <div className="hud-treebody">
-              {/* 左侧概览面板（hud-ux-dock）：树行/块格/连接线整体
-               * 退役——模块跳转由 Dock、底部卡轨与移动导航承接，
-               * 树行作为拖拽源/投放目标同步退役（引擎测不到锚点
-               * 即无锚点，不报错）。重构方案待用户拍板，先占位，
-               * 不许编造任何统计数字。 */}
-              <div
-                className="hud-tree-placeholder"
-                data-testid="hud-tree-placeholder"
-              >
-                概览面板 · 重构中
-              </div>
+              {/* 左侧概览面板（hud-left-panel）：树行/块格/连接线
+               * 已于 hud-ux-dock 整体退役（模块跳转由 Dock、底部
+               * 卡轨与移动导航承接），占位按用户拍板的庚结构 +
+               * 辛 FUI 皮肤实装为指挥中枢面板——下一件警报框 /
+               * 核心仪表 / 身体状态 / 七日活跃 / 实时播报 / 系统
+               * 状态，全部数字同源派生，口径见 HudOverviewPanel
+               * 组件头注释。 */}
+              <HudOverviewPanel
+                top={
+                  ovTop
+                    ? {
+                        name: ovTop.d.name,
+                        tag: ovTop.d.tag,
+                        wait: ovTop.d.wait,
+                        age: ovTop.age,
+                      }
+                    : null
+                }
+                onOpenTop={() => {
+                  if (ovTop) openDecision(ovTop.d);
+                }}
+                total={total}
+                pending={pendingCount}
+                pendingStale={
+                  activeDecisions.filter((s) => s.decayed).length
+                }
+                todayChanges={ovTodayChanges}
+                sleep={effHealth.sleep}
+                steps={ovSteps}
+                feed={ovFeed}
+                healthOk={ovHealthOk}
+                execLog={execLog}
+                sleepDays={health.sleepDays}
+                manualSleepDay={
+                  manualSleepApplies
+                    ? (manualHealth as ManualHealth).date
+                    : null
+                }
+              />
             </div>
             <div className="hud-log">
               <div className="hud-log-head">
