@@ -343,128 +343,6 @@ function HudDragRail({
   );
 }
 
-/* ── floating capsule nav (2026-10-22, hud-capsule) ──
- * One capsule for the whole studio, picked by the user from the
- * nav-options mock: on desktop it floats at the top centre over
- * the topbar's mid zone — icon-only at rest, hover (or keyboard
- * focus-within) widens it and brings out a short label per button.
- * At ≤1100px the same DOM becomes an in-flow icon row under the
- * topbar; a dedicated » toggle (shown only at ≤1100px — touch
- * hit-adjustment makes glass taps land on the nearest button, so
- * the toggle must be a real button) opens a wrapped label panel. It
- * replaces the hud-ux-dock Dock outright (desktop bar + mobile
- * strip both retired) and keeps the Dock's routing contract:
- * 总览 goes through backToOverview, module buttons through
- * openModule, and the pinned (touch) expansion collapses on
- * every view change. On desktop the glass itself is
- * pointer-events:none — only the buttons take clicks — so the
- * capsule can never swallow a topbar control beneath it. */
-const CAP_SHORT: Record<string, string> = {
-  inspiration: "灵",
-  skills: "技",
-  works: "作",
-  database: "数",
-  ontology: "本",
-  calendar: "历",
-  health: "健",
-  finance: "财",
-  studio: "创",
-};
-const CAP_LABEL: Record<string, string> = {
-  inspiration: "灵感池",
-  skills: "技能库",
-  works: "作品库",
-  database: "数据库",
-  ontology: "本体",
-  calendar: "日历",
-  health: "健康",
-  finance: "财务",
-  studio: "创作",
-};
-function HudCapsule({
-  modules,
-  current,
-  onHome,
-  onOpen,
-}: {
-  modules: HudModule[];
-  current: string | null;
-  onHome: () => void;
-  onOpen: (id: string) => void;
-}) {
-  const [open, setOpen] = React.useState(false);
-  /* a jump always lands with the capsule collapsed — reset during
-   * render (React's prop-change pattern), no effect needed */
-  const [prevCurrent, setPrevCurrent] = React.useState(current);
-  if (prevCurrent !== current) {
-    setPrevCurrent(current);
-    setOpen(false);
-  }
-  return (
-    <nav
-      className={cn("hud-capsule", open && "hud-cap-open")}
-      data-testid="hud-capsule"
-      data-open={open ? "1" : "0"}
-      aria-label="模块导航"
-      onClick={(e) => {
-        /* glass tap toggles the label panel (touch / ≤1100px);
-         * button taps bubble up with a button target and skip this */
-        if (e.target === e.currentTarget) setOpen((v) => !v);
-      }}
-    >
-      <button
-        type="button"
-        className={cn("hud-cap-btn hud-cap-home", current === null && "hud-cap-on")}
-        data-testid="hud-cap-home"
-        aria-label="返回总览"
-        aria-current={current === null ? "page" : undefined}
-        onClick={() => {
-          setOpen(false);
-          onHome();
-        }}
-        title="返回总览"
-      >
-        <span className="hud-cap-ch">⌂</span>
-        <span className="hud-cap-label">总览</span>
-      </button>
-      {modules.slice(0, 9).map((m) => (
-        <button
-          key={m.id}
-          type="button"
-          className={cn("hud-cap-btn", current === m.id && "hud-cap-on")}
-          data-testid={`hud-cap-btn-${m.id}`}
-          aria-label={m.label}
-          aria-current={current === m.id ? "page" : undefined}
-          style={{ "--beam": m.color } as React.CSSProperties}
-          onClick={() => {
-            setOpen(false);
-            onOpen(m.id);
-          }}
-          title={m.label}
-        >
-          <span className="hud-cap-ch">
-            {CAP_SHORT[m.id] ?? m.label.slice(0, 1)}
-          </span>
-          <span className="hud-cap-label">
-            {CAP_LABEL[m.id] ?? m.label}
-          </span>
-        </button>
-      ))}
-      <button
-        type="button"
-        className="hud-cap-toggle"
-        data-testid="hud-cap-toggle"
-        aria-label={open ? "收起导航标签" : "展开导航标签"}
-        aria-expanded={open}
-        onClick={() => setOpen((v) => !v)}
-        title={open ? "收起" : "展开"}
-      >
-        {open ? "«" : "»"}
-      </button>
-    </nav>
-  );
-}
-
 /* ── left overview panel (2026-10-22, hud-left-panel) ──
  * Replaces the hud-ux-dock placeholder in the left column (desktop)
  * and in the ≤1100px tree sheet — same DOM, same content. Design
@@ -2937,18 +2815,6 @@ export function NeuralLanding({
           </div>
         </div>
 
-        {/* ══ FLOATING CAPSULE NAV (hud-capsule) ══
-         * In-flow child of .hud-wrap: on desktop CSS lifts it out
-         * of flow to float over the topbar's mid zone; at ≤1100px
-         * it stays in flow as an icon row under the topbar. Shown
-         * on the overview and in module views alike. */}
-        <HudCapsule
-          modules={modules}
-          current={viewMod?.id ?? null}
-          onHome={backToOverview}
-          onOpen={openModule}
-        />
-
         {/* ══ SNAPSHOT STATUS NOTE ══ */}
         {snapNote && (
           <div className="hud-snap-note" data-testid="hud-snap-note" role="status">
@@ -2976,8 +2842,8 @@ export function NeuralLanding({
         </div>
 
         {viewMod || noteKind ? (
-          /* module / note view row: navigation lives in the
-           * floating capsule now (hud-capsule) — the view panel
+          /* module / note view row: navigation lives in the ⌘K
+           * palette and the mobile bottom nav — the view panel
            * takes the row's full width at every size. */
           <div className="hud-viewrow">
             {viewMod ? (
@@ -3022,8 +2888,8 @@ export function NeuralLanding({
             </div>
             <div className="hud-treebody">
               {/* 左侧概览面板（hud-left-panel）：树行/块格/连接线
-               * 已于 hud-ux-dock 整体退役（模块跳转由顶部浮空
-               * 胶囊、底部卡轨与移动导航承接），占位按用户拍板的庚结构 +
+               * 已于 hud-ux-dock 整体退役（模块跳转由 ⌘K 命令
+               * 面板、底部卡轨与移动导航承接），占位按用户拍板的庚结构 +
                * 辛 FUI 皮肤实装为指挥中枢面板——下一件警报框 /
                * 核心仪表 / 身体状态 / 七日活跃 / 实时播报 / 系统
                * 状态，全部数字同源派生，口径见 HudOverviewPanel
