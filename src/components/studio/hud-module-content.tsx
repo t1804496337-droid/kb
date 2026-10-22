@@ -153,12 +153,26 @@ const FLOW_STAGES: { id: FlowStage; label: string; en: string }[] = [
   { id: "ready", label: "待发", en: "READY" },
 ];
 
+/* 步骤平台标签（2026-10-22, hud-finale 差异包）：加性可选字段，
+ * 旧存档没有它——缺省不渲染标签；编辑入口在创作看板芯片上的小
+ * select，值域固定五平台 + 无平台。 */
+type FlowPlatform = "xhs" | "yt" | "bili" | "sph" | "x";
+const FLOW_PLATFORMS: { id: FlowPlatform; tag: string; label: string }[] = [
+  { id: "xhs", tag: "XHS", label: "小红书" },
+  { id: "yt", tag: "YT", label: "YouTube" },
+  { id: "bili", tag: "BILI", label: "B站" },
+  { id: "sph", tag: "SPH", label: "视频号" },
+  { id: "x", tag: "X", label: "X" },
+];
+const platformOf = (p?: string) => FLOW_PLATFORMS.find((x) => x.id === p);
+
 type FlowStep = {
   id: string;
   title: string;
   zone: FlowZone;
   note?: string;
   status?: FlowStage;
+  platform?: FlowPlatform;
 };
 
 const stepStage = (s: FlowStep): FlowStage =>
@@ -664,18 +678,54 @@ type SyncedWork = {
   title: string;
   published_at: string;
 };
-const SYNC_PLATFORMS: { name: string; note: string }[] = [
-  { name: "Bilibili · B站", note: "接口直连已备 · 待扫码登录后接入" },
-  { name: "抖音", note: "待抓取包回传后接入" },
-  { name: "视频号", note: "无公开同步通道 · 手工维护" },
-  { name: "YouTube", note: "待 API key 后接入" },
-  { name: "X", note: "未接入" },
-  { name: "TikTok", note: "未接入" },
+/* 同步条件逐平台分开写（2026-10-22, hud-finale 作品库乙）：每个
+ * 平台一行自己的接入条件，不再混成一段总述。 */
+const SYNC_PLATFORMS: { name: string; slug: string; cond: string }[] = [
+  { name: "抖音", slug: "douyin", cond: "本地抓取包回传 · MediaCrawler 在本人电脑跑，JSON 回传后接入" },
+  { name: "Bilibili · B站", slug: "bilibili", cond: "接口直连 · 需扫码登录" },
+  { name: "YouTube", slug: "youtube", cond: "官方 API · 待申请 key" },
+  { name: "视频号", slug: "channels", cond: "无公开同步通道 · 手动发布" },
+  { name: "X", slug: "x", cond: "未接入" },
+  { name: "TikTok", slug: "tiktok", cond: "未接入" },
 ];
+
+/** works-sync 平台键 → 卡片平台标签（作品数据里的真实 platform 字段）。 */
+const WORK_PLATFORM_TAGS: Record<string, string> = {
+  youtube: "YT",
+  bilibili: "BILI",
+  douyin: "DY",
+  channels: "SPH",
+  x: "X",
+  tiktok: "TT",
+};
+const workPlatformTag = (p: string) =>
+  WORK_PLATFORM_TAGS[p] ?? p.toUpperCase();
+
+/** 视频号意向标记（作品库丙）：{ workId: true } 本机落盘，
+ * snapshot.ts 已登记 worksChannelsIntent 片。纯意向记录，不触发
+ * 任何发布动作。 */
+const CHANNELS_INTENT_KEY = "studio_works_channels_intent_v1";
+function readChannelsIntent(): Record<string, boolean> {
+  try {
+    const raw = window.localStorage.getItem(CHANNELS_INTENT_KEY);
+    if (!raw) return {};
+    const v = JSON.parse(raw) as unknown;
+    if (!v || typeof v !== "object" || Array.isArray(v)) return {};
+    const out: Record<string, boolean> = {};
+    for (const [k, x] of Object.entries(v as Record<string, unknown>)) {
+      if (typeof x === "boolean") out[k] = x;
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
 
 function WorksBody() {
   const [synced, setSynced] = React.useState<SyncedWork[] | null>(null);
+  const [intent, setIntent] = React.useState<Record<string, boolean>>({});
   React.useEffect(() => {
+    setIntent(readChannelsIntent());
     let live = true;
     fetch("/works-sync.json", { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null))
@@ -691,6 +741,29 @@ function WorksBody() {
       live = false;
     };
   }, []);
+  const toggleIntent = (workId: string) => {
+    const next = { ...intent, [workId]: !intent[workId] };
+    try {
+      window.localStorage.setItem(CHANNELS_INTENT_KEY, JSON.stringify(next));
+    } catch {
+      return; /* 落盘失败不假装已标记 */
+    }
+    setIntent(next);
+  };
+  const intentBtn = (workId: string) => (
+    <button
+      type="button"
+      className={cn(
+        "hud-module-toggle",
+        intent[workId] && "hud-intent-on",
+      )}
+      data-testid={`hud-work-intent-${workId}`}
+      aria-pressed={!!intent[workId]}
+      onClick={() => toggleIntent(workId)}
+    >
+      {intent[workId] ? "视频号意向 · 已标记" : "标为视频号意向"}
+    </button>
+  );
   return (
     <div>
       <SecHead
@@ -715,7 +788,10 @@ function WorksBody() {
             youtube.com/watch?v=nmMQWsG5w3k ↗
           </a>
         </div>
+        <span className="hud-chip hud-c-cyan">[YT]</span>
         <span className="hud-chip hud-c-pink">待公开</span>
+        <span className="hud-chip hud-c-dim">未同步</span>
+        {intentBtn("yt-ep01")}
       </Row>
       <Row testid="hud-work-slot-ep01">
         <div className="hud-module-row-main">
@@ -726,7 +802,10 @@ function WorksBody() {
           </div>
         </div>
         <span className="hud-module-note">2026-10</span>
+        <span className="hud-chip hud-c-cyan">[SPH]</span>
         <span className="hud-chip hud-c-pink">待发布</span>
+        <span className="hud-chip hud-c-dim">未同步</span>
+        {intentBtn("sph-ep01")}
       </Row>
       <SecHead
         title="待办票"
@@ -757,15 +836,19 @@ function WorksBody() {
                 {w.platform} · {w.published_at}
               </div>
             </div>
+            <span className="hud-chip hud-c-cyan">
+              [{workPlatformTag(w.platform)}]
+            </span>
             <span className="hud-chip hud-c-grn">已同步</span>
+            {intentBtn(`${w.platform}:${w.id}`)}
           </Row>
         ))
       ) : null}
       {SYNC_PLATFORMS.map((p) => (
-        <Row key={p.name} testid={`hud-sync-${p.name}`}>
+        <Row key={p.slug} testid={`hud-sync-${p.slug}`}>
           <div className="hud-module-row-main">
             <div className="hud-module-row-t">{p.name}</div>
-            <div className="hud-module-row-sub">{p.note}</div>
+            <div className="hud-module-row-sub">同步条件：{p.cond}</div>
           </div>
           <span className="hud-chip hud-c-dim">未接入</span>
         </Row>
@@ -2787,6 +2870,157 @@ function FinanceBody() {
   );
 }
 
+/* ── 晨间古法健身流（2026-10-22, hud-finale）──
+ * 打卡只落本机 localStorage studio_ancient_checkins_v1
+ * （{ 'YYYY-MM-DD': true } 映射），snapshot.ts 已登记
+ * ancientCheckins 片；连续/累计天数只从该映射实算，不预填。
+ * 教程链接铁律：逐条来自 B 站真实搜索结果（官方搜索接口
+ * 2026-10-22 实测返回，BV 号与标题/作者一一对应）——八段锦
+ * BV1PoWwzxEeN《八段锦·国体版（全套12分钟）》/ 易筋经
+ * BV1sF411F7Tg《健身气功易筋经国家体育总局标准版》/ 五禽戏
+ * BV1Xy421e7td《五禽戏全套系统教学（国体版）》/ 站桩
+ * BV1vw411o7mP《站桩入门 · 15 个要求》/ 六字诀 BV1mS411w72r
+ * 《健身气功·六字诀全套口令演示版》。站内不嵌播放器。 */
+const ANCIENT_CHECKIN_KEY = "studio_ancient_checkins_v1";
+const ANCIENT_MOVES: {
+  id: string;
+  name: string;
+  en: string;
+  tags: string[];
+  dose: string;
+  bv: string;
+}[] = [
+  { id: "baduanjin", name: "八段锦", en: "BADUANJIN", tags: ["腹式呼吸", "升降开合", "意守丹田"], dose: "全套 1 遍 · 约 12 分钟", bv: "BV1PoWwzxEeN" },
+  { id: "yijinjing", name: "易筋经", en: "YIJINJING", tags: ["抻筋拔骨", "呼吸配合动作", "韦驮十二势"], dose: "全套 1 遍 · 约 15 分钟", bv: "BV1sF411F7Tg" },
+  { id: "wuqinxi", name: "五禽戏", en: "WUQINXI", tags: ["仿生导引", "起吸落呼", "虎鹿熊猿鸟"], dose: "全套 1 遍 · 约 15 分钟", bv: "BV1Xy421e7td" },
+  { id: "zhanzhuang", name: "站桩", en: "ZHANZHUANG", tags: ["混元桩", "松静自然", "意守下丹田"], dose: "10–20 分钟 · 每日 1 次", bv: "BV1vw411o7mP" },
+  { id: "liuzijue", name: "六字诀", en: "LIUZIJUE", tags: ["嘘呵呼呬吹嘻", "吐纳导引", "呼吸深长匀"], dose: "全套 1 遍 · 约 12 分钟", bv: "BV1mS411w72r" },
+];
+
+function readAncientCheckins(): Record<string, boolean> {
+  try {
+    const raw = window.localStorage.getItem(ANCIENT_CHECKIN_KEY);
+    if (!raw) return {};
+    const v = JSON.parse(raw) as unknown;
+    if (!v || typeof v !== "object" || Array.isArray(v)) return {};
+    const out: Record<string, boolean> = {};
+    for (const [k, x] of Object.entries(v as Record<string, unknown>)) {
+      if (x === true && /^\d{4}-\d{2}-\d{2}$/.test(k)) out[k] = true;
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+const shiftISODate = (iso: string, days: number): string => {
+  const [y, m, d] = iso.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d + days));
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${dt.getUTCFullYear()}-${p(dt.getUTCMonth() + 1)}-${p(dt.getUTCDate())}`;
+};
+
+/** 连续天数：从今日（未打卡则从昨日）往回数不断档的天数。 */
+function ancientStats(
+  checks: Record<string, boolean>,
+  todayStr: string,
+): { total: number; streak: number } {
+  const total = Object.keys(checks).filter((d) => checks[d]).length;
+  let cursor = checks[todayStr] ? todayStr : shiftISODate(todayStr, -1);
+  let streak = 0;
+  while (checks[cursor]) {
+    streak += 1;
+    cursor = shiftISODate(cursor, -1);
+  }
+  return { total, streak };
+}
+
+function AncientFitness() {
+  const [checks, setChecks] = React.useState<Record<string, boolean>>({});
+  React.useEffect(() => {
+    setChecks(readAncientCheckins());
+  }, []);
+  const now = new Date();
+  const p2 = (n: number) => String(n).padStart(2, "0");
+  const todayStr = `${now.getFullYear()}-${p2(now.getMonth() + 1)}-${p2(now.getDate())}`;
+  const doneToday = !!checks[todayStr];
+  const { total, streak } = ancientStats(checks, todayStr);
+  const toggleToday = () => {
+    const next = { ...checks };
+    if (next[todayStr]) delete next[todayStr];
+    else next[todayStr] = true;
+    try {
+      window.localStorage.setItem(ANCIENT_CHECKIN_KEY, JSON.stringify(next));
+    } catch {
+      return; /* 落盘失败不假装已打卡 */
+    }
+    setChecks(next);
+  };
+  return (
+    <div data-testid="hud-ancient">
+      <SecHead
+        title="晨间古法健身流"
+        en="ANCIENT FITNESS · LONGEVITY ROUTINE"
+        right={
+          <span className="hud-module-note">
+            起床后空腹练 · 与塑形主训练错开
+          </span>
+        }
+      />
+      <div className="hud-ancient-bar">
+        <div>
+          <div className="hud-ancient-state" data-testid="hud-ancient-state">
+            {doneToday ? "今日已完成" : "今日待执行"} · {todayStr}
+          </div>
+          <div className="hud-module-note">
+            连续 {streak} 天 · 累计 {total} 天（只按本机打卡记录实算）
+          </div>
+        </div>
+        <button
+          type="button"
+          className={cn("hud-module-toggle", doneToday && "hud-ancient-done")}
+          data-testid="hud-ancient-toggle"
+          aria-pressed={doneToday}
+          onClick={toggleToday}
+        >
+          {doneToday ? "已完成 ✓ · 点按撤销" : "打卡完成"}
+        </button>
+      </div>
+      {ANCIENT_MOVES.map((m) => (
+        <Row key={m.id} testid={`hud-ancient-${m.id}`}>
+          <div className="hud-module-row-main">
+            <div className="hud-module-row-t">
+              {m.name}
+              <span className="hud-module-row-en">{m.en}</span>
+            </div>
+            <div className="hud-ancient-tags">
+              {m.tags.map((t) => (
+                <span key={t} className="hud-ancient-tag">
+                  {t}
+                </span>
+              ))}
+            </div>
+          </div>
+          <span className="hud-chip hud-c-cyan">{m.dose}</span>
+          <a
+            className="hud-module-toggle hud-module-toggle-link"
+            data-testid={`hud-ancient-video-${m.id}`}
+            href={`https://www.bilibili.com/video/${m.bv}`}
+            target="_blank"
+            rel="noreferrer"
+          >
+            观看教程 ↗
+          </a>
+        </Row>
+      ))}
+      <p className="hud-module-note">
+        教程走 B 站外链新标签打开，站内不嵌播放器（保持轻量）；链接
+        逐条按 B 站真实搜索结果核实（BV 号与标题对应）。
+      </p>
+    </div>
+  );
+}
+
 /* ─────────────────────────── 2 · health ─────────────────────────── */
 
 function HealthBody() {
@@ -2917,6 +3151,7 @@ function HealthBody() {
       <Kv k="体重">
         {data.weight_kg != null ? `${data.weight_kg} kg` : "未同步"}
       </Kv>
+      <AncientFitness />
       <SecHead
         title="训练记录"
         en="TRAINING"
@@ -3079,24 +3314,9 @@ function OntologyBody() {
         en="ONTOLOGY"
         right={<span className="hud-module-note">结构与口径 · 先行立架</span>}
       />
-      <Kv k="状态">
-        <span className="hud-c-amb">建设中 · 空壳已上线 · 条目 0</span>
-      </Kv>
-      <Kv k="条目来源">第二大脑笔记 · goals/ai-2/hidden_files/notes/</Kv>
-      <Kv k="库存现状">框架 README 已建 · 归档笔记 0 篇（用户平时不存东西，从增量起步）</Kv>
-      <Kv k="归档规则">一事一件 · 文件名 YYYY-MM-DD-主题.md · 头部带来源/日期/标签</Kv>
-      <Kv k="标签体系">灵感 / 干货 / 待办线索 / 人脉 / 消费决策 / 其他</Kv>
-      <Kv k="捕获方式">聊天里丢来的链接/截图/灵感由 Luna 归档；对话中的有价值信息同步沉淀</Kv>
-      <Kv k="回顾">暂定按需 · 每周 digest 待确认后再设</Kv>
-      <SecHead
-        title="库内文件"
-        en="VAULT FILES · OBSIDIAN 直达"
-        right={
-          <span className="hud-module-note">
-            点 [OBSIDIAN] 唤起本地 Obsidian 打开该文件
-          </span>
-        }
-      />
+      {/* 库名输入置顶（2026-10-22, hud-finale）：进面板第一眼可见可改；
+       * 键 studio_obsidian_vault_v1 与保存逻辑与原「库内文件」区共用
+       * 同一份状态，此处只是位置前移。 */}
       <div className="hud-vault-row">
         <label className="hud-vault-label" htmlFor="hud-obsidian-vault">
           OBSIDIAN 库名
@@ -3118,6 +3338,24 @@ function OntologyBody() {
           </span>
         ) : null}
       </div>
+      <Kv k="状态">
+        <span className="hud-c-amb">建设中 · 空壳已上线 · 条目 0</span>
+      </Kv>
+      <Kv k="条目来源">第二大脑笔记 · goals/ai-2/hidden_files/notes/</Kv>
+      <Kv k="库存现状">框架 README 已建 · 归档笔记 0 篇（用户平时不存东西，从增量起步）</Kv>
+      <Kv k="归档规则">一事一件 · 文件名 YYYY-MM-DD-主题.md · 头部带来源/日期/标签</Kv>
+      <Kv k="标签体系">灵感 / 干货 / 待办线索 / 人脉 / 消费决策 / 其他</Kv>
+      <Kv k="捕获方式">聊天里丢来的链接/截图/灵感由 Luna 归档；对话中的有价值信息同步沉淀</Kv>
+      <Kv k="回顾">暂定按需 · 每周 digest 待确认后再设</Kv>
+      <SecHead
+        title="库内文件"
+        en="VAULT FILES · OBSIDIAN 直达"
+        right={
+          <span className="hud-module-note">
+            点 [OBSIDIAN] 唤起本地 Obsidian 打开该文件
+          </span>
+        }
+      />
       {ONTOLOGY_FILES.map((f) => (
         <Row key={f.file} testid={`hud-onto-file-${f.file}`}>
           <div className="hud-module-row-main">
@@ -3187,6 +3425,14 @@ function InspirationBody() {
                       <div className="hud-module-row-sub">{s.note}</div>
                     ) : null}
                   </div>
+                  {platformOf(s.platform) ? (
+                    <span
+                      className="hud-chip hud-c-cyan"
+                      data-testid={`hud-step-plat-${s.id}`}
+                    >
+                      [{platformOf(s.platform)?.tag}]
+                    </span>
+                  ) : null}
                 </Row>
               ))
             ) : (
@@ -3250,6 +3496,25 @@ function StudioBoard() {
         "studio",
         `${cur.title} → ${FLOW_STAGES.find((s) => s.id === target)?.label ?? target}`,
       );
+    },
+    [steps],
+  );
+
+  /* 平台标签切换（hud-finale）：与换道同一落盘纪律——写成功才
+   * 更新状态；platform 是加性字段，清掉时整键删除不留空串。 */
+  const setStepPlatform = React.useCallback(
+    (idx: number, p: FlowPlatform | "") => {
+      const cur = steps[idx];
+      if (!cur || (cur.platform ?? "") === p) return;
+      const next = steps.map((s, i) => {
+        if (i !== idx) return s;
+        const copy = { ...s };
+        if (p) copy.platform = p;
+        else delete copy.platform;
+        return copy;
+      });
+      if (!writeFlowSteps(next)) return;
+      setSteps(next);
     },
     [steps],
   );
@@ -3396,6 +3661,34 @@ function StudioBoard() {
                         {FLOW_ZONES.find((z) => z.id === s.zone)?.label ?? s.zone}
                         区
                       </span>
+                      {platformOf(s.platform) ? (
+                        <span
+                          className="hud-chip hud-c-cyan"
+                          data-testid={`hud-board-plat-tag-${s.id ?? `row-${i}`}`}
+                        >
+                          [{platformOf(s.platform)?.tag}]
+                        </span>
+                      ) : null}
+                      <select
+                        className="hud-board-plat"
+                        data-testid={`hud-board-plat-${s.id ?? `row-${i}`}`}
+                        aria-label={`平台 · ${s.title}`}
+                        value={s.platform ?? ""}
+                        onPointerDown={(e) => e.stopPropagation()}
+                        onChange={(e) =>
+                          setStepPlatform(
+                            i,
+                            e.target.value as FlowPlatform | "",
+                          )
+                        }
+                      >
+                        <option value="">—</option>
+                        {FLOW_PLATFORMS.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.tag}
+                          </option>
+                        ))}
+                      </select>
                       <button
                         type="button"
                         className="hud-board-arrow"
@@ -3465,7 +3758,10 @@ function StudioBody({ onOpen }: { onOpen: (id: string) => void }) {
   ];
   return (
     <div>
-      <SecHead title="创作组入口" en="CREATE GROUP" />
+      {/* 看板升主视图（2026-10-22, hud-finale）：进创作空间首屏即
+       * 三泳道看板；原 HUB 入口卡与总览降为看板下方的次级区。 */}
+      <StudioBoard />
+      <SecHead title="创作组入口" en="CREATE GROUP · 次级" />
       <div className="hud-module-hub">
         {cards.map((c) => (
           <button
@@ -3497,7 +3793,6 @@ function StudioBody({ onOpen }: { onOpen: (id: string) => void }) {
       <Kv k="技能库">{ALL_SKILLS.length} 个已装技能（grokbot 8 · Luna 5）</Kv>
       <Kv k="最近动态 · 10-18">YouTube EP001 已上传 · 待改公开</Kv>
       <Kv k="最近动态 · 10-19">视频号 ep01 配音定稿（Fish Audio 影视解说男声）· 待发布</Kv>
-      <StudioBoard />
     </div>
   );
 }

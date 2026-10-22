@@ -1457,6 +1457,35 @@ export function NeuralLanding({
     archivedSet.has(s.d.id),
   );
   const pendingCount = activeDecisions.length;
+  /* ── data-driven visuals (2026-10-22, hud-finale) ──
+   * Sleep → sphere color temperature. NO fabricated "sleep score":
+   * the warmth w ∈ [0,1] is derived only from effHealth's real
+   * sleep record (duration hours + bedtime start):
+   *   durationPart = clamp(hours / 8, 0, 1)
+   *   bedtimePart  = clamp(1 − (minutes past 00:00) / 120, 0, 1)
+   *     (start reads as "last night": ≥12:00 counts as before
+   *     midnight, e.g. 23:40 → −20min → 1; 02:00 → 120min → 0)
+   *   w = start ? 0.65·durationPart + 0.35·bedtimePart : durationPart
+   * No sleep data at all → null → no CSS var → the glow keeps its
+   * stock colour (never a guessed tint).
+   * Pending → radar heat: h = clamp(pendingCount / 6, 0, 1), the
+   * same unarchived count as the stack chip / mobile badge. */
+  const sleepWarm: number | null = (() => {
+    const slp = effHealth.sleep;
+    if (!slp || typeof slp.hours !== "number" || !Number.isFinite(slp.hours))
+      return null;
+    const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
+    const durationPart = clamp01(slp.hours / 8);
+    const m = slp.start ? /^(\d{1,2}):(\d{2})$/.exec(slp.start) : null;
+    if (!m) return durationPart;
+    let mins = Number(m[1]) * 60 + Number(m[2]);
+    if (mins >= 12 * 60) mins -= 24 * 60;
+    const bedtimePart = clamp01(1 - Math.max(0, mins) / 120);
+    return 0.65 * durationPart + 0.35 * bedtimePart;
+  })();
+  const radarHeat = Math.max(0, Math.min(1, pendingCount / 6));
+  const radarSweepS = 14 - 9 * radarHeat; /* 14s (h=0) → 5s (h=1) */
+  const radarGridA = 0.22 + 0.35 * radarHeat;
   /* ── left overview panel feeds (2026-10-22, hud-left-panel) ──
    * All derived from the same live sources as the stack and the
    * terminal — the panel (HudOverviewPanel) only renders them. */
@@ -3140,7 +3169,17 @@ export function NeuralLanding({
                 <br />Δ +{total} / 30D
               </div>
             </div>
-            <div className={`hud-stage${mmOpen ? " is-mm-open" : ""}`}>
+            <div
+              className={`hud-stage${mmOpen ? " is-mm-open" : ""}`}
+              data-sleep-warm={
+                sleepWarm !== null ? sleepWarm.toFixed(3) : undefined
+              }
+              style={
+                sleepWarm !== null
+                  ? ({ "--hud-sleep-warm": sleepWarm } as React.CSSProperties)
+                  : undefined
+              }
+            >
               <div className="hud-sphere-glow" aria-hidden />
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
@@ -3262,15 +3301,23 @@ export function NeuralLanding({
 
           {/* RIGHT · RADAR + DECISION STACK */}
           <div className="hud-right">
-            <div className="hud-panel hud-dn hud-p-purple hud-radar">
+            <div
+              className={`hud-panel hud-dn hud-p-purple hud-radar${radarHeat >= 5 / 6 ? " hud-radar-hot" : ""}`}
+              data-radar-heat={radarHeat.toFixed(3)}
+              style={{ "--hud-radar-heat": radarHeat } as React.CSSProperties}
+            >
               <div className="hud-phead">
                 <span className="hud-t">RADAR · 模块雷达</span>
                 <span className="hud-hex">0xRDAR</span>
               </div>
-              <div className="hud-radarsweep" aria-hidden />
+              <div
+                className="hud-radarsweep"
+                aria-hidden
+                style={{ animationDuration: `${radarSweepS}s` }}
+              />
               <div className="hud-rbody">
                 <svg width="158" height="168" viewBox="0 0 158 168" aria-hidden>
-                  <g stroke="rgba(140,120,255,.22)" fill="none">
+                  <g stroke={`rgba(140,120,255,${radarGridA.toFixed(3)})`} fill="none">
                     <polygon points="79,16 134,52 118,124 40,124 24,52" />
                     <polygon points="79,34 119,60 107,112 51,112 39,60" />
                     <polygon points="79,52 104,68 96,100 62,100 54,68" />

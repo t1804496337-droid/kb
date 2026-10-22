@@ -3073,6 +3073,13 @@ div.studio-orb.studio-orb-bg,
   --hud-int-corner-c-purple: rgba(178, 0, 255, 0.6);
   --hud-int-panel-tint: rgba(0, 255, 255, 0.06);
   --hud-int-stack-gap: 10px;
+  /* data-driven visuals (2026-10-22, hud-finale): sleep warmth
+   * endpoints for the sphere glow (cold blue ↔ warm gold) and the
+   * radar heat ring colour. --hud-sleep-warm / --hud-radar-heat
+   * themselves are set inline by neural-landing (data-derived). */
+  --hud-int-sleep-cold: #3a7bff;
+  --hud-int-sleep-warm: #ffb84d;
+  --hud-int-radar-hot: rgba(178, 0, 255, 0.55);
   --hud-int-log-line-h: 14px;
   --hud-int-log-fade: rgba(2, 4, 9, 0.55);
 }
@@ -3473,6 +3480,45 @@ div.studio-orb.studio-orb-bg,
 .hud-stage.is-mm-open .hud-sphere-glow {
   animation: none;
   opacity: var(--hud-int-mm-sphere-dim);
+}
+/* ── sleep → sphere colour temperature (2026-10-22, hud-finale) ──
+ * --hud-sleep-warm is a registered <number> so the tint can
+ * transition instead of snapping; when the var is absent (no real
+ * sleep record) the attribute selector never matches and the glow
+ * keeps its stock gradient — an unsupported @property/color-mix
+ * degrades the same way (override dropped, base rule stands).
+ * The mix runs between two equal-alpha endpoints so the halo's
+ * strength stays constant while its temperature moves. */
+@property --hud-sleep-warm {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 0;
+}
+.hud-stage { transition: --hud-sleep-warm 1.2s ease; }
+.hud-stage[data-sleep-warm] {
+  background-image: radial-gradient(
+    ellipse 72% 62% at 50% 46%,
+    color-mix(in srgb, rgba(58, 123, 255, 0.1), rgba(255, 184, 77, 0.1) calc(var(--hud-sleep-warm) * 100%)),
+    transparent 70%
+  );
+}
+.hud-stage[data-sleep-warm] .hud-sphere-glow {
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, rgba(58, 123, 255, 0.26), rgba(255, 184, 77, 0.26) calc(var(--hud-sleep-warm) * 100%)) 0%,
+    rgba(178, 0, 255, 0.12) 45%,
+    transparent 68%
+  );
+}
+/* ── pending → radar heat (2026-10-22, hud-finale) ──
+ * Grid brightness + sweep duration are data-set inline (React);
+ * at heat ≥ 5/6 the panel gains a breathing outer ring. */
+.hud-radar-hot {
+  animation: hud-radar-breathe 2.6s ease-in-out infinite;
+}
+@keyframes hud-radar-breathe {
+  0%, 100% { box-shadow: 0 0 0 rgba(178, 0, 255, 0), inset 0 0 0 rgba(178, 0, 255, 0); }
+  50% { box-shadow: 0 0 24px var(--hud-int-radar-hot), inset 0 0 18px rgba(178, 0, 255, 0.14); }
 }
 .hud-jelly {
   position: absolute;
@@ -4393,7 +4439,9 @@ div.studio-orb.studio-orb-bg,
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 12px 14px 16px;
+  /* spec alignment (2026-10-22, hud-finale): module info boards
+   * share the overview's 15px panel padding token. */
+  padding: var(--hud-int-panel-pad);
   scrollbar-width: thin;
   scrollbar-color: rgba(0, 255, 255, 0.35) transparent;
 }
@@ -4488,7 +4536,9 @@ div.studio-orb.studio-orb-bg,
   align-items: flex-start;
   gap: 10px;
   padding: 8px 10px;
-  margin-bottom: 6px;
+  /* spec alignment (hud-finale): list rhythm = 10px gaps, 8px
+   * vertical padding — same caliber as the denoise tokens. */
+  margin-bottom: 10px;
   border: 1px solid rgba(0, 255, 255, 0.14);
   background: linear-gradient(180deg, rgba(13, 18, 34, 0.5), rgba(6, 8, 16, 0.6));
 }
@@ -5510,6 +5560,71 @@ div.studio-orb.studio-orb-bg,
   .hud-board-lane { min-height: 64px; }
   .hud-board-chip { box-shadow: none; }
   .hud-board-chip-drag { box-shadow: 0 6px 16px rgba(0, 0, 0, 0.55); }
+}
+
+/* ── finale (2026-10-22, hud-finale) ──
+ * Board chip platform select, works channels-intent marker, and
+ * the health module's ancient-fitness block. */
+/* The select lives inside a draggable chip: compact, HUD-toned,
+ * and it swallows its own pointerdown (see StudioBoard) so picking
+ * a platform never starts a drag. */
+.hud-board-plat {
+  font: inherit;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 9.5px;
+  letter-spacing: 0.04em;
+  color: var(--hud-cyan);
+  background: rgba(0, 255, 255, 0.05);
+  border: 1px solid rgba(0, 255, 255, 0.3);
+  height: 22px;
+  padding: 0 2px;
+  cursor: pointer;
+  flex: none;
+  max-width: 64px;
+}
+.hud-board-plat:hover { background: rgba(0, 255, 255, 0.14); }
+.hud-intent-on {
+  color: #3dff9e;
+  border-color: rgba(61, 255, 158, 0.55);
+  background: rgba(61, 255, 158, 0.1);
+  text-shadow: 0 0 7px rgba(61, 255, 158, 0.45);
+}
+.hud-ancient-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  margin-bottom: 10px;
+  border: 1px solid rgba(0, 255, 255, 0.14);
+  background: linear-gradient(180deg, rgba(13, 18, 34, 0.5), rgba(6, 8, 16, 0.6));
+}
+.hud-ancient-state {
+  font-size: 12px;
+  color: #e8f4ff;
+  letter-spacing: 0.08em;
+  margin-bottom: 2px;
+}
+.hud-ancient-done {
+  color: #3dff9e;
+  border-color: rgba(61, 255, 158, 0.55);
+  background: rgba(61, 255, 158, 0.1);
+}
+.hud-ancient-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+.hud-ancient-tag {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "PingFang SC", "Microsoft YaHei", monospace;
+  font-size: 9.5px;
+  letter-spacing: 0.05em;
+  color: var(--hud-ink);
+  border: 1px solid rgba(0, 255, 255, 0.22);
+  background: rgba(0, 255, 255, 0.04);
+  padding: 1px 6px;
+  white-space: nowrap;
 }
 
 /* ══════════════════════════════════════════════════════════════════

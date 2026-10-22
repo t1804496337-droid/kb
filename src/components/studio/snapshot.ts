@@ -75,7 +75,14 @@ const okCalItem = (i: unknown): boolean =>
 const okFlowStep = (s: unknown): boolean =>
   isPlainObject(s) &&
   typeof s.title === "string" &&
-  (s.zone === "me" || s.zone === "ai" || s.zone === "agent");
+  (s.zone === "me" || s.zone === "ai" || s.zone === "agent") &&
+  /* platform 是 hud-finale 的加性可选字段：缺省合法，出现时须在值域内 */
+  (s.platform === undefined ||
+    s.platform === "xhs" ||
+    s.platform === "yt" ||
+    s.platform === "bili" ||
+    s.platform === "sph" ||
+    s.platform === "x");
 
 const okModuleRow = (r: unknown): boolean =>
   isPlainObject(r) && typeof r.id === "string" && typeof r.title === "string";
@@ -209,6 +216,15 @@ export const SLICES: SliceDef[] = [
     (v.sleepEnd === undefined || typeof v.sleepEnd === "string") &&
     (v.steps === undefined || (isFiniteNum(v.steps) && (v.steps as number) >= 0)) &&
     (v.sleepHours !== undefined || v.steps !== undefined),
+  ),
+  /* 晨间古法健身打卡（2026-10-22, hud-finale）：{ 'YYYY-MM-DD': true } */
+  jsonSlice("ancientCheckins", "studio_ancient_checkins_v1", "健康·古法打卡", (v) =>
+    isPlainObject(v) &&
+    Object.entries(v).every(([k, x]) => isDateStr(k) && x === true),
+  ),
+  /* 作品库视频号意向标记（2026-10-22, hud-finale）：{ workId: boolean } */
+  jsonSlice("worksChannelsIntent", "studio_works_channels_intent_v1", "作品库·视频号意向", (v) =>
+    isPlainObject(v) && Object.values(v).every((x) => typeof x === "boolean"),
   ),
   /* 自定义模块与枢纽行（旧工作台层，page.tsx） */
   jsonSlice("customModules", "studio_custom_modules_v1", "自定义模块", arrayOf(
