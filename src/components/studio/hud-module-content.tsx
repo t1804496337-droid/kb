@@ -556,6 +556,10 @@ function DatabaseBody() {
   React.useEffect(() => {
     setSteps(readFlowSteps());
   }, []);
+  /* 分段切换（hud-dbgrid）：三区一次显示一区，纯前端状态不落盘。 */
+  const [tab, setTab] = React.useState<"skills" | "flow" | "entries">(
+    "skills",
+  );
   const sleepN = HEALTH_SYNC_STATIC.sleep?.last7?.length ?? 0;
   const entryRows: {
     id: string;
@@ -593,79 +597,144 @@ function DatabaseBody() {
       cls: "hud-c-amb",
     },
   ];
+  const tabs: {
+    id: "skills" | "flow" | "entries";
+    label: string;
+    en: string;
+    n: number;
+  }[] = [
+    { id: "skills", label: "技能索引", en: "SKILLS", n: ALL_SKILLS.length },
+    { id: "flow", label: "流程索引", en: "WORKFLOW", n: steps.length },
+    { id: "entries", label: "条目索引", en: "ENTRIES", n: entryRows.length },
+  ];
   return (
     <div>
       <p className="hud-module-note" style={{ marginBottom: 4 }}>
         定位：全站总索引——技能 / 流程 / 条目三区。技能库是「已装技能的
         使用视图」，这里是「有什么」的登记表，两边同源不同视角。
       </p>
-      <SecHead
-        title="技能索引"
-        en="SKILLS INDEX"
-        right={
-          <span className="hud-module-note">
-            源 skills-sync.json · {ALL_SKILLS.length} 条
-          </span>
-        }
-      />
-      {ALL_SKILLS.map((s) => (
-        <Row key={`db-s-${s.id}`} testid={`hud-db-s-${s.id}`}>
-          <div className="hud-module-row-main">
-            <div className="hud-module-row-t">
-              {s.zh} · {s.name}
-            </div>
-            <div className="hud-module-row-src">
-              {s.source} · {SKILLS_SYNC.agents.find((a) => a.skills.some((x) => x.id === s.id))?.name ?? ""}
-            </div>
+      {/* 分段切换（hud-dbgrid）：三段带真实计数，一次显示一区；
+       * 区标题仍由下方 SecHead 兼任（带数据源注记），分段条只管切换。 */}
+      <div
+        className="hud-db-seg"
+        role="tablist"
+        aria-label="数据库索引分区"
+        data-testid="hud-db-seg"
+      >
+        {tabs.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            role="tab"
+            aria-selected={tab === t.id}
+            className={cn("hud-db-seg-btn", tab === t.id && "is-on")}
+            data-testid={`hud-db-seg-${t.id}`}
+            onClick={() => setTab(t.id)}
+          >
+            {t.label}
+            <span className="hud-db-seg-en">{t.en}</span>
+            <span className="hud-db-seg-n">{t.n}</span>
+          </button>
+        ))}
+      </div>
+      {tab === "skills" ? (
+        <>
+          <SecHead
+            title="技能索引"
+            en="SKILLS INDEX"
+            right={
+              <span className="hud-module-note">
+                源 skills-sync.json · {ALL_SKILLS.length} 条
+              </span>
+            }
+          />
+          <div className="hud-db-grid" data-testid="hud-db-grid-skills">
+            {ALL_SKILLS.map((s) => (
+              <div
+                className="hud-db-card"
+                key={`db-s-${s.id}`}
+                data-testid={`hud-db-s-${s.id}`}
+              >
+                <div className="hud-module-row-main">
+                  <div className="hud-module-row-t">
+                    {s.zh} · {s.name}
+                  </div>
+                  <div className="hud-module-row-src">
+                    {s.source} · {SKILLS_SYNC.agents.find((a) => a.skills.some((x) => x.id === s.id))?.name ?? ""}
+                  </div>
+                </div>
+                <span className="hud-chip hud-c-cyan">SKILL</span>
+              </div>
+            ))}
           </div>
-          <span className="hud-chip hud-c-cyan">SKILL</span>
-        </Row>
-      ))}
-      <SecHead
-        title="流程索引"
-        en="WORKFLOW INDEX"
-        right={
-          <span className="hud-module-note">
-            与灵感池同源 studio_workflow_steps_v2 · {steps.length} 步
-          </span>
-        }
-      />
-      {steps.length > 0 ? (
-        steps.map((s) => (
-          <Row key={`db-f-${s.id}`} testid={`hud-db-f-${s.id}`}>
-            <div className="hud-module-row-main">
-              <div className="hud-module-row-t">{s.title}</div>
-              {s.note ? (
-                <div className="hud-module-row-sub">{s.note}</div>
-              ) : null}
+        </>
+      ) : null}
+      {tab === "flow" ? (
+        <>
+          <SecHead
+            title="流程索引"
+            en="WORKFLOW INDEX"
+            right={
+              <span className="hud-module-note">
+                与灵感池同源 studio_workflow_steps_v2 · {steps.length} 步
+              </span>
+            }
+          />
+          {steps.length > 0 ? (
+            <div className="hud-db-list">
+              {steps.map((s) => (
+                <div
+                  className="hud-db-card"
+                  key={`db-f-${s.id}`}
+                  data-testid={`hud-db-f-${s.id}`}
+                >
+                  <div className="hud-module-row-main">
+                    <div className="hud-module-row-t">{s.title}</div>
+                    {s.note ? (
+                      <div className="hud-module-row-sub">{s.note}</div>
+                    ) : null}
+                  </div>
+                  <span className="hud-chip hud-c-pur">
+                    {FLOW_ZONES.find((z) => z.id === s.zone)?.label ?? s.zone}区
+                  </span>
+                </div>
+              ))}
             </div>
-            <span className="hud-chip hud-c-pur">
-              {FLOW_ZONES.find((z) => z.id === s.zone)?.label ?? s.zone}区
-            </span>
-          </Row>
-        ))
-      ) : (
-        <EmptyState
-          title="流程 0 步"
-          sub="灵感池三区皆空（旧 8 步已于 2026-10-20 清空）· 在灵感池新增步骤后这里同步出现"
-        />
-      )}
-      <SecHead
-        title="条目索引"
-        en="ENTRY INDEX"
-        right={
-          <span className="hud-module-note">跨模块登记 · {entryRows.length} 条</span>
-        }
-      />
-      {entryRows.map((r) => (
-        <Row key={r.id} testid={`hud-db-${r.id}`}>
-          <div className="hud-module-row-main">
-            <div className="hud-module-row-t">{r.title}</div>
-            <div className="hud-module-row-sub">{r.sub}</div>
+          ) : (
+            /* 空状态紧凑条（hud-dbgrid）：一行高细虚线条，不占大块虚线框。 */
+            <div className="hud-db-empty" data-testid="hud-db-flow-empty">
+              流程 0 步 · 灵感池三区皆空（旧 8 步已于 2026-10-20 清空）·
+              在灵感池新增步骤后这里同步出现
+            </div>
+          )}
+        </>
+      ) : null}
+      {tab === "entries" ? (
+        <>
+          <SecHead
+            title="条目索引"
+            en="ENTRY INDEX"
+            right={
+              <span className="hud-module-note">跨模块登记 · {entryRows.length} 条</span>
+            }
+          />
+          <div className="hud-db-grid" data-testid="hud-db-grid-entries">
+            {entryRows.map((r) => (
+              <div
+                className="hud-db-card"
+                key={r.id}
+                data-testid={`hud-db-${r.id}`}
+              >
+                <div className="hud-module-row-main">
+                  <div className="hud-module-row-t">{r.title}</div>
+                  <div className="hud-module-row-sub">{r.sub}</div>
+                </div>
+                <span className={cn("hud-chip", r.cls)}>{r.kind}</span>
+              </div>
+            ))}
           </div>
-          <span className={cn("hud-chip", r.cls)}>{r.kind}</span>
-        </Row>
-      ))}
+        </>
+      ) : null}
     </div>
   );
 }
