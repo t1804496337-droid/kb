@@ -5482,6 +5482,10 @@ div.studio-orb.studio-orb-bg,
 }
 .hud-module-kv span { color: var(--hud-dim); letter-spacing: 0.08em; flex: none; }
 .hud-module-kv b { color: var(--hud-int-radial-name); font-weight: 500; text-align: right; }
+.hud-module-kvboard {
+  padding-left: var(--hud-sp-26);
+  border-left: var(--hud-sp-1) dashed var(--hud-c-8cb4ff-a18);
+}
 .hud-module-bars { margin: var(--hud-sp-8) 0 var(--hud-sp-4); }
 .hud-module-bar-row {
   display: flex;
