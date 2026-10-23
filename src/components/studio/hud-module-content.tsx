@@ -2756,7 +2756,7 @@ function FinanceBody() {
   const finInputStyle = { marginBottom: 0 } as const;
 
   return (
-    <div data-testid="hud-fin-view">
+    <div className="hud-module-shell" data-testid="hud-fin-view">
       {toast ? (
         <p
           className="hud-module-note"
@@ -2767,6 +2767,8 @@ function FinanceBody() {
         </p>
       ) : null}
 
+      <div className="hud-module-grid hud-module-grid-mainaux">
+        <div className="hud-module-zone-main">
       {/* ---------- 概览 ---------- */}
       <div data-testid="hud-fin-overview">
         <SecHead
@@ -2782,159 +2784,6 @@ function FinanceBody() {
           {finGreeting()}，这是你在 {finMonthLabel(nowMonth)} 的财务概览。{scopeNote}
           · 口径在月度报告里切换
         </p>
-        <div className="hud-module-stats">
-          <FinStat
-            k={`本月净现金流 · ${finMonthLabel(nowMonth)}`}
-            v={fmtMoney(ov.net)}
-            sub={`收入 ${fmtMoney(ov.income)} · 流出 ${fmtMoney(ov.outflow)}`}
-            testid="hud-fin-ov-netflow"
-            data={{ income: ov.income, outflow: ov.outflow, net: ov.net }}
-          />
-          <FinStat
-            k="本月支出"
-            v={fmtMoney(ov.outflow)}
-            sub={`共 ${ov.expenseCount} 条支出明细（当前口径）`}
-            testid="hud-fin-ov-expense"
-            data={{ amount: ov.outflow, count: ov.expenseCount }}
-          />
-          <FinStat
-            k="累计支出 · 全部期间"
-            v={fmtMoney(totalAllOut)}
-            sub="全部口径 · 与旧汇总卡同数（由流水实时算）"
-            testid="hud-fin-ov-total"
-            data={{ amount: totalAllOut }}
-          />
-        </div>
-        <div className="hud-module-stats">
-          <div
-            className="hud-module-stat"
-            data-testid="hud-fin-ov-budget"
-            data-budget={budget === null ? "none" : budget}
-            data-remaining={budgetRemaining === null ? "none" : budgetRemaining}
-            data-pct={budgetPct}
-          >
-            <div className="hud-module-stat-v">
-              {budget === null
-                ? "未设置"
-                : fmtMoney(budgetRemaining ?? 0)}
-            </div>
-            <div className="hud-module-stat-k">预算剩余 · 本月</div>
-            {budget === null ? (
-              <div className="hud-module-note" style={{ marginTop: 3 }}>
-                设一个月度预算，这里会显示剩余与进度。
-              </div>
-            ) : (
-              <>
-                <div className="hud-module-note" style={{ marginTop: 3 }}>
-                  预算 {fmtMoney(budget)} · 已用 {budgetPct}%（按当前口径支出计）
-                </div>
-                <div
-                  style={{
-                    marginTop: 6,
-                    height: 6,
-                    background: "rgba(255,255,255,0.08)",
-                  }}
-                >
-                  <div
-                    style={{
-                      height: "100%",
-                      width: `${budgetPct}%`,
-                      background: "var(--hud-yellow)",
-                    }}
-                  />
-                </div>
-              </>
-            )}
-            {budgetEditing || budget === null ? (
-              <div
-                className="hud-module-form"
-                style={{ marginTop: 8, marginBottom: 0 }}
-              >
-                <input
-                  data-testid="hud-fin-budget-input"
-                  type="number"
-                  min="0"
-                  className={finInputCls}
-                  style={{ ...finInputStyle, width: 140 }}
-                  value={budgetDraft}
-                  onChange={(e) => setBudgetDraft(e.target.value)}
-                  placeholder="月度预算（元）"
-                />
-                <button
-                  type="button"
-                  data-testid="hud-fin-budget-save"
-                  className="hud-module-toggle"
-                  onClick={applyBudget}
-                >
-                  保存
-                </button>
-                {budget !== null ? (
-                  <>
-                    <button
-                      type="button"
-                      className="hud-module-toggle"
-                      onClick={() => setBudgetEditing(false)}
-                    >
-                      取消
-                    </button>
-                    <button
-                      type="button"
-                      data-testid="hud-fin-budget-clear"
-                      className="hud-module-del"
-                      onClick={() => {
-                        saveBudget(null);
-                        setBudgetEditing(false);
-                        setBudgetDraft("");
-                        showToast("月度预算已清除");
-                      }}
-                    >
-                      清除
-                    </button>
-                  </>
-                ) : null}
-              </div>
-            ) : (
-              <button
-                type="button"
-                data-testid="hud-fin-budget-edit"
-                className="hud-module-toggle"
-                style={{ marginTop: 8 }}
-                onClick={() => {
-                  setBudgetDraft(String(budget));
-                  setBudgetEditing(true);
-                }}
-              >
-                修改预算
-              </button>
-            )}
-          </div>
-          <FinStat
-            k="借款负债"
-            v={liabilities.length === 0 ? "暂无负债" : fmtMoney(liabTotal)}
-            sub={
-              liabilities.length === 0
-                ? "还没有负债记录，去下方「负债管理」添加第一笔。"
-                : `${liabilities.length} 笔 · 月最低还款合计 ${fmtMoney(liabMin)}`
-            }
-            testid="hud-fin-ov-liab"
-            data={{ total: liabTotal, count: liabilities.length }}
-          />
-          <FinStat
-            k="追踪资产"
-            v={assets.length === 0 ? "暂无资产" : fmtMoney(assetCost)}
-            sub={
-              assets.length === 0
-                ? "还没有资产记录，去下方「资产台账」添加第一项。"
-                : `${assets.length} 项持仓成本${assetValue !== null ? ` · 现值合计 ${fmtMoney(assetValue)}` : ""}`
-            }
-            testid="hud-fin-ov-asset"
-            data={{
-              count: assets.length,
-              cost: assetCost,
-              value: assetValue === null ? "none" : assetValue,
-            }}
-          />
-        </div>
       </div>
 
       {/* ---------- 记账明细 ---------- */}
@@ -4063,6 +3912,163 @@ function FinanceBody() {
         >
           复制本月摘要给 Luna
         </button>
+      </div>
+        </div>
+        <div className="hud-module-zone-aux">
+        <div className="hud-module-stats">
+          <FinStat
+            k={`本月净现金流 · ${finMonthLabel(nowMonth)}`}
+            v={fmtMoney(ov.net)}
+            sub={`收入 ${fmtMoney(ov.income)} · 流出 ${fmtMoney(ov.outflow)}`}
+            testid="hud-fin-ov-netflow"
+            data={{ income: ov.income, outflow: ov.outflow, net: ov.net }}
+          />
+          <FinStat
+            k="本月支出"
+            v={fmtMoney(ov.outflow)}
+            sub={`共 ${ov.expenseCount} 条支出明细（当前口径）`}
+            testid="hud-fin-ov-expense"
+            data={{ amount: ov.outflow, count: ov.expenseCount }}
+          />
+          <FinStat
+            k="累计支出 · 全部期间"
+            v={fmtMoney(totalAllOut)}
+            sub="全部口径 · 与旧汇总卡同数（由流水实时算）"
+            testid="hud-fin-ov-total"
+            data={{ amount: totalAllOut }}
+          />
+        </div>
+        <div className="hud-module-stats">
+          <div
+            className="hud-module-stat"
+            data-testid="hud-fin-ov-budget"
+            data-budget={budget === null ? "none" : budget}
+            data-remaining={budgetRemaining === null ? "none" : budgetRemaining}
+            data-pct={budgetPct}
+          >
+            <div className="hud-module-stat-v">
+              {budget === null
+                ? "未设置"
+                : fmtMoney(budgetRemaining ?? 0)}
+            </div>
+            <div className="hud-module-stat-k">预算剩余 · 本月</div>
+            {budget === null ? (
+              <div className="hud-module-note" style={{ marginTop: 3 }}>
+                设一个月度预算，这里会显示剩余与进度。
+              </div>
+            ) : (
+              <>
+                <div className="hud-module-note" style={{ marginTop: 3 }}>
+                  预算 {fmtMoney(budget)} · 已用 {budgetPct}%（按当前口径支出计）
+                </div>
+                <div
+                  style={{
+                    marginTop: 6,
+                    height: 6,
+                    background: "rgba(255,255,255,0.08)",
+                  }}
+                >
+                  <div
+                    style={{
+                      height: "100%",
+                      width: `${budgetPct}%`,
+                      background: "var(--hud-yellow)",
+                    }}
+                  />
+                </div>
+              </>
+            )}
+            {budgetEditing || budget === null ? (
+              <div
+                className="hud-module-form"
+                style={{ marginTop: 8, marginBottom: 0 }}
+              >
+                <input
+                  data-testid="hud-fin-budget-input"
+                  type="number"
+                  min="0"
+                  className={finInputCls}
+                  style={{ ...finInputStyle, width: 140 }}
+                  value={budgetDraft}
+                  onChange={(e) => setBudgetDraft(e.target.value)}
+                  placeholder="月度预算（元）"
+                />
+                <button
+                  type="button"
+                  data-testid="hud-fin-budget-save"
+                  className="hud-module-toggle"
+                  onClick={applyBudget}
+                >
+                  保存
+                </button>
+                {budget !== null ? (
+                  <>
+                    <button
+                      type="button"
+                      className="hud-module-toggle"
+                      onClick={() => setBudgetEditing(false)}
+                    >
+                      取消
+                    </button>
+                    <button
+                      type="button"
+                      data-testid="hud-fin-budget-clear"
+                      className="hud-module-del"
+                      onClick={() => {
+                        saveBudget(null);
+                        setBudgetEditing(false);
+                        setBudgetDraft("");
+                        showToast("月度预算已清除");
+                      }}
+                    >
+                      清除
+                    </button>
+                  </>
+                ) : null}
+              </div>
+            ) : (
+              <button
+                type="button"
+                data-testid="hud-fin-budget-edit"
+                className="hud-module-toggle"
+                style={{ marginTop: 8 }}
+                onClick={() => {
+                  setBudgetDraft(String(budget));
+                  setBudgetEditing(true);
+                }}
+              >
+                修改预算
+              </button>
+            )}
+          </div>
+          <FinStat
+            k="借款负债"
+            v={liabilities.length === 0 ? "暂无负债" : fmtMoney(liabTotal)}
+            sub={
+              liabilities.length === 0
+                ? "还没有负债记录，去下方「负债管理」添加第一笔。"
+                : `${liabilities.length} 笔 · 月最低还款合计 ${fmtMoney(liabMin)}`
+            }
+            testid="hud-fin-ov-liab"
+            data={{ total: liabTotal, count: liabilities.length }}
+          />
+          <FinStat
+            k="追踪资产"
+            v={assets.length === 0 ? "暂无资产" : fmtMoney(assetCost)}
+            sub={
+              assets.length === 0
+                ? "还没有资产记录，去下方「资产台账」添加第一项。"
+                : `${assets.length} 项持仓成本${assetValue !== null ? ` · 现值合计 ${fmtMoney(assetValue)}` : ""}`
+            }
+            testid="hud-fin-ov-asset"
+            data={{
+              count: assets.length,
+              cost: assetCost,
+              value: assetValue === null ? "none" : assetValue,
+            }}
+          />
+        </div>
+        </div>
       </div>
     </div>
   );

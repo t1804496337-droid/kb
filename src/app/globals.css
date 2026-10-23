@@ -5821,6 +5821,26 @@ div.studio-orb.studio-orb-bg,
   .hud-module-zone-main,
   .hud-module-zone-aux { overflow-y: visible; }
 }
+/* ── P0 stage-1 finance variant (2026-10-23): main + aux two-zone ──
+ * Finance has no side nav: its seven sections flow down main while
+ * the overview stat blocks ride in a widened aux rail, stacked
+ * vertically so money figures never truncate. The stats override is
+ * scoped to this variant's aux zone only — stat rows anywhere else
+ * (including finance's own monthly-report stats in main) keep their
+ * original multi-column layout. */
+.hud-module-grid-mainaux {
+  grid-template-areas: "main aux";
+  grid-template-columns: minmax(0, 1fr) 340px;
+}
+.hud-module-grid-mainaux .hud-module-zone-aux .hud-module-stats {
+  grid-template-columns: 1fr;
+}
+@media (min-width: 2880px) {
+  .hud-module-grid-mainaux { grid-template-columns: minmax(0, 1fr) 380px; }
+}
+@media (max-width: 1100px) {
+  .hud-module-grid-mainaux { grid-template-areas: "main" "aux"; }
+}
 @media (max-width: 760px) {
   .hud-module-hub { grid-template-columns: 1fr; }
   .hud-module-stats { grid-template-columns: 1fr; }
