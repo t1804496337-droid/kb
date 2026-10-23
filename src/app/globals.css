@@ -5748,6 +5748,79 @@ div.studio-orb.studio-orb-bg,
 }
 .hud-module-video-cap a { color: var(--hud-cyan); text-decoration: none; }
 .hud-module-video-cap a:hover { text-decoration: underline; }
+/* ── P0 stage-1 (2026-10-23): unified workbench grid skeleton ──────
+ * One three-zone frame for every module view: side (nav / ops) +
+ * main (primary work area) + aux (secondary / detail). Zones scroll
+ * independently on desktop so browsing lists no longer drag forms
+ * along; operation blocks stay put inside their zone's own flow.
+ * Container-level only: modules opt in by putting .hud-module-grid
+ * (or -grid-2) on their Body root and wrapping existing top-level
+ * blocks in zone divs — no inner component's DOM or class is touched,
+ * and these new classes never override existing .hud-module-* rules.
+ * .hud-module-shell is for Bodies whose root also carries an
+ * out-of-grid strip (finance toast): shell = full-height flex
+ * column, the grid fills the rest. Breakpoints follow the sheet's
+ * existing 1100px habit; ≥2880px widens the side/aux tracks. */
+.hud-module-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+.hud-module-grid {
+  display: grid;
+  grid-template-areas: "side main aux";
+  grid-template-columns: 260px minmax(0, 1fr) 300px;
+  gap: var(--hud-sp-14);
+  height: 100%;
+  min-height: 0;
+}
+.hud-module-shell > .hud-module-grid {
+  flex: 1;
+  height: auto;
+  min-height: 0;
+}
+.hud-module-grid-2 {
+  grid-template-areas: "side main";
+  grid-template-columns: 220px minmax(0, 1fr);
+}
+.hud-module-zone-side,
+.hud-module-zone-main,
+.hud-module-zone-aux {
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: var(--hud-c-00ffff-a35) transparent;
+}
+.hud-module-zone-side { grid-area: side; }
+.hud-module-zone-main { grid-area: main; }
+.hud-module-zone-aux { grid-area: aux; }
+.hud-module-zone-side::-webkit-scrollbar,
+.hud-module-zone-main::-webkit-scrollbar,
+.hud-module-zone-aux::-webkit-scrollbar { width: var(--hud-sp-5); }
+.hud-module-zone-side::-webkit-scrollbar-thumb,
+.hud-module-zone-main::-webkit-scrollbar-thumb,
+.hud-module-zone-aux::-webkit-scrollbar-thumb { background: var(--hud-c-00ffff-a30); }
+@media (min-width: 2880px) {
+  .hud-module-grid { grid-template-columns: 300px minmax(0, 1fr) 340px; }
+  .hud-module-grid-2 { grid-template-columns: 300px minmax(0, 1fr); }
+}
+@media (max-width: 1100px) {
+  /* single column: zones stack main-first and the module body
+   * scrolls as one page again (zones give up their own scroll). */
+  .hud-module-shell { height: auto; }
+  .hud-module-grid {
+    grid-template-areas: "main" "side" "aux";
+    grid-template-columns: minmax(0, 1fr);
+    height: auto;
+  }
+  .hud-module-grid-2 { grid-template-areas: "main" "side"; }
+  .hud-module-zone-side,
+  .hud-module-zone-main,
+  .hud-module-zone-aux { overflow-y: visible; }
+}
 @media (max-width: 760px) {
   .hud-module-hub { grid-template-columns: 1fr; }
   .hud-module-stats { grid-template-columns: 1fr; }

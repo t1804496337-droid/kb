@@ -467,7 +467,8 @@ function SkillsBody() {
     0,
   );
   return (
-    <div>
+    <div className="hud-module-grid hud-module-grid-2">
+      <div className="hud-module-zone-side">
       <SecHead
         title="已装技能"
         en="INSTALLED SKILLS"
@@ -488,6 +489,8 @@ function SkillsBody() {
         placeholder="搜索技能 · 名称 / 标签 / 来源"
         aria-label="搜索技能"
       />
+      </div>
+      <div className="hud-module-zone-main">
       {agents.map((agent) => {
         const list = agent.skills.filter(match);
         if (list.length === 0) return null;
@@ -599,6 +602,7 @@ function SkillsBody() {
           sub={`没有技能命中「${query.trim()}」· 清空搜索看全部 ${total} 个`}
         />
       ) : null}
+      </div>
     </div>
   );
 }
@@ -1268,7 +1272,8 @@ function WorksBody() {
   /* 待办票（hud-crud-p12）：作品状态在本视图内改动即时反映到票面。 */
   const tickets = derivePendingTickets(items, calItems);
   return (
-    <div>
+    <div className="hud-module-grid hud-module-grid-2">
+      <div className="hud-module-zone-side">
       <SecHead
         title="作品"
         en="WORKS"
@@ -1313,6 +1318,8 @@ function WorksBody() {
           onCancel={() => setAdding(false)}
         />
       ) : null}
+      </div>
+      <div className="hud-module-zone-main">
       {items.length === 0 ? (
         <EmptyState
           title="暂无本地作品"
@@ -1443,6 +1450,7 @@ function WorksBody() {
       <p className="hud-module-note" style={{ marginTop: 8 }}>
         works-sync.json 尚未投递；接入进度见各平台行，接入后此处自动点亮。
       </p>
+      </div>
     </div>
   );
 }
