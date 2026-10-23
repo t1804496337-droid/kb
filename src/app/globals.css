@@ -5483,8 +5483,21 @@ div.studio-orb.studio-orb-bg,
 .hud-module-kv span { color: var(--hud-dim); letter-spacing: 0.08em; flex: none; }
 .hud-module-kv b { color: var(--hud-int-radial-name); font-weight: 500; text-align: right; }
 .hud-module-kvboard {
+  margin-left: var(--hud-sp-8);
   padding-left: var(--hud-sp-26);
   border-left: var(--hud-sp-1) dashed var(--hud-c-8cb4ff-a18);
+}
+/* ontology gap fix (2026-10-23): inside the board, Kv rows tighten into
+ * a fixed label column + capped value column so the value no longer
+ * stretches to the far right edge of main. Board outside is untouched. */
+.hud-module-kvboard .hud-module-kv {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 640px);
+  justify-content: start;
+  column-gap: var(--hud-sp-18);
+}
+.hud-module-kvboard .hud-module-kv > b {
+  text-align: left;
 }
 .hud-module-bars { margin: var(--hud-sp-8) 0 var(--hud-sp-4); }
 .hud-module-bar-row {
@@ -6481,6 +6494,16 @@ div.studio-orb.studio-orb-bg,
   align-items: center;
   gap: var(--hud-sp-8);
   margin-bottom: var(--hud-sp-10);
+}
+/* ontology side zone only (2026-10-23): keep the vault row inside the
+ * 220px side rail — let the hint wrap to the next line instead of the
+ * row's min-content pushing the input past the rail's right edge. */
+.hud-module-zone-side .hud-vault-row {
+  flex-wrap: wrap;
+}
+.hud-module-zone-side .hud-vault-row input {
+  min-width: 0;
+  flex: 1 1 120px;
 }
 .hud-vault-label {
   font-size: var(--hud-sp-10);
