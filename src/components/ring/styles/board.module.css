@@ -1,0 +1,587 @@
+/* 神经星环作战大屏 · HUD 样式（第二主题 Surface 专用作用域）。
+ * 令牌 --ring-* 只活在 .board 内，与第一主题 ThemeId 令牌彻底隔离
+ * （用户裁定①）。布局数值照样机 ring-mockup.html（构图已过审），
+ * 舞台为 1920×1080 设计板，由外层 .scaler 等比缩放居中。 */
+.board {
+  --ring-bg: #03050a;
+  --ring-panel: rgba(7, 13, 22, 0.78);
+  --ring-line: rgba(0, 240, 255, 0.16);
+  --ring-cyan: #00f0ff;
+  --ring-ice: #8fd8ff;
+  --ring-mag: #ff5fc8;
+  --ring-ink: #cfe7f5;
+  --ring-dim: #5f7d92;
+  --ring-faint: #39505f;
+  --ring-ok: #3dffa0;
+  --ring-amber: #ffc857;
+  --ring-mono: "SF Mono", "Cascadia Code", Consolas, "Roboto Mono", ui-monospace, monospace;
+
+  position: fixed;
+  inset: 0;
+  background: var(--ring-bg);
+  color: var(--ring-ink);
+  font-family: var(--ring-mono);
+  overflow: hidden;
+  user-select: none;
+}
+.board *,
+.board *::before,
+.board *::after {
+  box-sizing: border-box;
+}
+
+.gl {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  z-index: 0;
+}
+.vignette {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 90% 80% at 50% 46%, transparent 55%, rgba(1, 2, 6, 0.55) 100%),
+    linear-gradient(180deg, rgba(1, 2, 6, 0.35), transparent 18%, transparent 82%, rgba(1, 2, 6, 0.45));
+}
+
+/* 设计板缩放层：1920×1080，JS 写入 transform: translate(-50%,-50%) scale(s) */
+.scaler {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 1920px;
+  height: 1080px;
+  z-index: 2;
+  pointer-events: none;
+}
+.scaler > * {
+  pointer-events: auto;
+}
+
+.panel {
+  position: absolute;
+  background: var(--ring-panel);
+  border: 1px solid var(--ring-line);
+  backdrop-filter: blur(3px);
+  padding: 14px 16px;
+}
+.panel::before,
+.panel::after {
+  content: "";
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  border: 0 solid rgba(0, 240, 255, 0.55);
+}
+.panel::before {
+  left: -1px;
+  top: -1px;
+  border-left-width: 2px;
+  border-top-width: 2px;
+}
+.panel::after {
+  right: -1px;
+  bottom: -1px;
+  border-right-width: 2px;
+  border-bottom-width: 2px;
+}
+.pHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 11px;
+  letter-spacing: 0.28em;
+  color: var(--ring-ice);
+  border-bottom: 1px solid rgba(0, 240, 255, 0.12);
+  padding-bottom: 8px;
+  margin-bottom: 10px;
+}
+.pHead .dim {
+  color: var(--ring-faint);
+  letter-spacing: 0.12em;
+}
+
+/* ── 顶栏：标题块 ── */
+.titleBlock {
+  position: absolute;
+  left: 24px;
+  top: 22px;
+  width: 560px;
+}
+.kicker {
+  font-size: 11px;
+  letter-spacing: 0.42em;
+  color: var(--ring-cyan);
+}
+.hTitle {
+  font-size: 44px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: #eaf7ff;
+  text-shadow: 0 0 24px rgba(0, 240, 255, 0.45);
+  margin-top: 6px;
+  white-space: nowrap;
+}
+.hTitle .thin {
+  font-weight: 300;
+  color: var(--ring-ice);
+  font-size: 30px;
+  letter-spacing: 0.14em;
+}
+.subRow {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--ring-dim);
+  letter-spacing: 0.08em;
+  display: flex;
+  gap: 18px;
+}
+.subRow b {
+  color: var(--ring-ink);
+  font-weight: 600;
+}
+.clock {
+  color: var(--ring-ice);
+}
+
+/* ── 顶栏：LAST EVENT ── */
+.lastEvent {
+  position: absolute;
+  left: 660px;
+  top: 22px;
+  width: 600px;
+  padding: 10px 16px 12px;
+}
+.lastEvent .lab {
+  font-size: 10px;
+  letter-spacing: 0.3em;
+  color: var(--ring-amber);
+  display: flex;
+  justify-content: space-between;
+}
+.lastEvent .lab .dim {
+  color: var(--ring-faint);
+  letter-spacing: 0.1em;
+}
+.lastEvent .txt {
+  margin-top: 5px;
+  font-size: 15px;
+  color: #eaf7ff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.lastEvent .txt.dim {
+  color: var(--ring-faint);
+}
+
+/* ── 顶栏：工具条 ── */
+.toolbar {
+  position: absolute;
+  right: 24px;
+  top: 22px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.tbtn {
+  pointer-events: auto;
+  font: inherit;
+  background: rgba(7, 13, 22, 0.78);
+  border: 1px solid var(--ring-line);
+  color: var(--ring-dim);
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  padding: 9px 12px;
+  cursor: pointer;
+  text-decoration: none;
+  display: inline-block;
+}
+.tbtn:hover {
+  color: var(--ring-ink);
+  border-color: rgba(0, 240, 255, 0.45);
+}
+.tbtn.on {
+  color: #04121a;
+  background: var(--ring-cyan);
+  border-color: var(--ring-cyan);
+  font-weight: 700;
+}
+.seg {
+  display: flex;
+}
+.seg .tbtn {
+  border-left-width: 0;
+}
+.seg .tbtn:first-child {
+  border-left-width: 1px;
+}
+
+/* ── 左列：12 槽 ── */
+.slots {
+  left: 24px;
+  top: 236px;
+  width: 384px;
+  height: 704px;
+  display: flex;
+  flex-direction: column;
+}
+.slotGrid {
+  flex: 1;
+  display: grid;
+  grid-template-rows: repeat(12, 1fr);
+  gap: 4px;
+  min-height: 0;
+}
+.slot {
+  position: relative;
+  border: 1px solid rgba(0, 240, 255, 0.08);
+  background: rgba(10, 18, 30, 0.5);
+  padding: 5px 10px 4px 14px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  cursor: pointer;
+  overflow: hidden;
+}
+.slot::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--ring-faint);
+}
+.slot.stOk::before {
+  background: var(--ring-ok);
+  box-shadow: 0 0 8px rgba(61, 255, 160, 0.6);
+}
+.slot.stStale::before {
+  background: var(--ring-amber);
+  box-shadow: 0 0 8px rgba(255, 200, 87, 0.55);
+}
+.slot.stZero::before,
+.slot.stUnknown::before {
+  background: var(--ring-faint);
+}
+.slot.focus {
+  border-color: rgba(0, 240, 255, 0.55);
+  background: rgba(0, 240, 255, 0.07);
+}
+.sRow1 {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.sNo {
+  font-size: 10px;
+  color: var(--ring-faint);
+  width: 18px;
+}
+.sName {
+  font-size: 14.5px;
+  color: var(--ring-ink);
+  letter-spacing: 0.06em;
+}
+.sEn {
+  font-size: 9.5px;
+  color: var(--ring-faint);
+  letter-spacing: 0.14em;
+}
+.sCnt {
+  margin-left: auto;
+  font-size: 17px;
+  font-weight: 700;
+  color: #eaf7ff;
+}
+.sCnt small {
+  font-size: 10px;
+  color: var(--ring-dim);
+  font-weight: 400;
+  margin-left: 2px;
+}
+.sCnt.ok {
+  color: var(--ring-ok);
+}
+.sCnt.stale {
+  color: var(--ring-amber);
+}
+.sCnt.mut {
+  color: var(--ring-dim);
+}
+.sBar {
+  height: 3px;
+  background: rgba(0, 240, 255, 0.10);
+  margin-top: 4px;
+  position: relative;
+}
+.sBar i {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  background: linear-gradient(90deg, rgba(0, 240, 255, 0.55), var(--ring-cyan));
+  box-shadow: 0 0 6px rgba(0, 240, 255, 0.5);
+}
+.slot.stZero .sBar i,
+.slot.stUnknown .sBar i {
+  background: var(--ring-faint);
+  box-shadow: none;
+}
+.slot.stStale .sBar i {
+  background: var(--ring-amber);
+  box-shadow: 0 0 6px rgba(255, 200, 87, 0.5);
+}
+.sSrc {
+  margin-top: 3px;
+  font-size: 9.5px;
+  color: var(--ring-faint);
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── 右列 ── */
+.syn {
+  right: 24px;
+  top: 84px;
+  width: 388px;
+  height: 360px;
+}
+.synGrid {
+  display: grid;
+  grid-template-columns: 44px repeat(12, 1fr);
+  gap: 3.5px;
+  align-items: center;
+}
+.synHead {
+  font-size: 8.5px;
+  color: var(--ring-faint);
+  text-align: center;
+  letter-spacing: 0.02em;
+}
+.synLab {
+  font-size: 9.5px;
+  color: var(--ring-dim);
+  letter-spacing: 0.08em;
+}
+.synLab.focus {
+  color: var(--ring-cyan);
+}
+.cell {
+  height: 17px;
+  background: rgba(0, 240, 255, 0.045);
+}
+.cell.l1 {
+  background: rgba(0, 240, 255, 0.30);
+}
+.cell.l2 {
+  background: rgba(0, 240, 255, 0.55);
+  box-shadow: 0 0 5px rgba(0, 240, 255, 0.35);
+}
+.cell.l3 {
+  background: rgba(0, 240, 255, 0.80);
+  box-shadow: 0 0 7px rgba(0, 240, 255, 0.55);
+}
+.cell.l4 {
+  background: #aef4ff;
+  box-shadow: 0 0 9px rgba(0, 240, 255, 0.8);
+}
+.cell.hot {
+  outline: 1px solid rgba(255, 255, 255, 0.35);
+}
+.synCap {
+  margin-top: 9px;
+  font-size: 9.5px;
+  color: var(--ring-faint);
+  letter-spacing: 0.06em;
+  line-height: 1.7;
+}
+
+.feed {
+  right: 24px;
+  top: 460px;
+  width: 388px;
+  height: 480px;
+  display: flex;
+  flex-direction: column;
+}
+.feedList {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.frow {
+  display: flex;
+  gap: 8px;
+  font-size: 11px;
+  line-height: 1.45;
+  align-items: baseline;
+}
+.ftime {
+  color: var(--ring-faint);
+  flex: none;
+}
+.ftag {
+  flex: none;
+  color: var(--ring-cyan);
+  border: 1px solid rgba(0, 240, 255, 0.25);
+  padding: 0 4px;
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
+}
+.ftext {
+  color: var(--ring-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ftext.hot {
+  color: var(--ring-ink);
+}
+.feedEmpty {
+  font-size: 11px;
+  color: var(--ring-faint);
+  letter-spacing: 0.1em;
+  padding: 8px 0;
+}
+.fnote {
+  border-top: 1px solid rgba(0, 240, 255, 0.12);
+  padding-top: 8px;
+  font-size: 9.5px;
+  color: var(--ring-faint);
+  letter-spacing: 0.06em;
+  line-height: 1.7;
+}
+
+/* ── 底栏六格 ── */
+.metrics {
+  left: 24px;
+  right: 24px;
+  bottom: 20px;
+  height: 92px;
+  display: flex;
+  gap: 0;
+  padding: 12px 6px;
+}
+.metric {
+  padding: 2px 18px;
+  border-left: 1px solid rgba(0, 240, 255, 0.12);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+}
+.metric:first-child {
+  border-left: none;
+}
+.mLab {
+  font-size: 10px;
+  letter-spacing: 0.26em;
+  color: var(--ring-dim);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+.mVal {
+  font-size: 27px;
+  font-weight: 700;
+  color: #eaf7ff;
+  margin-top: 3px;
+  white-space: nowrap;
+}
+.mVal small {
+  font-size: 12px;
+  color: var(--ring-dim);
+  font-weight: 400;
+}
+.mVal .sep {
+  color: var(--ring-faint);
+  margin: 0 6px;
+}
+.mSub {
+  font-size: 9.5px;
+  color: var(--ring-faint);
+  margin-top: 2px;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.nosrc {
+  color: #0a0f14;
+  background: var(--ring-amber);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  padding: 1px 6px;
+}
+.okText {
+  color: var(--ring-ok);
+}
+
+/* ── tooltip / 降级 ── */
+.tooltip {
+  position: absolute;
+  z-index: 5;
+  pointer-events: none;
+  background: rgba(4, 10, 18, 0.94);
+  border: 1px solid rgba(0, 240, 255, 0.4);
+  padding: 8px 11px;
+  font-size: 11px;
+  line-height: 1.7;
+  color: var(--ring-dim);
+  max-width: 300px;
+}
+.tooltip .ttName {
+  color: #eaf7ff;
+  font-size: 13px;
+  letter-spacing: 0.08em;
+}
+.tooltip b {
+  color: var(--ring-ice);
+  font-weight: 600;
+}
+.glfail {
+  position: absolute;
+  left: 50%;
+  top: 44%;
+  transform: translate(-50%, -50%);
+  z-index: 3;
+  text-align: center;
+  color: var(--ring-amber);
+  font-size: 14px;
+  letter-spacing: 0.14em;
+  line-height: 2;
+}
+.glfail .dim {
+  color: var(--ring-dim);
+  font-size: 11px;
+}
+.rotateHint {
+  position: fixed;
+  inset: 0;
+  z-index: 9;
+  background: var(--ring-bg);
+  color: var(--ring-dim);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  font-size: 14px;
+  letter-spacing: 0.2em;
+  line-height: 2.2;
+  padding: 24px;
+}
+.rotateHint b {
+  color: var(--ring-ice);
+}
