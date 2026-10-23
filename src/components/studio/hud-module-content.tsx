@@ -4849,8 +4849,6 @@ function OntologyBody() {
           </div>
         </div>
       ) : null}
-      </div>
-      <div className="hud-module-zone-main">
       <SecHead
         title="库内文件"
         en="VAULT FILES · OBSIDIAN 直达"
