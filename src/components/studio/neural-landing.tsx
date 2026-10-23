@@ -139,6 +139,9 @@ const staleAgeOf = (iso?: string | null): number | null => {
 /** Day-number (Shanghai calendar, see shDayNum) → YYYY-MM-DD. */
 const dayISOofNum = (dayNum: number): string =>
   new Date(dayNum * 864e5).toISOString().slice(0, 10);
+/** Day-number (Shanghai calendar) → epoch ms of that day's 00:00 CST
+ * (⑦ fix-v3：yestComplete 守卫的昨日日界，与 dayISOofNum 同源派生)。 */
+const dayNumToTs = (dayNum: number): number => dayNum * 864e5 - 8 * 3600e3;
 /** Epoch ms → the Asia/Shanghai calendar day (YYYY-MM-DD) it falls on. */
 const shISOofTs = (ts: number): string =>
   new Intl.DateTimeFormat("en-CA", {
@@ -432,8 +435,8 @@ function HudOverviewPanel({
   feed,
   healthOk,
   execLog,
-  sleepDays,
-  manualSleepDay,
+  counts,
+  dayNums,
 }: {
   top: { name: string; tag: string; wait: string; age: number } | null;
   onOpenTop: () => void;
@@ -451,23 +454,11 @@ function HudOverviewPanel({
   feed: { ts: number; text: string; kind: string }[];
   healthOk: boolean;
   execLog: ExecLogItem[];
-  sleepDays: string[];
-  manualSleepDay: string | null;
+  /* ⑦ fix-v3：7 日矩阵计数由父级同源派生后传入——曲线与顶栏差分
+   * 消费同一份 counts，面板只渲染，不再自持派生口径。 */
+  counts: Record<string, number[]>;
+  dayNums: number[];
 }) {
-  /* Finance entry dates — refreshed whenever the EXEC log moves
-   * (every finance mutation emits on the bus first, and the landing
-   * appends the log item) and on cross-tab storage events. */
-  const [finDates, setFinDates] = React.useState<string[]>(readOvFinDates);
-  React.useEffect(() => {
-    setFinDates(readOvFinDates());
-  }, [execLog]);
-  React.useEffect(() => {
-    const onStorage = (e: StorageEvent) => {
-      if (e.key === OV_FIN_KEY) setFinDates(readOvFinDates());
-    };
-    window.addEventListener("storage", onStorage);
-    return () => window.removeEventListener("storage", onStorage);
-  }, []);
   /* Snapshot readiness — re-checked when the log moves and shortly
    * after mount (page-level seed writes land just after the
    * landing's first paint). */
@@ -479,33 +470,8 @@ function HudOverviewPanel({
     return () => window.clearTimeout(id);
   }, [execLog]);
 
-  /* 7-day matrix (see the header comment for the caliber). */
-  const todayNum = todayShNum();
-  const dayNums = Array.from({ length: 7 }, (_, i) => todayNum - 6 + i);
-  const dayISOs = dayNums.map(dayISOofNum);
-  const counts: Record<string, number[]> = {
-    finance: dayNums.map(() => 0),
-    health: dayNums.map(() => 0),
-    studio: dayNums.map(() => 0),
-    mindmap: dayNums.map(() => 0),
-  };
-  const bump = (row: string, iso: string) => {
-    const i = dayISOs.indexOf(iso);
-    if (i >= 0) counts[row][i] += 1;
-  };
-  finDates.forEach((d) => bump("finance", d));
-  sleepDays.forEach((d) => bump("health", d));
-  if (manualSleepDay && !sleepDays.includes(manualSleepDay))
-    bump("health", manualSleepDay);
-  for (const item of execLog) {
-    if (!("type" in item)) continue;
-    const iso = shISOofTs(item.ts);
-    if (item.type === "FINANCE_DELETE_ENTRY") bump("finance", iso);
-    else if (item.type === "HEALTH_SYNC") bump("health", iso);
-    else if (item.type === "STUDIO_STAGE_MOVE") bump("studio", iso);
-    else if (item.type === "MINDMAP_NODE" || item.type === "MINDMAP_EDGE")
-      bump("mindmap", iso);
-  }
+  /* 7-day matrix: counts/dayNums 由父级派生传入（见 props 注记），
+   * 此处只按计数渲染格子。 */
   const levelOf = (n: number) => (n <= 0 ? 0 : n >= 4 ? 4 : n);
 
   const sleepSegs =
@@ -1045,6 +1011,22 @@ export function NeuralLanding({
    * mirror drives the terminal render. */
   const [execLog, setExecLog] = React.useState<ExecLogItem[]>(loadExecLog);
   const execLogRef = React.useRef(execLog);
+  /* Finance entry dates for the 7-day matrix — refreshed whenever the
+   * EXEC log moves (every finance mutation emits on the bus first, and
+   * the landing appends the log item) and on cross-tab storage events.
+   * (fix-v3 批次三：原在 HudOverviewPanel 内部，⑦ 需要父级同源派生
+   * dailyTotals 供曲线与顶栏差分消费，故整段上提到此处，口径不变。) */
+  const [finDates, setFinDates] = React.useState<string[]>(readOvFinDates);
+  React.useEffect(() => {
+    setFinDates(readOvFinDates());
+  }, [execLog]);
+  React.useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === OV_FIN_KEY) setFinDates(readOvFinDates());
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
   const logLinesRef = React.useRef<HTMLDivElement | null>(null);
   /* ── terminal session notes (2026-10-22, hud-health-sync) ──
    * Session-only terminal lines that are NOT bus EXEC successes:
@@ -1508,6 +1490,59 @@ export function NeuralLanding({
   const ovTodayChanges = execLog.filter(
     (it) => shISOofTs(it.ts) === dayISOofNum(todayShNum()),
   ).length;
+  /* ── 7-day matrix derivation (fix-v3 批次三上提) ──
+   * 原在 HudOverviewPanel 内部；⑦ 的真实曲线与顶栏差分必须与左栏
+   * 矩阵同源，故整段派生移到父级：counts 只算一份，面板经 props
+   * 渲染、曲线与顶栏直接消费。口径逐字未变（见原矩阵注释）。 */
+  const ovTodayNum = todayShNum();
+  const ovDayNums = Array.from({ length: 7 }, (_, i) => ovTodayNum - 6 + i);
+  const ovDayISOs = ovDayNums.map(dayISOofNum);
+  const ovCounts: Record<string, number[]> = {
+    finance: ovDayNums.map(() => 0),
+    health: ovDayNums.map(() => 0),
+    studio: ovDayNums.map(() => 0),
+    mindmap: ovDayNums.map(() => 0),
+  };
+  const ovBump = (row: string, iso: string) => {
+    const i = ovDayISOs.indexOf(iso);
+    if (i >= 0) ovCounts[row][i] += 1;
+  };
+  finDates.forEach((d) => ovBump("finance", d));
+  health.sleepDays.forEach((d) => ovBump("health", d));
+  const ovManualSleepDay = manualSleepApplies
+    ? (manualHealth as ManualHealth).date
+    : null;
+  if (ovManualSleepDay && !health.sleepDays.includes(ovManualSleepDay))
+    ovBump("health", ovManualSleepDay);
+  for (const item of execLog) {
+    if (!("type" in item)) continue;
+    const iso = shISOofTs(item.ts);
+    if (item.type === "FINANCE_DELETE_ENTRY") ovBump("finance", iso);
+    else if (item.type === "HEALTH_SYNC") ovBump("health", iso);
+    else if (item.type === "STUDIO_STAGE_MOVE") ovBump("studio", iso);
+    else if (item.type === "MINDMAP_NODE" || item.type === "MINDMAP_EDGE")
+      ovBump("mindmap", iso);
+  }
+  /* ⑦ fix-v3：真实 7 日序列——counts 四行逐日求和，不是画出来的。 */
+  const dailyTotals = ovDayNums.map((_, i) =>
+    OV_ROWS.reduce((a, r) => a + ovCounts[r.id][i], 0),
+  );
+  const todayN = dailyTotals[6];
+  const yestN = dailyTotals[5];
+  const delta = todayN - yestN;
+  /* 20 条日志上限会让「昨日」失真：若日志已满且最早一条晚于昨日
+   * 00:00（上海），昨日记录已被挤掉、yestN 不可信——差分挂 ? 并在
+   * title 里如实说明，绝不假报（见顶栏 hud-delta）。 */
+  const earliestTs = execLog[0]?.ts ?? 0;
+  const yestStartTs = dayNumToTs(ovDayNums[5]);
+  const yestComplete =
+    execLog.length < EXEC_LOG_MAX || earliestTs <= yestStartTs;
+  /* 曲线点位（方案公式）：x 均分 426 宽、y 按 maxV 归一到 33 高。 */
+  const maxV = Math.max(1, ...dailyTotals);
+  const curvePts = dailyTotals
+    .map((v, i) => `${(i / 6) * 426 + 2},${38 - (v / maxV) * 33}`)
+    .join(" ");
+  const curveArea = `M${curvePts.replace(/ /g, " L")} L428,40 L2,40 Z`;
   const ovFeed = [
     ...execLog.map((it) => ({
       ts: it.ts,
@@ -2754,6 +2789,22 @@ export function NeuralLanding({
             ENTRIES <b>{entities} · {rows} 行</b>
           </div>
           <div className="hud-metric">
+            TODAY <b>{todayN}</b>
+            <span
+              className="hud-delta"
+              data-dir={delta > 0 ? "up" : delta < 0 ? "down" : "flat"}
+              data-testid="hud-delta"
+              title={
+                !yestComplete
+                  ? "日志已满 20 条，昨日计数不完整"
+                  : undefined
+              }
+            >
+              {delta > 0 ? `+${delta}` : delta < 0 ? `${delta}` : "±0"}
+              {!yestComplete && <sup>?</sup>}
+            </span>
+          </div>
+          <div className="hud-metric">
             SKILLS <b>{skillsN}</b>
           </div>
           <div className="hud-metric">
@@ -3001,12 +3052,8 @@ export function NeuralLanding({
                 feed={ovFeed}
                 healthOk={ovHealthOk}
                 execLog={execLog}
-                sleepDays={health.sleepDays}
-                manualSleepDay={
-                  manualSleepApplies
-                    ? (manualHealth as ManualHealth).date
-                    : null
-                }
+                counts={ovCounts}
+                dayNums={ovDayNums}
               />
             </div>
             <div
@@ -3150,7 +3197,7 @@ export function NeuralLanding({
               <div className="hud-lab">
                 ACTIVITY CURVE · 条目增长
                 <br />
-                <b>0 → {entities}</b>
+                <b>0 → {entities} · LAST 7D</b>
               </div>
               <svg viewBox="0 0 430 40" preserveAspectRatio="none" aria-hidden>
                 <defs>
@@ -3159,20 +3206,35 @@ export function NeuralLanding({
                     <stop offset="1" stopColor="#FFEA00" stopOpacity="0" />
                   </linearGradient>
                 </defs>
-                <path
-                  d="M2,36 L50,34 L98,35 L146,30 L194,31 L242,24 L290,25 L338,16 L386,12 L428,5 L428,40 L2,40 Z"
-                  fill="url(#hud-ag)"
-                />
+                <path d={curveArea} fill="url(#hud-ag)" />
                 <polyline
-                  points="2,36 50,34 98,35 146,30 194,31 242,24 290,25 338,16 386,12 428,5"
+                  points={curvePts}
                   fill="none"
                   stroke="#FFEA00"
                   strokeWidth="1.6"
                   style={{ filter: "drop-shadow(0 0 4px #FFEA00)" }}
                 />
-                <circle cx="428" cy="5" r="2.6" fill="#FFEA00" style={{ filter: "drop-shadow(0 0 5px #FFEA00)" }} />
-                <circle cx="242" cy="24" r="2" fill="#fff2a8" />
-                <circle cx="98" cy="35" r="2" fill="#fff2a8" />
+                {dailyTotals.map((v, i) => {
+                  const cx = (i / 6) * 426 + 2;
+                  const cy = 38 - (v / maxV) * 33;
+                  const tip = `${dayISOofNum(ovDayNums[i])} · 共 ${v} 条`;
+                  return i === 6 ? (
+                    <circle
+                      key={i}
+                      cx={cx}
+                      cy={cy}
+                      r="2.6"
+                      fill="#FFEA00"
+                      style={{ filter: "drop-shadow(0 0 5px #FFEA00)" }}
+                    >
+                      <title>{tip}</title>
+                    </circle>
+                  ) : (
+                    <circle key={i} cx={cx} cy={cy} r="2" fill="#fff2a8">
+                      <title>{tip}</title>
+                    </circle>
+                  );
+                })}
               </svg>
             </div>
             <div

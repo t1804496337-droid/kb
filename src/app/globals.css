@@ -3940,6 +3940,13 @@ div.studio-orb.studio-orb-bg,
   font-weight: 600;
   text-shadow: 0 0 var(--hud-sp-6) var(--hud-c-00ffff-a50);
 }
+/* ⑦ fix-v3：顶栏今日差分徽标。颜色不用红绿（本站无此语义，红涨绿跌
+ * 是股市口径，不适用于工作台）——增多冷青 / 减少琥珀 / 持平灰。
+ * 字体令牌按仓内现状适配为 --font-mono（方案原文 --mono 仓内不存在）。 */
+.hud-delta { font-family: var(--font-mono); font-size: 9.5px; padding: 0 4px; }
+.hud-delta[data-dir="up"] { color: var(--hud-cyan); }
+.hud-delta[data-dir="down"] { color: var(--hud-int-stale); }
+.hud-delta[data-dir="flat"] { color: var(--hud-dim); }
 .hud-spark {
   display: flex;
   align-items: center;
@@ -4121,7 +4128,7 @@ div.studio-orb.studio-orb-bg,
   position: absolute;
   left: 50%;
   top: 50%;
-  width: calc(min(500px, 88%) * var(--hud-int-sphere-scale));
+  width: calc(min(500px, 88%) * var(--hud-int-sphere-scale) * var(--hud-focus-scale, 1));
   aspect-ratio: 1;
   transform: translate(-50%, -52%);
   border-radius: 50%;
@@ -4138,7 +4145,7 @@ div.studio-orb.studio-orb-bg,
   position: absolute;
   left: 50%;
   top: 50%;
-  width: calc(min(520px, 92%) * var(--hud-int-sphere-scale));
+  width: calc(min(520px, 92%) * var(--hud-int-sphere-scale) * var(--hud-focus-scale, 1));
   aspect-ratio: 1;
   transform: translate(-50%, -52%);
   mix-blend-mode: screen;
@@ -4246,6 +4253,30 @@ div.studio-orb.studio-orb-bg,
   gap: var(--hud-int-main-gap);
   min-height: 0;
 }
+/* ④ fix-v3：主次——≥1101px 两翼 filter 退后、停靠恢复全亮，焦点
+ * 还给中央。filter 会给元素建 containing block（其 fixed 后代改相对
+ * 它定位）：本站 fixed 层（命令面板 / 径向菜单 / 思维导图 / 拖拽
+ * 画布）均为 .hud-root 直属子级、非三栏后代，不受影响；≤1100px 时
+ * .hud-tree 本身是 position:fixed 底部抽屉，媒体查询已将其排除，
+ * 再加 data-msheet 守卫双保险，绝不压暗抽屉。 */
+@media (min-width: 1101px) {
+  .hud-main > .hud-tree,
+  .hud-main > .hud-right {
+    filter: brightness(.72) saturate(.88);
+    transition: filter .22s ease;
+  }
+  /* 聚焦即恢复：不牺牲可读性，只在静止态退后 */
+  .hud-main > .hud-tree:hover,
+  .hud-main > .hud-tree:focus-within,
+  .hud-main > .hud-right:hover,
+  .hud-main > .hud-right:focus-within { filter: none; }
+  /* 中央提亮 + 球体放大：只改令牌，不动像素 */
+  .hud-main > .hud-center { filter: brightness(1.06); }
+  .hud-main > .hud-center .hud-sphere,
+  .hud-main > .hud-center .hud-sphere-glow { --hud-focus-scale: 1.14; }
+}
+/* 抽屉守卫（:2665 区已有 data-msheet 属性）：抽屉打开时左树强制全亮 */
+.hud-root[data-msheet="tree"] .hud-tree { filter: none; }
 .hud-radar { height: 218px; flex: none; }
 .hud-radar .hud-rbody { display: flex; padding: var(--hud-sp-4) var(--hud-sp-8); gap: var(--hud-sp-4); }
 .hud-radar .hud-rstats {
