@@ -494,6 +494,12 @@ function HudOverviewPanel({
     sleep?.hours != null
       ? Math.max(0, Math.min(10, Math.round((sleep.hours / 8) * 10)))
       : 0;
+  /* S1 睡眠陈旧度（rect-b1）：年龄按上海日历日算（ageDaysOf，与决策
+   * 栈同一 helper，不新造判定）；新鲜口径与本屏健康行一致——记录
+   * 日 ≥ 昨日为新鲜，age ≥ 2 即陈旧：琥珀降级 + 天数进主句，不再
+   * 用绿色满条冒充今天的数据。 */
+  const sleepAgeDays = sleep?.date ? ageDaysOf(sleep.date) : null;
+  const sleepStale = sleepAgeDays != null && sleepAgeDays >= 2;
   const stepSegs = steps
     ? Math.max(0, Math.min(10, Math.round((steps.value / 8000) * 10)))
     : 0;
@@ -525,10 +531,9 @@ function HudOverviewPanel({
         </div>
       )}
 
-      {/* 0xA1 · core gauges */}
+      {/* core gauges */}
       <div className="hud-ov-sec">
         <span>核心仪表</span>
-        <span>0xA1 · GAUGES</span>
       </div>
       <div className="hud-ov-cards">
         <div className="hud-ov-card">
@@ -562,20 +567,19 @@ function HudOverviewPanel({
         </div>
       </div>
 
-      {/* 0xA2 · body */}
+      {/* body */}
       <div className="hud-ov-sec">
         <span>身体状态</span>
-        <span>0xA2 · BODY</span>
       </div>
       <div className="hud-ov-gauges">
-        <div className="hud-ov-gauge">
+        <div className="hud-ov-gauge" data-stale={sleepStale ? "true" : undefined}>
           <div className="hud-ov-gtop">
             <span className="hud-ov-gl">
               睡眠 · SLEEP{sleep ? ` · ${sleep.date.slice(5)}` : ""}
             </span>
             <span className="hud-ov-gv" data-testid="hud-ov-sleep-val">
               {sleep?.hours != null
-                ? `${Math.round(sleep.hours * 10) / 10}h`
+                ? `${Math.round(sleep.hours * 10) / 10}h${sleepStale ? ` · ${sleepAgeDays} 天前` : ""}`
                 : "—"}
             </span>
           </div>
@@ -585,12 +589,12 @@ function HudOverviewPanel({
             data-on={sleepSegs}
           >
             {Array.from({ length: 10 }, (_, i) => (
-              <i key={i} className={i < sleepSegs ? "on-g" : undefined} />
+              <i key={i} className={i < sleepSegs ? (sleepStale ? "on-a" : "on-g") : undefined} />
             ))}
           </div>
           <div className="hud-ov-gs">
             {sleep
-              ? `目标 8h${sleep.start && sleep.end ? ` · ${sleep.start} 入睡 · ${sleep.end} 起床` : ""}`
+              ? `${sleepStale ? `${sleepAgeDays} 天前 · ` : ""}目标 8h${sleep.start && sleep.end ? ` · ${sleep.start} 入睡 · ${sleep.end} 起床` : ""}`
               : "暂无完整记录 · 待同步"}
           </div>
         </div>
@@ -620,10 +624,9 @@ function HudOverviewPanel({
         </div>
       </div>
 
-      {/* 0xA3 · 7-day activity matrix — glow bars, never digits */}
+      {/* 7-day activity matrix — glow bars, never digits */}
       <div className="hud-ov-sec">
         <span>七日活跃</span>
-        <span>0xA3 · MATRIX</span>
       </div>
       <table className="hud-ov-mx" data-testid="hud-ov-matrix">
         <thead>
@@ -982,6 +985,11 @@ export function NeuralLanding({
   ];
 
   const total = modules.reduce((acc, m) => acc + (m.count ?? 0), 0);
+  /* S0 口径去重（rect-b1）：total 是「行」口径——数据库模块是条目索引
+   * 视图，它的每一行都是别处实体的镜像，不产生独立实体；实体口径
+   * 因此 = 总行数 − 数据库行数。KNOWLEDGE 同理：实体 = 技能本身，
+   * 行 = 技能 + 数据库镜像（knowledgeN 保持行口径）。 */
+  const entities = total - dbN;
   const knowledgeN = skillsN + dbN;
   const outputN = worksN + finN;
 
@@ -2670,7 +2678,7 @@ export function NeuralLanding({
             MODULES <b>{modules.length}</b>
           </div>
           <div className="hud-metric">
-            ENTRIES <b>{total}</b>
+            ENTRIES <b>{entities} · {total} 行</b>
           </div>
           <div className="hud-metric">
             SKILLS <b>{skillsN}</b>
@@ -2883,7 +2891,6 @@ export function NeuralLanding({
               <div className="hud-phead">
                 <span className="hud-t">概览 · 指挥中枢</span>
                 <span className="hud-chip hud-c-cyan">OVERVIEW</span>
-                <span className="hud-hex">0x0VW1</span>
               </div>
             </div>
             <div className="hud-treebody">
@@ -3052,8 +3059,8 @@ export function NeuralLanding({
           <div className="hud-panel hud-dn hud-center">
             <div className="hud-phead">
               <span className="hud-t">CORE MAP · 知识核心图谱</span>
-              <span className="hud-chip hud-c-yel">FORCE GRAPH</span>
-              <span className="hud-chip hud-c-pur">{total} NODES</span>
+              <span className="hud-plain hud-c-yel">FORCE GRAPH</span>
+              <span className="hud-plain hud-c-pur">{entities} ENTITIES · {total} ROWS</span>
               <button
                 type="button"
                 className="hud-chip hud-c-cyan hud-mm-toggle"
@@ -3156,7 +3163,7 @@ export function NeuralLanding({
                 <>
                   <div className="hud-tag hud-tag-main" style={{ left: 18, top: 14 }}>
                     <span className="hud-tag-sub">◈ LEFT HEMI · GOLD</span>
-                    <b className="hud-c-yel">KNOWLEDGE {knowledgeN}</b>
+                    <b className="hud-c-yel">KNOWLEDGE {skillsN} 实体 · {knowledgeN} 行</b>
                     <span className="hud-tag-sub">
                       SKILLS {skillsN} + DATABASE {dbN}
                     </span>
@@ -3236,7 +3243,6 @@ export function NeuralLanding({
             >
               <div className="hud-phead">
                 <span className="hud-t">RADAR · 模块雷达</span>
-                <span className="hud-hex">0xRDAR</span>
               </div>
               <div
                 className="hud-radarsweep"
@@ -3294,6 +3300,7 @@ export function NeuralLanding({
                       {r.label} <b className={r.cls || undefined}>{r.v}</b>
                     </div>
                   ))}
+                  <div className="hud-rs hud-rs-note">技能 / 数据 · 同源镜像</div>
                 </div>
               </div>
             </div>
@@ -3312,7 +3319,6 @@ export function NeuralLanding({
                 <div className="hud-phead">
                   <span className="hud-t">DECISION STACK · 决策栈</span>
                   <span className="hud-chip hud-c-pink">{pendingCount} 待决</span>
-                  <span className="hud-hex">0xD5TK</span>
                 </div>
               </div>
               {activeDecisions.map((s, i) => {
