@@ -4730,8 +4730,8 @@ function OntologyBody() {
     );
   };
   return (
-    <div className="hud-module-grid hud-module-grid-2">
-      <div className="hud-module-zone-side">
+    <div className="hud-module-grid hud-module-grid-mainaux">
+      <div className="hud-module-zone-main">
       <SecHead
         title="本体知识库"
         en="ONTOLOGY"
@@ -4761,18 +4761,6 @@ function OntologyBody() {
           </span>
         ) : null}
       </div>
-      <Kv k="状态">
-        <span className="hud-c-amb">
-          建设中 · 库内文件 {ONTOLOGY_FILES.length} 件 · 站内笔记{" "}
-          {notes.length} 条
-        </span>
-      </Kv>
-      <Kv k="条目来源">第二大脑笔记 · goals/ai-2/hidden_files/notes/（库内文件）＋ 站内笔记（本机）</Kv>
-      <Kv k="库存现状">框架 README 已建 · 归档笔记 0 篇（用户平时不存东西，从增量起步）· 站内笔记 {notes.length} 条</Kv>
-      <Kv k="归档规则">一事一件 · 文件名 YYYY-MM-DD-主题.md · 头部带来源/日期/标签</Kv>
-      <Kv k="标签体系">灵感 / 干货 / 待办线索 / 人脉 / 消费决策 / 其他</Kv>
-      <Kv k="捕获方式">聊天里丢来的链接/截图/灵感由 Luna 归档；对话中的有价值信息同步沉淀</Kv>
-      <Kv k="回顾">暂定按需 · 每周 digest 待确认后再设</Kv>
       <SecHead
         title="站内笔记"
         en="LOCAL NOTES"
@@ -5009,6 +4997,20 @@ function OntologyBody() {
           </Row>
         ),
       )}
+      </div>
+      <div className="hud-module-zone-aux">
+      <Kv k="状态">
+        <span className="hud-c-amb">
+          建设中 · 库内文件 {ONTOLOGY_FILES.length} 件 · 站内笔记{" "}
+          {notes.length} 条
+        </span>
+      </Kv>
+      <Kv k="条目来源">第二大脑笔记 · goals/ai-2/hidden_files/notes/（库内文件）＋ 站内笔记（本机）</Kv>
+      <Kv k="库存现状">框架 README 已建 · 归档笔记 0 篇（用户平时不存东西，从增量起步）· 站内笔记 {notes.length} 条</Kv>
+      <Kv k="归档规则">一事一件 · 文件名 YYYY-MM-DD-主题.md · 头部带来源/日期/标签</Kv>
+      <Kv k="标签体系">灵感 / 干货 / 待办线索 / 人脉 / 消费决策 / 其他</Kv>
+      <Kv k="捕获方式">聊天里丢来的链接/截图/灵感由 Luna 归档；对话中的有价值信息同步沉淀</Kv>
+      <Kv k="回顾">暂定按需 · 每周 digest 待确认后再设</Kv>
       </div>
     </div>
   );
