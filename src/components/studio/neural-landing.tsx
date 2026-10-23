@@ -364,8 +364,9 @@ function HudDragRail({
  *
  * Every figure derives from the same live sources as the rest of
  * the overview — never a private copy, never invented:
- *  · NEXT ACTION = activeDecisions[0] (the stack's own ordering),
- *    clicked through the same openDecision path;
+ *  · NEXT ACTION = the top live, non-schedule decision (ovTop,
+ *    the stack's own ordering), clicked through the same
+ *    openDecision path;
  *  · 今日变动 = EXEC-log items whose Shanghai day is today;
  *  · body gauges read effHealth (file + clipboard-manual merge);
  *  · the 7-day matrix counts only records carrying a real date:
@@ -1480,9 +1481,14 @@ export function NeuralLanding({
    * terminal — the panel (HudOverviewPanel) only renders them. */
   /* ③ fix-v3：NEXT ACTION 只在 live 档里挑；无 live 时面板走静默卡，
    * 副行报两档计数（计数与栈内实际分组同源：review 取未归档集，
-   * expired 取已退场组本身）。 */
+   * expired 取已退场组本身）。
+   * default4：候选再排除 waitKind="schedule"（等排期，如本体填充）——
+   * 排期项不是「下一件可动手的事」，不得霸占 NEXT ACTION 警报位；
+   * 排序沿用栈内 (stage, score) 既有顺序，无候选时同样走静默卡。 */
   const ovTop =
-    activeDecisions.find((s) => s.stage === "live") ?? null;
+    activeDecisions.find(
+      (s) => s.stage === "live" && s.d.waitKind !== "schedule",
+    ) ?? null;
   const ovReviewCount = activeDecisions.filter(
     (s) => s.stage === "review",
   ).length;
@@ -3258,20 +3264,6 @@ export function NeuralLanding({
               <img
                 className="hud-sphere"
                 src="/studio/hud/core-sphere.webp"
-                alt=""
-                draggable={false}
-              />
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                className="hud-jelly hud-jelly-a"
-                src="/studio/hud/jelly-pink.webp"
-                alt=""
-                draggable={false}
-              />
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                className="hud-jelly hud-jelly-b"
-                src="/studio/hud/jelly-cyan.webp"
                 alt=""
                 draggable={false}
               />

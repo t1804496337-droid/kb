@@ -4100,7 +4100,17 @@ div.studio-orb.studio-orb-bg,
   background: linear-gradient(180deg, var(--hud-c-0a0a14-a50), var(--hud-c-04050a-a85));
 }
 .hud-curve {
-  padding: var(--hud-sp-6) var(--hud-sp-14) 0;
+  position: relative;
+  z-index: 2;
+  /* default4：折线与球体层级隔离——深色渐变隔离带垫底，黄色折线
+   * 与标签落在干净暗带上，不再与球体顶部节点视觉撞车。 */
+  background: linear-gradient(
+    to bottom,
+    rgb(4 6 12 / 0.88),
+    rgb(4 6 12 / 0.5) 72%,
+    transparent
+  );
+  padding: var(--hud-sp-6) var(--hud-sp-14) var(--hud-sp-4);
   display: flex;
   align-items: flex-end;
   gap: var(--hud-sp-12);
@@ -4159,10 +4169,9 @@ div.studio-orb.studio-orb-bg,
   transition: opacity 0.35s ease;
 }
 /* topology open (hud-mm-render): the whole sphere cluster yields the
- * stage — sphere, jellies and halo forced down to 10% so the mind-map
+ * stage — sphere and halo forced down to 10% so the mind-map
  * nodes own the visual field; restores on exit. */
 .hud-stage.is-mm-open .hud-sphere { opacity: var(--hud-int-mm-sphere-dim); }
-.hud-stage.is-mm-open .hud-jelly { opacity: var(--hud-int-mm-sphere-dim); }
 .hud-stage.is-mm-open .hud-sphere-glow {
   animation: none;
   opacity: var(--hud-int-mm-sphere-dim);
@@ -4205,23 +4214,6 @@ div.studio-orb.studio-orb-bg,
 @keyframes hud-radar-breathe {
   0%, 100% { box-shadow: 0 0 0 rgba(178, 0, 255, 0), inset 0 0 0 rgba(178, 0, 255, 0); }
   50% { box-shadow: 0 0 24px var(--hud-int-radar-hot), inset 0 0 18px rgba(178, 0, 255, 0.14); }
-}
-.hud-jelly {
-  position: absolute;
-  mix-blend-mode: screen;
-  pointer-events: none;
-  -webkit-mask-image: radial-gradient(circle, var(--hud-c-000) 58%, transparent 72%);
-  mask-image: radial-gradient(circle, var(--hud-c-000) 58%, transparent 72%);
-}
-.hud-jelly-a { width: 116px; right: var(--hud-sp-10); top: var(--hud-sp-40); opacity: 0.88; animation: hud-float-a 6s ease-in-out infinite; }
-.hud-jelly-b { width: 96px; left: var(--hud-sp-20); bottom: var(--hud-sp-2); opacity: 0.8; animation: hud-float-b 7s ease-in-out -2.5s infinite; }
-@keyframes hud-float-a {
-  0%, 100% { transform: translateY(-6px) rotate(-1.2deg); }
-  50% { transform: translateY(6px) rotate(1.2deg); }
-}
-@keyframes hud-float-b {
-  0%, 100% { transform: translateY(6px) rotate(1deg); }
-  50% { transform: translateY(-6px) rotate(-1deg); }
 }
 /* focus4（路线 b）：聚焦态读数提层 + 半透明底衬 + 提亮一档，
  * 球体辉光不再糊住 STATUS / 条目读数；球体几何与缩放令牌不动。 */
@@ -5145,8 +5137,6 @@ div.studio-orb.studio-orb-bg,
   .hud-center { min-height: 430px; }
   .hud-sphere { width: calc(min(320px, 84vw) * var(--hud-int-sphere-scale)); }
   .hud-sphere-glow { width: calc(min(300px, 80vw) * var(--hud-int-sphere-scale)); }
-  .hud-jelly-a { width: 74px; top: var(--hud-sp-16); }
-  .hud-jelly-b { width: 62px; }
   .hud-right { width: auto; }
   .hud-radar, .hud-panel.hud-dn.hud-radar { height: auto; }
   .hud-console { height: auto; flex-direction: column; }
@@ -6580,6 +6570,19 @@ div.hud-ov-next { cursor: default; }
 .hud-srow.is-review { opacity: .55; filter: saturate(.55); }
 .hud-srow.is-expired { display: none; }
 .hud-srow.is-expired.is-open { display: block; opacity: .35; }
+/* default4：review/expired 压色补强——行级 saturate(.55) 压不住行内
+ * 状态词（.hud-tag 挂 hud-c-pink 等语义色类 + 辉光 text-shadow）的
+ * 洋红高饱和，视觉上像没降级。此处把整行 saturate 收到 .35，并把
+ * review/expired 行内的状态词强制压回 --hud-dim、撤掉辉光；live
+ * 行的状态词颜色不受影响。is-expired.is-open 的 opacity 既有 .35
+ * 比 .6 更沉，保持不动，只补 saturate。 */
+.hud-srow.is-review { opacity: .6; filter: saturate(.35); }
+.hud-srow.is-expired.is-open { filter: saturate(.35); }
+.hud-srow.is-review .hud-tag,
+.hud-srow.is-expired .hud-tag {
+  color: var(--hud-dim) !important;
+  text-shadow: none;
+}
 .hud-ov-sec {
   display: flex;
   justify-content: space-between;
