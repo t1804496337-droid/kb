@@ -4839,6 +4839,11 @@ div.studio-orb.studio-orb-bg,
   border-color: currentColor;
   box-shadow: 0 0 var(--hud-sp-16) var(--hud-c-00ffff-a22), inset 0 0 var(--hud-sp-20) var(--hud-c-00ffff-a10);
 }
+/* ⑤ fix-v3：0 值卡降权 50%（数字仍是 0，只降视觉权重）；hover 回 .85，
+ * 可点性不丢。TSX 渲染 data-zero="1"（方案原文 TSX 取 "1"，其 CSS 稿的
+ * "true" 与之不一致，此处以渲染值为准对齐选择器）。 */
+.hud-card[data-zero="1"] { opacity: .5; }
+.hud-card[data-zero="1"]:hover { opacity: .85; }
 .hud-card-on .hud-ic { box-shadow: 0 0 var(--hud-sp-10) currentColor; }
 .hud-card:hover {
   background: var(--hud-c-00ffff-a10);
@@ -6511,6 +6516,18 @@ div.hud-ov-next { cursor: default; }
   color: var(--hud-c-8fa8cf);
   margin-top: var(--hud-sp-2);
 }
+/* ③ fix-v3 决策栈三档：静默态去掉黄边与警示条纹，退回普通面板 */
+.hud-ov-next[data-quiet="true"] {
+  border-top-color: var(--hud-line);
+  border-bottom-color: var(--hud-line);
+  background: linear-gradient(180deg, var(--hud-c-0d1222-a66), var(--hud-c-060810-a78));
+  cursor: default;
+}
+.hud-ov-next[data-quiet="true"] .hud-ov-next-h { color: var(--hud-dim); }
+/* 决策行：待复核降饱和，已退场折叠（主列表隐藏，折叠组内 .is-open 展开） */
+.hud-srow.is-review { opacity: .55; filter: saturate(.55); }
+.hud-srow.is-expired { display: none; }
+.hud-srow.is-expired.is-open { display: block; opacity: .35; }
 .hud-ov-sec {
   display: flex;
   justify-content: space-between;
@@ -6661,6 +6678,15 @@ div.hud-ov-next { cursor: default; }
 .hud-ov-mx-c i.lv2 { opacity: 0.5; }
 .hud-ov-mx-c i.lv3 { opacity: 0.78; box-shadow: 0 0 var(--hud-sp-5) var(--hud-c-19e3ff-a47); }
 .hud-ov-mx-c i.lv4 { opacity: 1; box-shadow: 0 0 var(--hud-sp-8) var(--hud-int-ov-cyan); }
+/* ⑤ fix-v3：全空行折叠格——虚线框明确是「空」，不是「坏」
+ * （线色取既有 token --hud-c-1a2a49；方案稿写的 --hud-c-2c3a52 在本仓
+ * 未定义，var() 无法解析会让 border 整条失效，故换已定义 token） */
+.hud-ov-mx-none {
+  opacity: .38;
+  font-size: var(--hud-sp-9);
+  letter-spacing: .1em;
+  border: 1px dashed var(--hud-c-1a2a49);
+}
 .hud-ov-feed { position: relative; }
 .hud-ov-livetag {
   font-family: "DejaVu Sans Mono", ui-monospace, monospace;

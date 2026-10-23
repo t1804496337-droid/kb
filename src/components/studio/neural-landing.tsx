@@ -382,10 +382,12 @@ function HudDragRail({
  */
 const OV_FIN_KEY = "studio_finance_entries_v1";
 const OV_ROWS: { id: string; label: string }[] = [
-  { id: "inspiration", label: "灵感池" },
   { id: "finance", label: "财务系统" },
   { id: "health", label: "身体健康" },
-  { id: "studio", label: "创作空间" },
+  /* ⑤ fix-v3：inspiration 死行删除合并——它初始化全 0 且 7 处 bump 无一
+   * 命中（从未有数据源）；唯一会动的 STUDIO_STAGE_MOVE 就是灵感池流水线
+   * 步骤移动，两行同源，故 studio 行改名「灵感池 / 创作空间」承接。 */
+  { id: "studio", label: "灵感池 / 创作空间" },
   { id: "mindmap", label: "灵感图谱" },
 ];
 const OV_WEEK = ["日", "一", "二", "三", "四", "五", "六"];
@@ -422,6 +424,8 @@ function HudOverviewPanel({
   rows,
   pending,
   pendingStale,
+  reviewCount,
+  expiredCount,
   todayChanges,
   sleep,
   steps,
@@ -438,6 +442,9 @@ function HudOverviewPanel({
   rows: number;
   pending: number;
   pendingStale: number;
+  /* ③ fix-v3：静默卡副行的两档计数（无 live 事项时展示）。 */
+  reviewCount: number;
+  expiredCount: number;
   todayChanges: number;
   sleep: HealthState["sleep"];
   steps: { value: number; date: string | null } | null;
@@ -477,7 +484,6 @@ function HudOverviewPanel({
   const dayNums = Array.from({ length: 7 }, (_, i) => todayNum - 6 + i);
   const dayISOs = dayNums.map(dayISOofNum);
   const counts: Record<string, number[]> = {
-    inspiration: dayNums.map(() => 0),
     finance: dayNums.map(() => 0),
     health: dayNums.map(() => 0),
     studio: dayNums.map(() => 0),
@@ -536,10 +542,14 @@ function HudOverviewPanel({
           </div>
         </button>
       ) : (
-        <div className="hud-ov-next" data-testid="hud-ov-next">
+        /* ③ fix-v3：没有 live 事项时黄黑条静默——退回普通面板，
+         * 只报事实：无 2 天内事项 + 两档各有多少条。 */
+        <div className="hud-ov-next" data-testid="hud-ov-next" data-quiet="true">
           <div className="hud-ov-next-h">▶ 下一件 · NEXT ACTION</div>
-          <div className="hud-ov-next-b">暂无待决事项</div>
-          <div className="hud-ov-next-s">决策栈已清空</div>
+          <div className="hud-ov-next-b">无 2 天内事项</div>
+          <div className="hud-ov-next-s">
+            {reviewCount} 条待复核 · {expiredCount} 条已退场
+          </div>
         </div>
       )}
 
@@ -652,22 +662,32 @@ function HudOverviewPanel({
           </tr>
         </thead>
         <tbody>
-          {OV_ROWS.map((r) => (
-            <tr key={r.id}>
-              <td className="hud-ov-mx-lab">{r.label}</td>
-              {counts[r.id].map((n, i) => (
-                <td
-                  key={i}
-                  className="hud-ov-mx-c"
-                  data-testid={`hud-ov-cell-${r.id}-${i}`}
-                  data-level={levelOf(n)}
-                  data-count={n}
-                >
-                  <i className={`lv${levelOf(n)}`} />
-                </td>
-              ))}
-            </tr>
-          ))}
+          {OV_ROWS.map((r) => {
+            const row = counts[r.id];
+            const empty = row.every((n) => n === 0);
+            return (
+              <tr key={r.id} data-empty={empty ? "1" : undefined}>
+                <td className="hud-ov-mx-lab">{r.label}</td>
+                {empty ? (
+                  <td colSpan={7} className="hud-ov-mx-none">
+                    本周无活动
+                  </td>
+                ) : (
+                  row.map((n, i) => (
+                    <td
+                      key={i}
+                      className="hud-ov-mx-c"
+                      data-testid={`hud-ov-cell-${r.id}-${i}`}
+                      data-level={levelOf(n)}
+                      data-count={n}
+                    >
+                      <i className={`lv${levelOf(n)}`} />
+                    </td>
+                  ))
+                )}
+              </tr>
+            );
+          })}
         </tbody>
       </table>
 
@@ -1094,6 +1114,8 @@ export function NeuralLanding({
     }
   });
   const [archivedOpen, setArchivedOpen] = React.useState(false);
+  /* ③ fix-v3：已退场折叠组与归档组同款交互，默认收起，会话级状态。 */
+  const [expiredOpen, setExpiredOpen] = React.useState(false);
   /* terminal progressive disclosure (2026-10-22, hud-denoise): the
    * log rests collapsed on its newest line (the typewriter slot)
    * under a fade; clicking the block opens the full scrolling list,
@@ -1316,9 +1338,12 @@ export function NeuralLanding({
    * fabricate one. score = urgency*100
    *   + (due ? max(0, 30 − daysUntil(due)) * 3 : 0)
    *   + (waitKind: user 25 / data 10 / schedule 0).
-   * Items untouched for > 3 Shanghai calendar days are decayed:
-   * they sink below every fresh item (score orders within a layer)
-   * and render at 40% opacity with a STALE · n 天未动 marker. */
+   * Items are staged by Shanghai calendar age (③ fix-v3, replacing the
+   * old single `decayed: age > 3` boolean): ≤ 2 days live, 3–7 review,
+   * > 7 expired. Ordering is stage-first (live → review → expired),
+   * score descending inside a stage. Only live items may headline
+   * NEXT ACTION; review rows render desaturated, expired rows leave
+   * the visible stack for the collapsed 已退场 group. */
   const healthUpdatedAt =
     slp?.date ??
     (effHealth.sleepLast ? `2026-${effHealth.sleepLast}` : "2026-10-19");
@@ -1404,18 +1429,22 @@ export function NeuralLanding({
       updatedAt: "2026-10-20", urgency: 0, waitKind: "user",
     },
   ];
-  /* score + decay per the approved formula; stable sort keeps the
-   * declaration order inside equal (layer, score) groups. */
+  /* stage + score per the approved formula; stable sort keeps the
+   * declaration order inside equal (stage, score) groups. */
+  type Stage = "live" | "review" | "expired";
+  const stageOf = (age: number): Stage =>
+    age <= 2 ? "live" : age <= 7 ? "review" : "expired";
   const scoredDecisions = decisions.map((d) => {
     const age = ageDaysOf(d.updatedAt);
     const score =
       d.urgency * 100 +
       (d.due ? Math.max(0, 30 - daysUntilOf(d.due)) * 3 : 0) +
       (d.waitKind === "user" ? 25 : d.waitKind === "data" ? 10 : 0);
-    return { d, age, score, decayed: age > 3 };
+    return { d, age, score, stage: stageOf(age) };
   });
+  const ORDER: Record<Stage, number> = { live: 0, review: 1, expired: 2 };
   const orderedDecisions = [...scoredDecisions].sort(
-    (a, b) => Number(a.decayed) - Number(b.decayed) || b.score - a.score,
+    (a, b) => ORDER[a.stage] - ORDER[b.stage] || b.score - a.score,
   );
   /* archived rows leave the algorithm ordering entirely (hud-restyle):
    * the visible stack is the active list; the archived list feeds the
@@ -1428,6 +1457,11 @@ export function NeuralLanding({
   );
   const archivedDecisions = orderedDecisions.filter((s) =>
     archivedSet.has(s.d.id),
+  );
+  /* ③ fix-v3：已退场组与归档组互斥——expired 的上游必须排除 archived，
+   * 同一条目不得在两组里同时出现。 */
+  const expiredDecisions = orderedDecisions.filter(
+    (s) => s.stage === "expired" && !archivedSet.has(s.d.id),
   );
   const pendingCount = activeDecisions.length;
   /* ── data-driven visuals (2026-10-22, hud-finale) ──
@@ -1462,7 +1496,15 @@ export function NeuralLanding({
   /* ── left overview panel feeds (2026-10-22, hud-left-panel) ──
    * All derived from the same live sources as the stack and the
    * terminal — the panel (HudOverviewPanel) only renders them. */
-  const ovTop = activeDecisions[0] ?? null;
+  /* ③ fix-v3：NEXT ACTION 只在 live 档里挑；无 live 时面板走静默卡，
+   * 副行报两档计数（计数与栈内实际分组同源：review 取未归档集，
+   * expired 取已退场组本身）。 */
+  const ovTop =
+    activeDecisions.find((s) => s.stage === "live") ?? null;
+  const ovReviewCount = activeDecisions.filter(
+    (s) => s.stage === "review",
+  ).length;
+  const ovExpiredCount = expiredDecisions.length;
   const ovTodayChanges = execLog.filter(
     (it) => shISOofTs(it.ts) === dayISOofNum(todayShNum()),
   ).length;
@@ -2949,8 +2991,10 @@ export function NeuralLanding({
                 rows={rows}
                 pending={pendingCount}
                 pendingStale={
-                  activeDecisions.filter((s) => s.decayed).length
+                  activeDecisions.filter((s) => s.stage !== "live").length
                 }
+                reviewCount={ovReviewCount}
+                expiredCount={ovExpiredCount}
                 todayChanges={ovTodayChanges}
                 sleep={effHealth.sleep}
                 steps={ovSteps}
@@ -3368,7 +3412,8 @@ export function NeuralLanding({
                       "hud-srow hud-srow-btn",
                       related && "hud-srow-rel",
                       dimmed && "is-dim",
-                      s.decayed && "is-stale",
+                      s.stage === "review" && "is-review",
+                      s.stage === "expired" && "is-expired",
                       d.urgency === 2 && "is-urgent",
                     )}
                     key={d.en}
@@ -3379,7 +3424,7 @@ export function NeuralLanding({
                     data-testid={`hud-decision-${d.note ?? d.target ?? d.en}`}
                     data-related={related ? "1" : undefined}
                     data-score={s.score}
-                    data-decayed={s.decayed ? "1" : undefined}
+                    data-stage={s.stage}
                     data-age={s.age}
                     style={
                       related ? { animationDelay: `${i * 45}ms` } : undefined
@@ -3402,7 +3447,7 @@ export function NeuralLanding({
                     </div>
                     <div className="hud-en" style={{ marginTop: 4 }}>
                       {d.fact} · <span className="hud-wait">{d.wait}</span>
-                      {s.decayed && (
+                      {s.stage !== "live" && (
                         <>
                           {" · "}
                           <span className="hud-stale">
@@ -3489,6 +3534,56 @@ export function NeuralLanding({
                     ))}
                 </div>
               )}
+              {expiredDecisions.length > 0 && (
+                <div className="hud-arch-group" data-testid="hud-expired-group">
+                  <button
+                    type="button"
+                    className="hud-arch-head"
+                    data-testid="hud-expired-toggle"
+                    aria-expanded={expiredOpen}
+                    onClick={() => setExpiredOpen((v) => !v)}
+                  >
+                    <span aria-hidden>{expiredOpen ? "▾" : "▸"}</span>
+                    <span>
+                      已退场 ·{" "}
+                      <span data-testid="hud-expired-count">
+                        {expiredDecisions.length}
+                      </span>
+                    </span>
+                    <span className="hud-en">EXPIRED</span>
+                  </button>
+                  {expiredOpen &&
+                    expiredDecisions.map((s) => (
+                      <button
+                        type="button"
+                        className="hud-srow hud-srow-btn is-expired is-open"
+                        key={s.d.id}
+                        data-testid={`hud-expired-row-${s.d.id}`}
+                        data-stage="expired"
+                        onClick={() => openDecision(s.d)}
+                      >
+                        <div className="hud-r1">
+                          <span className={`hud-led hud-led-${s.d.led}`} />
+                          <span className="hud-name">{s.d.name}</span>
+                          <span className="hud-en">{s.d.en}</span>
+                          <span className={`hud-tag ${s.d.tagCls}`}>
+                            {s.d.tag}
+                          </span>
+                        </div>
+                        <div className="hud-en" style={{ marginTop: 4 }}>
+                          {s.d.fact} ·{" "}
+                          <span className="hud-wait">{s.d.wait}</span>
+                          {" · "}
+                          <span className="hud-stale">
+                            STALE · {s.age} 天未动
+                          </span>
+                          {" · "}
+                          {s.d.target ? "点击进入 →" : "点击看说明 →"}
+                        </div>
+                      </button>
+                    ))}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -3519,12 +3614,20 @@ export function NeuralLanding({
                 data-module={m.id}
                 data-share={sharePct(m.count, m.id) ?? 0}
                 data-share-na={sharePct(m.count, m.id) == null ? "1" : undefined}
+                /* ⑤ fix-v3：0 值卡降权（CSS opacity .5），只改权重不改
+                 * 数字——0 是事实。count 为 null 的卡（创作空间 HUB）
+                 * 不命中。镜像卡（数据库，count 13）不命中，与 hud-card-na
+                 * 无冲突。 */
+                data-zero={m.count === 0 ? "1" : undefined}
                 aria-pressed={sel === m.id}
                 onClick={() => focusOrOpen(m.id)}
               >
                 <div className="hud-ic">{m.icon}</div>
                 <div className="hud-nm">{m.label}</div>
-                <div className="hud-en">{m.en}</div>
+                <div className="hud-en">
+                  {m.en}
+                  {m.count === 0 ? " · 待填装" : ""}
+                </div>
                 <div className="hud-rowb">
                   <span
                     className="hud-num"
