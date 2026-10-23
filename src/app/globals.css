@@ -4100,17 +4100,7 @@ div.studio-orb.studio-orb-bg,
   background: linear-gradient(180deg, var(--hud-c-0a0a14-a50), var(--hud-c-04050a-a85));
 }
 .hud-curve {
-  position: relative;
-  z-index: 2;
-  /* default4：折线与球体层级隔离——深色渐变隔离带垫底，黄色折线
-   * 与标签落在干净暗带上，不再与球体顶部节点视觉撞车。 */
-  background: linear-gradient(
-    to bottom,
-    rgb(4 6 12 / 0.88),
-    rgb(4 6 12 / 0.5) 72%,
-    transparent
-  );
-  padding: var(--hud-sp-6) var(--hud-sp-14) var(--hud-sp-4);
+  padding: var(--hud-sp-6) var(--hud-sp-14) 0;
   display: flex;
   align-items: flex-end;
   gap: var(--hud-sp-12);
@@ -4132,13 +4122,17 @@ div.studio-orb.studio-orb-bg,
   position: relative;
   flex: 1;
   min-height: 0;
+  /* restore3：舞台成为尺寸容器，球径改用 cqw/cqh 双向约束（见
+   * .hud-sphere）——球体在物理上无法溢出舞台顶边进入折线带，
+   * 折线（.hud-curve）与球体自此结构隔离，不靠遮罩贴合。 */
+  container-type: size;
 }
 /* Breathing halo behind the sphere: slow swell + brighten, 7s. */
 .hud-sphere-glow {
   position: absolute;
   left: 50%;
   top: 50%;
-  width: calc(min(500px, 88%) * var(--hud-int-sphere-scale) * var(--hud-focus-scale, 1));
+  width: calc(min(500px, 88cqw, 94cqh) * var(--hud-int-sphere-scale) * var(--hud-focus-scale, 1));
   aspect-ratio: 1;
   transform: translate(-50%, -52%);
   border-radius: 50%;
@@ -4155,7 +4149,7 @@ div.studio-orb.studio-orb-bg,
   position: absolute;
   left: 50%;
   top: 50%;
-  width: calc(min(520px, 92%) * var(--hud-int-sphere-scale) * var(--hud-focus-scale, 1));
+  width: calc(min(520px, 92cqw, 88cqh) * var(--hud-int-sphere-scale) * var(--hud-focus-scale, 1));
   aspect-ratio: 1;
   transform: translate(-50%, -52%);
   mix-blend-mode: screen;
@@ -4169,9 +4163,10 @@ div.studio-orb.studio-orb-bg,
   transition: opacity 0.35s ease;
 }
 /* topology open (hud-mm-render): the whole sphere cluster yields the
- * stage — sphere and halo forced down to 10% so the mind-map
+ * stage — sphere, jellies and halo forced down to 10% so the mind-map
  * nodes own the visual field; restores on exit. */
 .hud-stage.is-mm-open .hud-sphere { opacity: var(--hud-int-mm-sphere-dim); }
+.hud-stage.is-mm-open .hud-jelly { opacity: var(--hud-int-mm-sphere-dim); }
 .hud-stage.is-mm-open .hud-sphere-glow {
   animation: none;
   opacity: var(--hud-int-mm-sphere-dim);
@@ -4214,6 +4209,23 @@ div.studio-orb.studio-orb-bg,
 @keyframes hud-radar-breathe {
   0%, 100% { box-shadow: 0 0 0 rgba(178, 0, 255, 0), inset 0 0 0 rgba(178, 0, 255, 0); }
   50% { box-shadow: 0 0 24px var(--hud-int-radar-hot), inset 0 0 18px rgba(178, 0, 255, 0.14); }
+}
+.hud-jelly {
+  position: absolute;
+  mix-blend-mode: screen;
+  pointer-events: none;
+  -webkit-mask-image: radial-gradient(circle, var(--hud-c-000) 58%, transparent 72%);
+  mask-image: radial-gradient(circle, var(--hud-c-000) 58%, transparent 72%);
+}
+.hud-jelly-a { width: 116px; right: var(--hud-sp-10); top: var(--hud-sp-40); opacity: 0.88; animation: hud-float-a 6s ease-in-out infinite; }
+.hud-jelly-b { width: 96px; left: var(--hud-sp-20); bottom: var(--hud-sp-2); opacity: 0.8; animation: hud-float-b 7s ease-in-out -2.5s infinite; }
+@keyframes hud-float-a {
+  0%, 100% { transform: translateY(-6px) rotate(-1.2deg); }
+  50% { transform: translateY(6px) rotate(1.2deg); }
+}
+@keyframes hud-float-b {
+  0%, 100% { transform: translateY(6px) rotate(1deg); }
+  50% { transform: translateY(-6px) rotate(-1deg); }
 }
 /* focus4（路线 b）：聚焦态读数提层 + 半透明底衬 + 提亮一档，
  * 球体辉光不再糊住 STATUS / 条目读数；球体几何与缩放令牌不动。 */
@@ -4843,7 +4855,11 @@ div.studio-orb.studio-orb-bg,
 /* bottom console */
 .hud-console {
   height: var(--hud-sp-118);
+  /* restore3：底栏高度防挤压加固——min-height 兜底 + 显式禁止
+   * flex 收缩，父链再紧也不许把控制台压扁。 */
+  min-height: var(--hud-sp-118);
   flex: none;
+  flex-shrink: 0;
   display: flex;
   gap: var(--hud-sp-8);
 }
@@ -5137,6 +5153,8 @@ div.studio-orb.studio-orb-bg,
   .hud-center { min-height: 430px; }
   .hud-sphere { width: calc(min(320px, 84vw) * var(--hud-int-sphere-scale)); }
   .hud-sphere-glow { width: calc(min(300px, 80vw) * var(--hud-int-sphere-scale)); }
+  .hud-jelly-a { width: 74px; top: var(--hud-sp-16); }
+  .hud-jelly-b { width: 62px; }
   .hud-right { width: auto; }
   .hud-radar, .hud-panel.hud-dn.hud-radar { height: auto; }
   .hud-console { height: auto; flex-direction: column; }
