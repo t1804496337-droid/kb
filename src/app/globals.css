@@ -4876,7 +4876,10 @@ div.studio-orb.studio-orb-bg,
   position: absolute;
   left: var(--hud-sp-26);
   right: var(--hud-sp-26);
-  top: 21px;
+  /* console-line：轨道线必须位于卡片顶边之上的 padding 带内（.hud-cards
+   * 顶部 padding 10px、卡片顶边在 10px 处），禁止回到卡片内容区——
+   * 原 top:21px 恰好横穿各卡图标行中段，半透明卡面透出后像切断卡片头部。 */
+  top: var(--hud-sp-4);
   height: var(--hud-sp-1);
   background: linear-gradient(90deg, transparent, var(--hud-c-00ffff-a35), var(--hud-c-ff007f-a35), transparent);
 }
