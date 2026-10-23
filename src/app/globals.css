@@ -5014,15 +5014,25 @@ div.studio-orb.studio-orb-bg,
   background-repeat: no-repeat;
 }
 .hud-panel.hud-dn::after { content: none; }
-/* card strip: its decorative hairline keeps its place — it moves
- * to ::after now that ::before carries the corners (the top offset
- * grows with the panel padding so it still threads the icon row). */
+/* card strip: its decorative hairline lives on ::after (::before
+ * carries the denoise corners). console-line3 (2026-10-23): the
+ * hairline now sits at top: var(--hud-sp-4) — inside the strip's top
+ * padding band, above the card tops, as a console-top rail. It must
+ * NOT return to the icon row: the old offset (26px, "grows with the
+ * panel padding so it still threads the icon row") threaded the line
+ * through every card's icon row and read as a clothesline cutting
+ * the cards at the waist (confirmed on production, 2026-10-23).
+ * Note: this ::after is the ONLY hairline that renders on the strip
+ * — the older .hud-cards::before hairline rule is overridden by
+ * .hud-panel.hud-dn::before above (higher specificity, corners) and
+ * never paints; PR #85 adjusted that dead rule, which is why the
+ * production line did not move. */
 .hud-panel.hud-cards.hud-dn::after {
   content: "";
   position: absolute;
   left: var(--hud-sp-26);
   right: var(--hud-sp-26);
-  top: var(--hud-sp-26);
+  top: var(--hud-sp-4);
   bottom: auto;
   width: auto;
   height: var(--hud-sp-1);
