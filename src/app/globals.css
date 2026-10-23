@@ -6589,6 +6589,8 @@ div.hud-ov-next { cursor: default; }
   font-size: var(--hud-sp-19);
   color: var(--hud-c-fff);
   font-weight: 700;
+  /* rect-b1 fix: 数值与「· N 天前」后缀是一个整体，不许折行落单字。 */
+  white-space: nowrap;
 }
 .hud-ov-gs { font-size: var(--hud-sp-9); color: var(--hud-c-5f7396); margin-top: var(--hud-sp-5); }
 .hud-ov-segbar { display: flex; gap: var(--hud-sp-3); margin-top: var(--hud-sp-5); }
