@@ -4536,7 +4536,14 @@ div.studio-orb.studio-orb-bg,
     rgb(var(--beam, 0 255 255) / 0.13),
     transparent
   );
-  border-top: var(--hud-sp-1) solid rgb(var(--beam, 0 255 255) / 0.45);
+  /* console-line2 (2026-10-23): the hard top edge is gone. The 0.45
+   * border-top sat at each card's share height (--wl); on high-share
+   * cards (13/30 ≈ 43%) that line landed right under the nameplate and
+   * nine cards in a row read as one clothesline cutting the console.
+   * The soft 0.13 gradient fill stays (share waterline concept kept),
+   * fading out instead of ending in a sharp beam-colored edge.
+   * (.hud-card-na::after below is a separate rule — its dashed hatch
+   * edge at the card bottom is intentional and untouched.) */
   pointer-events: none;
 }
 /* N/A waterline (fix-b1r): mirror modules are exempt from the share
@@ -4866,6 +4873,9 @@ div.studio-orb.studio-orb-bg,
 .hud-cards {
   flex: 1;
   display: flex;
+  /* console-line2 (2026-10-23): equal card heights made explicit —
+   * stretch was only the implicit flex default. */
+  align-items: stretch;
   gap: var(--hud-sp-8);
   position: relative;
   padding: var(--hud-sp-10) var(--hud-sp-10) var(--hud-sp-8);
@@ -4885,6 +4895,9 @@ div.studio-orb.studio-orb-bg,
 }
 .hud-card {
   flex: 1;
+  /* console-line2 (2026-10-23): pin the card to the full row height so
+   * unselected cards can never collapse below the selected one. */
+  height: 100%;
   min-width: 0;
   position: relative;
   border: var(--hud-sp-1) solid var(--hud-c-82aaff-a16);
