@@ -659,10 +659,8 @@ function HudOverviewPanel({
         </tbody>
       </table>
 
-      {/* 0xA4 · live feed — the terminal's newest lines, same text */}
       <div className="hud-ov-sec">
         <span>实时播报</span>
-        <span>0xA4 · FEED</span>
       </div>
       <div className="hud-ov-feed">
         <span className="hud-ov-livetag">[LIVE]</span>
@@ -684,10 +682,8 @@ function HudOverviewPanel({
         )}
       </div>
 
-      {/* 0xA5 · system status — bracket tags only, never dots */}
       <div className="hud-ov-sec">
         <span>系统状态</span>
-        <span>0xA5 · STATUS</span>
       </div>
       <div className="hud-ov-status">
         <div className="hud-ov-strow" data-testid="hud-ov-st-health">
@@ -2721,7 +2717,6 @@ export function NeuralLanding({
               )}{" "}
               · HEALTH-SYNC → MAIN
             </div>
-            <div className="hud-metric hud-top-hex">0x3F9A · SEC 07</div>
             <div className="hud-snap-group">
               <button
                 type="button"
@@ -3156,7 +3151,7 @@ export function NeuralLanding({
                     {sharePct(selMod.count)}% ]
                   </div>
                   <div className="hud-tag hud-tag-aux" style={{ right: 18, bottom: 8, textAlign: "right" }}>
-                    FOCUS ● {selMod.en} · 0xLAy0UT
+                    FOCUS ● {selMod.en}
                   </div>
                 </>
               ) : (
@@ -3177,7 +3172,7 @@ export function NeuralLanding({
                     [ NODE 技能库 · DEG {skillsN} ] · [ NODE 数据库 · DEG {dbN} ]
                   </div>
                   <div className="hud-tag hud-tag-aux" style={{ right: 18, bottom: 8, textAlign: "right" }}>
-                    SIM ● RUNNING · 0xLAy0UT
+                    SIM ● RUNNING
                   </div>
                 </>
               )}
