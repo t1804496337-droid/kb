@@ -12,17 +12,6 @@ export default function LoginPage() {
   const [error, setError] = React.useState<string | null>(null);
   const [pending, setPending] = React.useState(false);
   const [leaving, setLeaving] = React.useState(false);
-  const rootRef = React.useRef<HTMLDivElement>(null);
-
-  // Pointer parallax: the orb + glow lean a few px toward the pointer
-  // (CSS vars on the root, no re-render). Skipped under reduced motion.
-  const onPointerMove = (e: React.PointerEvent) => {
-    const el = rootRef.current;
-    if (!el || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    const r = el.getBoundingClientRect();
-    el.style.setProperty("--px", (((e.clientX - r.left) / r.width) * 2 - 1).toFixed(3));
-    el.style.setProperty("--py", (((e.clientY - r.top) / r.height) * 2 - 1).toFixed(3));
-  };
 
   // Warm the studio route while the user types, so the success
   // transition hands over to a ready page (data first, show after).
@@ -30,15 +19,6 @@ export default function LoginPage() {
     const from = new URLSearchParams(window.location.search).get("from") || "/studio";
     router.prefetch(from.startsWith("/") ? from : "/studio");
   }, [router]);
-
-  // Landing-plate loop: callback ref keeps it muted + playing
-  // (React's muted prop alone is not reliable).
-  const orbVideoRef = React.useCallback((el: HTMLVideoElement | null) => {
-    if (el) {
-      el.muted = true;
-      void el.play().catch(() => {});
-    }
-  }, []);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -63,8 +43,8 @@ export default function LoginPage() {
         /* ignore */
       }
       const from = new URLSearchParams(window.location.search).get("from") || "/studio";
-      // Success transition (0.8s): orb gathers + brightens, silk
-      // radiates, then the landing catches it. Auth already completed
+      // Success transition (0.8s): silk radiates from the card,
+      // then the landing catches it. Auth already completed
       // above — the show never gates the data. Reduced motion skips
       // straight through.
       setLeaving(true);
@@ -92,44 +72,45 @@ export default function LoginPage() {
 
   return (
     <div
-      ref={rootRef}
-      className="studio-login-page"
+      className="studio-login-page tac-login"
       data-testid="site-login"
       data-leaving={leaving ? "1" : undefined}
-      onPointerMove={onPointerMove}
     >
-      <div className="studio-login-bgwrap" aria-hidden>
-        <div className="studio-login-orb">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            className="lp-orb-plate"
-            src="/studio/landing/orb-plate.webp"
-            alt=""
-            draggable={false}
-          />
-          <video
-            ref={orbVideoRef}
-            className="lp-orb-loop"
-            autoPlay
-            muted
-            loop
-            playsInline
-            preload="auto"
-          >
-            <source src="/studio/neural-orb.webm" type="video/webm" />
-            <source src="/studio/neural-orb.mp4" type="video/mp4" />
-          </video>
-        </div>
+      {/* Tactical darkroom backdrop (hud-login-tactical): radial cold
+          halo behind the card + corner anchors. Pure CSS — no
+          external imagery, no glowing geometry. */}
+      <div className="tac-halo" aria-hidden />
+      <div className="tac-anchor tac-tl" aria-hidden>
+        <span className="tac-cross" />
+        <span className="tac-tag">[ 0x01_GATEWAY ]</span>
       </div>
-      <div className="studio-login-glow" aria-hidden />
+      <div className="tac-anchor tac-tr" aria-hidden>
+        <span className="tac-tag">SYS.VER: 2.0</span>
+        <span className="tac-cross" />
+      </div>
+      <div className="tac-anchor tac-bl" aria-hidden>
+        <span className="tac-cross" />
+        <span className="tac-tag">GRID 28 · CYAN 0.03</span>
+      </div>
+      <div className="tac-anchor tac-br" aria-hidden>
+        <span className="tac-tag">AUTH · SECURE</span>
+        <span className="tac-cross" />
+      </div>
+      <div className="tac-card-wrap">
+        <span className="tac-cross tac-k-tl" aria-hidden />
+        <span className="tac-cross tac-k-tr" aria-hidden />
+        <span className="tac-cross tac-k-bl" aria-hidden />
+        <span className="tac-cross tac-k-br" aria-hidden />
       <form className="studio-login-card" onSubmit={onSubmit}>
-        <p className="studio-login-brand">
-          TANG <span>NEURAL</span>
+        <h1 className="studio-login-brand">
+          <span className="tac-sq" aria-hidden />
+          KB <span className="tac-dot">·</span> STUDIO
+        </h1>
+        <p className="studio-login-sub">
+          <b>[ SYSTEM: GATEWAY_SECURE ]</b> 请输入神经凭证
         </p>
-        <h1>登录工作台</h1>
-        <p className="studio-login-sub">[ SYSTEM: GATEWAY_SECURE ] 请输入神经凭证</p>
         <label className="studio-login-field">
-          <span>用户名</span>
+          <span>ACCOUNT · 账号</span>
           <input
             data-testid="login-user"
             name="username"
@@ -137,11 +118,11 @@ export default function LoginPage() {
             required
             value={username}
             onChange={(e) => setUsername(e.target.value)}
-            placeholder="tang"
+            placeholder="operator id"
           />
         </label>
         <label className="studio-login-field">
-          <span>密码</span>
+          <span>PASSWORD · 密钥</span>
           <input
             data-testid="login-pass"
             name="password"
@@ -150,7 +131,7 @@ export default function LoginPage() {
             required
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            placeholder="••••••••"
+            placeholder="••••••••••"
           />
         </label>
         <div className="studio-login-tools">
@@ -194,12 +175,12 @@ export default function LoginPage() {
           disabled={pending}
         >
           {pending ? "登录中…" : "进入"}
-          <span>ENTER</span>
         </button>
         <p className="studio-login-foot" data-testid="login-foot">
           ENCRYPTION: AES-256 | TERMINAL: ACTIVE
         </p>
       </form>
+      </div>
       {leaving && (
         <div className="login-transition" data-testid="login-transition" aria-hidden>
           <svg className="login-transition-silk" viewBox="0 0 800 800" preserveAspectRatio="xMidYMid slice">
@@ -207,19 +188,6 @@ export default function LoginPage() {
               <line key={i} x1={400} y1={400} x2={r.x} y2={r.y} style={{ animationDelay: r.d }} />
             ))}
           </svg>
-          <div className="login-transition-orb">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              className="lp-orb-plate"
-              src="/studio/landing/orb-plate.webp"
-              alt=""
-              draggable={false}
-            />
-            <video ref={orbVideoRef} className="lp-orb-loop" autoPlay muted loop playsInline preload="auto">
-              <source src="/studio/neural-orb.webm" type="video/webm" />
-              <source src="/studio/neural-orb.mp4" type="video/mp4" />
-            </video>
-          </div>
         </div>
       )}
     </div>

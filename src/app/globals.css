@@ -2931,6 +2931,225 @@ div.studio-orb.studio-orb-bg,
   .login-transition-silk line { animation: none; stroke-dashoffset: 0; }
 }
 
+/* ═══ hud-login-tactical: 战术暗室 login gate (2026-10-23) ═══
+ * Spec source: the user-approved mockup login-tactical.html, values
+ * copied 1:1 incl. its three refinements (nowrap sub-line, card at
+ * translateY(-5vh) golden centre, 0.25-alpha input slots). Scoped
+ * under .tac-login, which only /login carries — the studio page's
+ * internal gate keeps the silver-black plate look untouched.
+ * Functional contracts stay tokenised (--hud-int-login-*): the focus
+ * halo, submit hover lift+glow and foot opacity 0.4 are re-asserted
+ * below wherever a tactical resting style would outrank them. */
+.studio-login-page.tac-login {
+  background-color: #04070d;
+  background-image:
+    linear-gradient(rgba(0, 240, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 240, 255, 0.03) 1px, transparent 1px);
+  background-size: 28px 28px;
+  font-family: ui-monospace, "JetBrains Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  color: #c9d6e2;
+}
+/* Radial cold halo behind the card; its centre follows the card's
+ * -5vh lift (top: calc(50% - 5vh)). */
+.tac-halo {
+  position: absolute;
+  left: 50%; top: calc(50% - 5vh);
+  width: 980px; height: 980px;
+  transform: translate(-50%, -50%);
+  background: radial-gradient(circle at 50% 50%, rgba(0, 240, 255, 0.06) 0%, transparent 65%);
+  pointer-events: none;
+}
+/* Dither veil: on large dark screens the halo gradient bands into
+ * visible stripes — an inline-SVG turbulence grain (zero external
+ * resources) at 5% breaks the bands without touching spec colours. */
+.tac-halo::after {
+  content: "";
+  position: absolute; inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)'/%3E%3C/svg%3E");
+  opacity: 0.05;
+  -webkit-mask-image: radial-gradient(circle at 50% 50%, #000 0%, transparent 65%);
+  mask-image: radial-gradient(circle at 50% 50%, #000 0%, transparent 65%);
+  pointer-events: none;
+}
+.tac-cross {
+  position: absolute;
+  width: 15px; height: 15px;
+  pointer-events: none;
+}
+.tac-cross::before, .tac-cross::after {
+  content: "";
+  position: absolute;
+  background: rgba(0, 240, 255, 0.35);
+}
+.tac-cross::before { left: 50%; top: 0; width: 1px; height: 100%; transform: translateX(-0.5px); }
+.tac-cross::after { top: 50%; left: 0; height: 1px; width: 100%; transform: translateY(-0.5px); }
+.tac-anchor { position: absolute; z-index: 3; }
+.tac-anchor .tac-tag {
+  position: absolute;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  color: rgba(0, 240, 255, 0.35);
+  white-space: nowrap;
+}
+.tac-anchor.tac-tl { left: 24px; top: 24px; }
+.tac-anchor.tac-tl .tac-cross { left: 0; top: 0; }
+.tac-anchor.tac-tl .tac-tag { left: 24px; top: 2px; }
+.tac-anchor.tac-tr { right: 24px; top: 24px; }
+.tac-anchor.tac-tr .tac-cross { right: 0; top: 0; }
+.tac-anchor.tac-tr .tac-tag { right: 24px; top: 2px; }
+.tac-anchor.tac-bl { left: 24px; bottom: 24px; }
+.tac-anchor.tac-bl .tac-cross { left: 0; bottom: 0; }
+.tac-anchor.tac-bl .tac-tag { left: 24px; bottom: 2px; }
+.tac-anchor.tac-br { right: 24px; bottom: 24px; }
+.tac-anchor.tac-br .tac-cross { right: 0; bottom: 0; }
+.tac-anchor.tac-br .tac-tag { right: 24px; bottom: 2px; }
+/* Card at the visual golden centre: flex-centred, lifted 5vh. */
+.tac-card-wrap { position: relative; transform: translateY(-5vh); }
+.tac-card-wrap .tac-cross.tac-k-tl { left: -22px; top: -22px; }
+.tac-card-wrap .tac-cross.tac-k-tr { right: -22px; top: -22px; }
+.tac-card-wrap .tac-cross.tac-k-bl { left: -22px; bottom: -22px; }
+.tac-card-wrap .tac-cross.tac-k-br { right: -22px; bottom: -22px; }
+.tac-login .studio-login-card {
+  width: 408px; max-width: 100%;
+  gap: 0;
+  padding: 38px 40px 26px;
+  border-radius: 0;
+  background: rgba(6, 11, 20, 0.88);
+  border: 1px solid rgba(0, 240, 255, 0.18);
+  backdrop-filter: none; -webkit-backdrop-filter: none;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55), 0 24px 70px rgba(0, 0, 0, 0.6);
+}
+.tac-login .studio-login-card::before {
+  content: "";
+  position: absolute; left: 0; top: 0; right: 0; height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(0, 240, 255, 0.45), transparent);
+}
+.tac-login .studio-login-brand {
+  margin: 0;
+  display: flex; align-items: center; gap: 10px;
+  font-size: 19px; letter-spacing: 0.22em; color: #eaf7ff; font-weight: 600;
+}
+.tac-login .tac-sq {
+  width: 9px; height: 9px; flex: none;
+  background: rgba(0, 240, 255, 0.85);
+  box-shadow: 0 0 8px rgba(0, 240, 255, 0.45);
+}
+.tac-login .tac-dot { color: rgba(0, 240, 255, 0.7); letter-spacing: 0.22em; }
+.tac-login .studio-login-sub {
+  margin: 14px 0 0;
+  font-size: 11px; letter-spacing: 0.08em; color: #5f7284;
+  white-space: nowrap;
+}
+.tac-login .studio-login-sub b { color: #8ef4ff; font-weight: 500; }
+.tac-login .studio-login-field {
+  margin-top: 22px;
+  gap: 8px;
+  font-size: 10px; letter-spacing: 0.22em; color: #5f7284;
+}
+.tac-login .studio-login-field input {
+  background: rgba(0, 240, 255, 0.05);
+  border: 1px solid rgba(0, 240, 255, 0.25);
+  border-radius: 0;
+  color: #eaf7ff;
+  font-family: inherit;
+  font-size: 13px; letter-spacing: 0.06em;
+  padding: 11px 12px;
+}
+.tac-login .studio-login-field input::placeholder { color: #41586b; }
+.tac-login .studio-login-field input:focus {
+  border-color: var(--hud-int-login-focus-border);
+  box-shadow: var(--hud-int-login-focus-glow);
+}
+.tac-login .studio-login-tools {
+  margin-top: 18px;
+  font-size: 10px; letter-spacing: 0.1em;
+}
+.tac-login .studio-login-remember {
+  font-size: 10px; letter-spacing: 0.1em; color: #5f7284;
+  gap: 8px;
+}
+.tac-login .studio-login-remember input {
+  width: 12px; height: 12px;
+  border: 1px solid rgba(0, 240, 255, 0.5);
+  border-radius: 0;
+  background: rgba(0, 240, 255, 0.10);
+}
+.tac-login .studio-login-remember input::before {
+  width: 8px; height: 8px;
+  background: rgba(0, 240, 255, 0.75);
+  clip-path: none;
+}
+.tac-login .studio-login-remember input:checked {
+  border-color: var(--hud-int-login-focus-border);
+  box-shadow: var(--hud-int-login-focus-glow);
+}
+.tac-login .studio-login-remember em {
+  font-size: 10px; letter-spacing: 0.1em; margin-left: 3px; color: #5f7284;
+}
+.tac-login .studio-login-reset {
+  font-size: 10px; letter-spacing: 0.1em;
+  color: #8ef4ff; opacity: 0.85; text-shadow: none;
+}
+.tac-login .studio-login-reset:hover { color: #bffbff; text-shadow: none; }
+.tac-login .studio-login-reset-note {
+  margin-top: 14px;
+  border: 1px dashed rgba(0, 240, 255, 0.45);
+  border-radius: 0;
+  background: rgba(0, 240, 255, 0.04);
+  color: #c9d6e2;
+}
+.tac-login .studio-login-error { margin-top: 12px; }
+.tac-login .studio-login-submit {
+  margin-top: 26px;
+  display: block; width: 100%;
+  padding: 13px 0;
+  background: rgba(0, 240, 255, 0.07);
+  border: 1px solid rgba(0, 240, 255, 0.55);
+  border-radius: 0;
+  color: #8ef4ff;
+  font-family: inherit;
+  font-size: 13px; font-weight: 400;
+  letter-spacing: 0.5em; text-indent: 0.5em; text-align: center;
+  box-shadow: 0 0 14px rgba(0, 240, 255, 0.10), inset 0 0 12px rgba(0, 240, 255, 0.05);
+}
+.tac-login .studio-login-submit:hover {
+  border-color: var(--hud-int-login-focus-border);
+  box-shadow: var(--hud-int-login-btn-glow);
+  transform: translateY(var(--hud-int-login-lift));
+}
+.tac-login .studio-login-foot {
+  margin: 24px 0 0;
+  padding-top: 14px;
+  border-top: 1px dashed rgba(0, 240, 255, 0.12);
+  font-size: 9px; letter-spacing: 0.18em;
+  /* Opacity stays the tokenised 0.4 (hud-login contract); the colour
+   * is pre-brightened so the blended tone lands on the mockup #41586b. */
+  color: #9acbed;
+}
+/* Success transition on the tactical backdrop; cyan silk, orb gone. */
+.tac-login .login-transition {
+  background-color: #04070d;
+  background-image:
+    linear-gradient(rgba(0, 240, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 240, 255, 0.03) 1px, transparent 1px);
+  background-size: 28px 28px;
+}
+.tac-login .login-transition-silk line { stroke: rgba(0, 240, 255, 0.5); }
+@media (max-width: 560px) {
+  .tac-login .studio-login-card { width: calc(100vw - 56px); padding: 30px 24px 22px; }
+  .tac-login .studio-login-sub { font-size: 10px; letter-spacing: 0.04em; }
+  .tac-card-wrap .tac-cross.tac-k-tl { left: -16px; top: -16px; }
+  .tac-card-wrap .tac-cross.tac-k-tr { right: -16px; top: -16px; }
+  .tac-card-wrap .tac-cross.tac-k-bl { left: -16px; bottom: -16px; }
+  .tac-card-wrap .tac-cross.tac-k-br { right: -16px; bottom: -16px; }
+  .tac-anchor { transform: scale(0.92); }
+  .tac-anchor.tac-tl { left: 14px; top: 14px; }
+  .tac-anchor.tac-tr { right: 14px; top: 14px; }
+  .tac-anchor.tac-bl { left: 14px; bottom: 14px; }
+  .tac-anchor.tac-br { right: 14px; bottom: 14px; }
+  .tac-halo { width: 640px; height: 640px; }
+}
+
 /* ═══ Restored original map: anti-crowding row treatment ═══
  * The module map is back to main's original composition (orb core,
  * hub jelly + card column, silk fan into the list viewport). The ONLY
