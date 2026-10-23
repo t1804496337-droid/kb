@@ -4485,6 +4485,22 @@ div.studio-orb.studio-orb-bg,
   border-top: var(--hud-sp-1) solid rgb(var(--beam, 0 255 255) / 0.45);
   pointer-events: none;
 }
+/* N/A waterline (fix-b1r): mirror modules are exempt from the share
+ * computation (sharePct → null). A 0% waterline reads as "empty module /
+ * zero output", so the fill is replaced by a neutral gray hatch with a
+ * dashed top edge — section-cut language for "not counted", in no
+ * module's semantic color. */
+.hud-card.hud-card-na::after {
+  height: 100%;
+  background: repeating-linear-gradient(
+    -45deg,
+    rgb(148 163 184 / 0.13) 0,
+    rgb(148 163 184 / 0.13) 6px,
+    transparent 6px,
+    transparent 12px
+  );
+  border-top: var(--hud-sp-1) dashed rgb(148 163 184 / 0.5);
+}
 /* terminal caret: hard steps blink on the [NOW] prompt line */
 .hud-term-caret {
   color: var(--hud-yellow);

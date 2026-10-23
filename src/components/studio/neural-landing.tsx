@@ -1214,7 +1214,8 @@ export function NeuralLanding({
     view === "note:x" ? ("x" as const) : view === "note:xhs" ? ("xhs" as const) : null;
   const selMod = sel ? (modules.find((m) => m.id === sel) ?? null) : null;
   /* ① sharePct（fix-v3）：分母改实体数；镜像模块没有独立份额 → null，
-   * 渲染走 shareLabel 显示「—」、底栏水位取 0。 */
+   * 渲染走 shareLabel 显示「—」；底栏卡水位走 N/A 态（hud-card-na，
+   * fix-b1r）——宽度 0 会读成「空模块」，镜像是免计算不是零产出。 */
   const sharePct = (n: number | null, id?: string) =>
     id && MIRROR_OF[id]
       ? null
@@ -3105,7 +3106,7 @@ export function NeuralLanding({
               <div className="hud-lab">
                 ACTIVITY CURVE · 条目增长
                 <br />
-                <b>0 → {entities}</b> · LAST 30D
+                <b>0 → {entities}</b>
               </div>
               <svg viewBox="0 0 430 40" preserveAspectRatio="none" aria-hidden>
                 <defs>
@@ -3129,10 +3130,6 @@ export function NeuralLanding({
                 <circle cx="242" cy="24" r="2" fill="#fff2a8" />
                 <circle cx="98" cy="35" r="2" fill="#fff2a8" />
               </svg>
-              <div className="hud-lab" style={{ textAlign: "right" }}>
-                PEAK <b>{rows}</b>
-                <br />Δ +{rows} / 30D
-              </div>
             </div>
             <div
               className={`hud-stage${mmOpen ? " is-mm-open" : ""}`}
@@ -3503,18 +3500,25 @@ export function NeuralLanding({
               <button
                 key={m.id}
                 type="button"
-                className={cn("hud-card", sel === m.id && "hud-card-on")}
+                className={cn(
+                  "hud-card",
+                  sel === m.id && "hud-card-on",
+                  sharePct(m.count, m.id) == null && "hud-card-na",
+                )}
                 style={
                   {
                     color: m.color,
                     /* telemetry waterline (hud-restyle): --wl is the
-                     * module's real entry share, --beam its beam rgb */
+                     * module's real entry share, --beam its beam rgb.
+                     * Mirror modules (share null) ignore --wl: the
+                     * .hud-card-na rule paints the N/A hatch instead. */
                     "--wl": `${sharePct(m.count, m.id) ?? 0}%`,
                     "--beam": beamRgb(m.color),
                   } as React.CSSProperties
                 }
                 data-module={m.id}
                 data-share={sharePct(m.count, m.id) ?? 0}
+                data-share-na={sharePct(m.count, m.id) == null ? "1" : undefined}
                 aria-pressed={sel === m.id}
                 onClick={() => focusOrOpen(m.id)}
               >
