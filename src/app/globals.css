@@ -3883,6 +3883,13 @@ div.studio-orb.studio-orb-bg,
   letter-spacing: 0.1em;
   white-space: nowrap;
 }
+/* S5（rect-b1）：纯文字标签——无边框/无背景/无 hover 观感，
+ * 给「看着像控件但不可点」的静态标注用，与真按钮彻底分开。 */
+.hud-plain {
+  font-size: var(--hud-sp-9);
+  letter-spacing: 0.1em;
+  white-space: nowrap;
+}
 .hud-c-pink { color: var(--hud-pink); text-shadow: 0 0 var(--hud-sp-7) var(--hud-c-ff007f-a80); }
 .hud-c-cyan { color: var(--hud-cyan); text-shadow: 0 0 var(--hud-sp-7) var(--hud-c-00ffff-a70); }
 .hud-c-yel { color: var(--hud-yellow); text-shadow: 0 0 var(--hud-sp-7) var(--hud-c-ffea00-a70); }
@@ -4248,6 +4255,8 @@ div.studio-orb.studio-orb-bg,
 }
 .hud-radar .hud-rstats b { float: right; font-size: var(--hud-sp-10); }
 .hud-radar .hud-rs { padding: 0 var(--hud-sp-4); margin: 0 var(--hud-sp-n4); transition: all 0.25s; }
+/* S0（rect-b1）：雷达图例的口径注记行。 */
+.hud-radar .hud-rs-note { color: var(--hud-dim); font-size: var(--hud-sp-9); }
 .hud-radar .hud-rs-on {
   color: var(--hud-c-eef5ff);
   background: var(--hud-c-00ffff-a9);
@@ -6598,6 +6607,14 @@ div.hud-ov-next { cursor: default; }
   background: var(--hud-int-ov-cyan);
   box-shadow: 0 0 var(--hud-sp-6) var(--hud-c-19e3ff-a53);
 }
+/* S1（rect-b1）：睡眠陈旧降级——琥珀段 + 仪表顶线转琥珀。 */
+.hud-ov-segbar i.on-a {
+  background: var(--hud-int-stale);
+  box-shadow: 0 0 var(--hud-sp-6) rgba(255, 176, 58, 0.53);
+}
+.hud-ov-gauge[data-stale="true"]::before {
+  background: linear-gradient(90deg, var(--hud-c-ffb03a-a70), transparent 75%);
+}
 .hud-ov-mx { border-collapse: separate; border-spacing: var(--hud-sp-2); width: 100%; }
 .hud-ov-mx th {
   font-size: var(--hud-sp-8);
@@ -6662,6 +6679,6 @@ div.hud-ov-next { cursor: default; }
 @media (max-width: 768px) {
   /* performance tier: the panel keeps its shape, loses its glow */
   .hud-ov-num-c, .hud-ov-num-p, .hud-ov-num-y { text-shadow: none; }
-  .hud-ov-segbar i.on-g, .hud-ov-segbar i.on-c { box-shadow: none; }
+  .hud-ov-segbar i.on-g, .hud-ov-segbar i.on-c, .hud-ov-segbar i.on-a { box-shadow: none; }
   .hud-ov-mx-c i.lv3, .hud-ov-mx-c i.lv4 { box-shadow: none; }
 }
