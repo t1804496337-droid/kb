@@ -3267,6 +3267,20 @@ export function NeuralLanding({
                 alt=""
                 draggable={false}
               />
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                className="hud-jelly hud-jelly-a"
+                src="/studio/hud/jelly-pink.webp"
+                alt=""
+                draggable={false}
+              />
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                className="hud-jelly hud-jelly-b"
+                src="/studio/hud/jelly-cyan.webp"
+                alt=""
+                draggable={false}
+              />
               {selMod ? (
                 <>
                   <div className="hud-tag hud-tag-main" style={{ left: 18, top: 14 }}>
