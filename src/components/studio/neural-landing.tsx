@@ -127,6 +127,15 @@ const todayShNum = (): number => {
   return Math.floor(Date.UTC(get("year"), get("month") - 1, get("day")) / 864e5);
 };
 const ageDaysOf = (iso: string): number => todayShNum() - shDayNum(iso);
+/* ② 统一新鲜度（fix-v3）：全屏唯一的陈旧阈值——睡眠 / 健康 / 日历
+ * 三处判龄共用此常量与 staleAgeOf，不再各写字面量。 */
+const STALE_AFTER_DAYS = 2;
+/** 有日期 → 返回年龄；无日期 → null；不陈旧 → 0 */
+const staleAgeOf = (iso?: string | null): number | null => {
+  if (!iso) return null;
+  const age = ageDaysOf(iso);
+  return age >= STALE_AFTER_DAYS ? age : 0;
+};
 /** Day-number (Shanghai calendar, see shDayNum) → YYYY-MM-DD. */
 const dayISOofNum = (dayNum: number): string =>
   new Date(dayNum * 864e5).toISOString().slice(0, 10);
@@ -409,7 +418,8 @@ const readOvSnapReady = (): boolean => {
 function HudOverviewPanel({
   top,
   onOpenTop,
-  total,
+  entities,
+  rows,
   pending,
   pendingStale,
   todayChanges,
@@ -423,7 +433,9 @@ function HudOverviewPanel({
 }: {
   top: { name: string; tag: string; wait: string; age: number } | null;
   onOpenTop: () => void;
-  total: number;
+  /* ① fix-v3：条目总数卡显实体数、副标题交代行数（见 MIRROR_OF）。 */
+  entities: number;
+  rows: number;
   pending: number;
   pendingStale: number;
   todayChanges: number;
@@ -499,7 +511,7 @@ function HudOverviewPanel({
    * 日 ≥ 昨日为新鲜，age ≥ 2 即陈旧：琥珀降级 + 天数进主句，不再
    * 用绿色满条冒充今天的数据。 */
   const sleepAgeDays = sleep?.date ? ageDaysOf(sleep.date) : null;
-  const sleepStale = sleepAgeDays != null && sleepAgeDays >= 2;
+  const sleepStale = sleepAgeDays != null && sleepAgeDays >= STALE_AFTER_DAYS;
   const stepSegs = steps
     ? Math.max(0, Math.min(10, Math.round((steps.value / 8000) * 10)))
     : 0;
@@ -542,9 +554,9 @@ function HudOverviewPanel({
             className="hud-ov-num hud-ov-num-c"
             data-testid="hud-ov-total"
           >
-            {total}
+            {entities}
           </div>
-          <div className="hud-ov-sub">九大模块合计</div>
+          <div className="hud-ov-sub">{rows} 行 · 数据库为技能镜像</div>
         </div>
         <div className="hud-ov-card">
           <div className="hud-ov-lab">待决事项</div>
@@ -738,10 +750,13 @@ export function NeuralLanding({
   quick = false,
   stats = [],
   customCards = [],
+  calLast,
 }: {
   nodes: LandingNode[];
   leaving: boolean;
   quick?: boolean;
+  /** 日历最后一条事项的 date（YYYY-MM-DD）；取不到时日历行不判陈旧。 */
+  calLast?: string;
   stats?: { key?: string; value: number; label: string; en: string }[];
   /** User-created modules, shown as extra console cards when present. */
   customCards?: {
@@ -877,6 +892,10 @@ export function NeuralLanding({
         },
       }
     : health;
+  /* ② 统一新鲜度（fix-v3）：健康行与日历行改走 staleAgeOf 天龄口径，
+   * 与睡眠同一套阈值（STALE_AFTER_DAYS），不再各行一套标准。 */
+  const calStale = staleAgeOf(calLast);
+  const healthStale = staleAgeOf(effHealth.sleep?.date);
 
   /* ---- module data: live counts via props, E display copy fixed ---- */
   const nodeBySection = (s: string) =>
@@ -980,12 +999,17 @@ export function NeuralLanding({
     ...extras,
   ];
 
-  const total = modules.reduce((acc, m) => acc + (m.count ?? 0), 0);
-  /* S0 口径去重（rect-b1）：total 是「行」口径——数据库模块是条目索引
-   * 视图，它的每一行都是别处实体的镜像，不产生独立实体；实体口径
-   * 因此 = 总行数 − 数据库行数。KNOWLEDGE 同理：实体 = 技能本身，
-   * 行 = 技能 + 数据库镜像（knowledgeN 保持行口径）。 */
-  const entities = total - dbN;
+  /* ① 聚合去重（fix-v3）：镜像关系显式声明——数据库模块是技能条目的
+   * 索引视图，它的每一行都是技能实体的镜像，不产生独立实体（弃用旧式
+   * total − dbN：再多一个镜像就会算错）。rows = 全部行数口径；
+   * entities = 排除镜像模块后的独立实体数。KNOWLEDGE 同理：实体 = 技能
+   * 本身，行 = 技能 + 数据库镜像（knowledgeN 保持行口径）。 */
+  const MIRROR_OF: Record<string, string> = { database: "skills" };
+  const rows = modules.reduce((a, m) => a + (m.count ?? 0), 0);
+  const entities = modules.reduce(
+    (a, m) => a + (MIRROR_OF[m.id] ? 0 : (m.count ?? 0)),
+    0,
+  );
   const knowledgeN = skillsN + dbN;
   const outputN = worksN + finN;
 
@@ -1189,8 +1213,18 @@ export function NeuralLanding({
   const noteKind =
     view === "note:x" ? ("x" as const) : view === "note:xhs" ? ("xhs" as const) : null;
   const selMod = sel ? (modules.find((m) => m.id === sel) ?? null) : null;
-  const sharePct = (n: number | null) =>
-    n == null || total <= 0 ? 0 : Math.round((n / total) * 100);
+  /* ① sharePct（fix-v3）：分母改实体数；镜像模块没有独立份额 → null，
+   * 渲染走 shareLabel 显示「—」、底栏水位取 0。 */
+  const sharePct = (n: number | null, id?: string) =>
+    id && MIRROR_OF[id]
+      ? null
+      : n == null || entities <= 0
+        ? 0
+        : Math.round((n / entities) * 100);
+  const shareLabel = (n: number | null, id?: string): string => {
+    const p = sharePct(n, id);
+    return p == null ? "—" : `${p}%`;
+  };
   const moduleStatus = (m: HudModule): { main: string; note: string } => {
     switch (m.id) {
       case "health":
@@ -1452,7 +1486,7 @@ export function NeuralLanding({
         ? { value: health.stepsToday, date: health.stepsDate }
         : null;
   const ovHealthOk =
-    effHealth.sleep != null && ageDaysOf(effHealth.sleep.date) <= 2;
+    effHealth.sleep != null && staleAgeOf(effHealth.sleep.date) === 0;
   /* FLIP reorder animation: when the computed order changes (e.g. the
    * health row revives on sync and floats up), rows glide from their
    * previous tops instead of the stack re-rendering in a flash. Tops
@@ -2674,7 +2708,7 @@ export function NeuralLanding({
             MODULES <b>{modules.length}</b>
           </div>
           <div className="hud-metric">
-            ENTRIES <b>{entities} · {total} 行</b>
+            ENTRIES <b>{entities} · {rows} 行</b>
           </div>
           <div className="hud-metric">
             SKILLS <b>{skillsN}</b>
@@ -2885,7 +2919,7 @@ export function NeuralLanding({
               <div className="hud-sheet-grip" aria-hidden />
               <div className="hud-phead">
                 <span className="hud-t">概览 · 指挥中枢</span>
-                <span className="hud-chip hud-c-cyan">OVERVIEW</span>
+                <span className="hud-plain hud-c-cyan">OVERVIEW</span>
               </div>
             </div>
             <div className="hud-treebody">
@@ -2910,7 +2944,8 @@ export function NeuralLanding({
                 onOpenTop={() => {
                   if (ovTop) openDecision(ovTop.d);
                 }}
-                total={total}
+                entities={entities}
+                rows={rows}
                 pending={pendingCount}
                 pendingStale={
                   activeDecisions.filter((s) => s.decayed).length
@@ -3055,7 +3090,7 @@ export function NeuralLanding({
             <div className="hud-phead">
               <span className="hud-t">CORE MAP · 知识核心图谱</span>
               <span className="hud-plain hud-c-yel">FORCE GRAPH</span>
-              <span className="hud-plain hud-c-pur">{entities} ENTITIES · {total} ROWS</span>
+              <span className="hud-plain hud-c-pur">{entities} ENTITIES · {rows} ROWS</span>
               <button
                 type="button"
                 className="hud-chip hud-c-cyan hud-mm-toggle"
@@ -3064,13 +3099,13 @@ export function NeuralLanding({
               >
                 拓扑 MINDMAP
               </button>
-              <span className="hud-hex">0xC0RE · [ + ] · GRID C3</span>
+              <span className="hud-hex">0xC0RE · GRID C3</span>
             </div>
             <div className="hud-curve">
               <div className="hud-lab">
                 ACTIVITY CURVE · 条目增长
                 <br />
-                <b>0 → {total}</b> · LAST 30D
+                <b>0 → {entities}</b> · LAST 30D
               </div>
               <svg viewBox="0 0 430 40" preserveAspectRatio="none" aria-hidden>
                 <defs>
@@ -3095,8 +3130,8 @@ export function NeuralLanding({
                 <circle cx="98" cy="35" r="2" fill="#fff2a8" />
               </svg>
               <div className="hud-lab" style={{ textAlign: "right" }}>
-                PEAK <b>{total}</b>
-                <br />Δ +{total} / 30D
+                PEAK <b>{rows}</b>
+                <br />Δ +{rows} / 30D
               </div>
             </div>
             <div
@@ -3139,7 +3174,7 @@ export function NeuralLanding({
                     <b style={{ color: selMod.color }}>
                       {selMod.label} {selMod.countText ?? selMod.count}
                     </b>
-                    ENTRIES {selMod.count ?? "—"} · SHARE {sharePct(selMod.count)}%
+                    ENTRIES {selMod.count ?? "—"} · SHARE {shareLabel(selMod.count, selMod.id)}
                   </div>
                   <div className="hud-tag hud-tag-aux" style={{ right: 140, top: 14, textAlign: "right" }}>
                     STATUS · {selMod.en} ◈
@@ -3148,7 +3183,7 @@ export function NeuralLanding({
                   </div>
                   <div className="hud-tag hud-tag-aux" style={{ left: 18, bottom: 8 }}>
                     [ NODE {selMod.label} · DEG {selMod.count ?? "—"} ] · [ SHARE{" "}
-                    {sharePct(selMod.count)}% ]
+                    {shareLabel(selMod.count, selMod.id)} ]
                   </div>
                   <div className="hud-tag hud-tag-aux" style={{ right: 18, bottom: 8, textAlign: "right" }}>
                     FOCUS ● {selMod.en}
@@ -3188,7 +3223,7 @@ export function NeuralLanding({
                     COUNT <b>{selMod.countText ?? selMod.count}</b>
                   </span>
                   <span>
-                    SHARE <b>{sharePct(selMod.count)}%</b>
+                    SHARE <b>{shareLabel(selMod.count, selMod.id)}</b>
                   </span>
                   <span>
                     STATUS{" "}
@@ -3282,10 +3317,16 @@ export function NeuralLanding({
                       { id: "finance", label: "FINANCE 财务", v: finN, cls: "hud-c-yel" },
                       {
                         id: "health", label: "HEALTH 健康",
-                        v: manualSleepApplies ? (effHealth.sleepLast ?? "SYNCED") : "STALE",
-                        cls: manualSleepApplies ? "hud-c-grn" : "hud-c-amb",
+                        v: healthStale
+                          ? `STALE · ${healthStale}天`
+                          : (effHealth.sleepLast ?? "SYNCED"),
+                        cls: healthStale ? "hud-c-amb" : "hud-c-grn",
                       },
-                      { id: "calendar", label: "CALENDAR 日历", v: calN, cls: "" },
+                      {
+                        id: "calendar", label: "CALENDAR 日历",
+                        v: calStale ? `${calN} · ${calStale}天前` : calN,
+                        cls: calStale ? "hud-c-amb" : "",
+                      },
                     ] as const
                   ).map((r) => (
                     <div
@@ -3313,7 +3354,7 @@ export function NeuralLanding({
                 <div className="hud-sheet-grip" aria-hidden />
                 <div className="hud-phead">
                   <span className="hud-t">DECISION STACK · 决策栈</span>
-                  <span className="hud-chip hud-c-pink">{pendingCount} 待决</span>
+                  <span className="hud-plain hud-c-pink">{pendingCount} 待决</span>
                 </div>
               </div>
               {activeDecisions.map((s, i) => {
@@ -3360,7 +3401,7 @@ export function NeuralLanding({
                       <span className={`hud-led hud-led-${d.led}`} />
                       <span className="hud-name">{d.name}</span>
                       <span className="hud-en">{d.en}</span>
-                      <span className={`hud-tag hud-chip ${d.tagCls}`}>{d.tag}</span>
+                      <span className={`hud-tag ${d.tagCls}`}>{d.tag}</span>
                     </div>
                     <div className="hud-en" style={{ marginTop: 4 }}>
                       {d.fact} · <span className="hud-wait">{d.wait}</span>
@@ -3468,12 +3509,12 @@ export function NeuralLanding({
                     color: m.color,
                     /* telemetry waterline (hud-restyle): --wl is the
                      * module's real entry share, --beam its beam rgb */
-                    "--wl": `${sharePct(m.count)}%`,
+                    "--wl": `${sharePct(m.count, m.id) ?? 0}%`,
                     "--beam": beamRgb(m.color),
                   } as React.CSSProperties
                 }
                 data-module={m.id}
-                data-share={sharePct(m.count)}
+                data-share={sharePct(m.count, m.id) ?? 0}
                 aria-pressed={sel === m.id}
                 onClick={() => focusOrOpen(m.id)}
               >
