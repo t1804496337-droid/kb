@@ -4223,15 +4223,23 @@ div.studio-orb.studio-orb-bg,
   0%, 100% { transform: translateY(6px) rotate(1deg); }
   50% { transform: translateY(-6px) rotate(-1deg); }
 }
+/* focus4（路线 b）：聚焦态读数提层 + 半透明底衬 + 提亮一档，
+ * 球体辉光不再糊住 STATUS / 条目读数；球体几何与缩放令牌不动。 */
 .hud-stage .hud-tag {
   position: absolute;
+  z-index: 2;
   font-size: var(--hud-sp-9);
   letter-spacing: 0.12em;
-  color: var(--hud-dim);
+  color: var(--hud-ink);
   white-space: nowrap;
+  background: rgb(4 7 13 / 0.55);
+  padding: var(--hud-sp-2) var(--hud-sp-6);
 }
 .hud-stage .hud-tag b { display: block; font-size: var(--hud-sp-11); margin-top: var(--hud-sp-2); }
 .hud-tele {
+  position: relative;
+  z-index: 2;
+  background: rgb(3 5 10 / 0.6);
   padding: var(--hud-sp-6) var(--hud-sp-12);
   border-top: var(--hud-sp-1) dashed var(--hud-c-8cb4ff-a14);
   font-size: var(--hud-sp-9);
@@ -4270,6 +4278,17 @@ div.studio-orb.studio-orb-bg,
   .hud-main > .hud-tree:focus-within,
   .hud-main > .hud-right:hover,
   .hud-main > .hud-right:focus-within { filter: none; }
+  /* focus4：聚焦态右栏整栏撤压、退后下放元素级（只亮关联行）——
+   * 雷达图形本体与非关联统计行在元素级退后；关联行（hud-rs-on /
+   * 决策栈 hud-srow-rel）与面板标题、脚注不压暗。层级靠元素级
+   * 明暗维持，不再靠整栏 filter 一刀切。 */
+  .hud-root[data-focus] .hud-main > .hud-right { filter: none; }
+  .hud-root[data-focus] .hud-radar .hud-rbody svg {
+    filter: brightness(.72) saturate(.88);
+  }
+  .hud-root[data-focus] .hud-radar .hud-rs:not(.hud-rs-on):not(.hud-rs-note) {
+    opacity: .55;
+  }
   /* 中央提亮 + 球体放大：只改令牌，不动像素 */
   .hud-main > .hud-center { filter: brightness(1.06); }
   .hud-main > .hud-center .hud-sphere,
@@ -4290,7 +4309,7 @@ div.studio-orb.studio-orb-bg,
 .hud-radar .hud-rstats b { float: right; font-size: var(--hud-sp-10); }
 .hud-radar .hud-rs { padding: 0 var(--hud-sp-4); margin: 0 var(--hud-sp-n4); transition: all 0.25s; }
 /* S0（rect-b1）：雷达图例的口径注记行。 */
-.hud-radar .hud-rs-note { color: var(--hud-dim); font-size: var(--hud-sp-9); }
+.hud-radar .hud-rs-note { color: var(--hud-dim); font-size: var(--hud-sp-9); white-space: nowrap; }
 .hud-radar .hud-rs-on {
   color: var(--hud-c-eef5ff);
   background: var(--hud-c-00ffff-a9);
@@ -4520,9 +4539,11 @@ div.studio-orb.studio-orb-bg,
  * computation (sharePct → null). A 0% waterline reads as "empty module /
  * zero output", so the fill is replaced by a neutral gray hatch with a
  * dashed top edge — section-cut language for "not counted", in no
- * module's semantic color. */
+ * module's semantic color.
+ * focus4：斜纹收回到水位线高度（var(--hud-sp-3)），不再铺满整卡
+ * 盖住图标与数字——整卡斜纹在选中态读作「停用」，与 ACTIVE 可下钻矛盾。 */
 .hud-card.hud-card-na::after {
-  height: 100%;
+  height: var(--hud-sp-3);
   background: repeating-linear-gradient(
     -45deg,
     rgb(148 163 184 / 0.13) 0,
