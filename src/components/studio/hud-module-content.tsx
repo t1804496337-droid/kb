@@ -732,7 +732,8 @@ function DatabaseBody() {
     { id: "entries", label: "条目索引", en: "ENTRIES", n: entryRows.length },
   ];
   return (
-    <div>
+    <div className="hud-module-grid hud-module-grid-2">
+      <div className="hud-module-zone-side">
       <p className="hud-module-note" style={{ marginBottom: 4 }}>
         定位：全站总索引——技能 / 流程 / 条目三区。技能库是「已装技能的
         使用视图」，这里是「有什么」的登记表，两边同源不同视角。
@@ -761,6 +762,8 @@ function DatabaseBody() {
           </button>
         ))}
       </div>
+      </div>
+      <div className="hud-module-zone-main">
       {tab === "skills" ? (
         <>
           <SecHead
@@ -859,6 +862,7 @@ function DatabaseBody() {
           </div>
         </>
       ) : null}
+      </div>
     </div>
   );
 }
@@ -1554,7 +1558,61 @@ function CalendarBody() {
   }
   const sorted = [...items].sort((a, b) => a.date.localeCompare(b.date));
   return (
-    <div>
+    <div className="hud-module-grid hud-module-grid-2">
+      <div className="hud-module-zone-side">
+      <SecHead
+        title="事项列表"
+        en="ITEMS"
+        right={
+          <span className="hud-module-note">
+            本地保存 studio_calendar_items_v1 · 跨设备同步待后端方案
+          </span>
+        }
+      />
+      <div className="hud-module-form">
+        <input
+          className="hud-module-input hud-module-input-flex"
+          data-testid="hud-cal-title"
+          type="text"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") addItem();
+          }}
+          placeholder="新事项标题"
+          aria-label="新事项标题"
+        />
+        <input
+          className="hud-module-input hud-module-input-date"
+          data-testid="hud-cal-date"
+          type="date"
+          value={date}
+          onChange={(e) => setDate(e.target.value)}
+          aria-label="事项日期"
+        />
+        <input
+          className="hud-module-input hud-module-input-flex"
+          data-testid="hud-cal-note"
+          type="text"
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") addItem();
+          }}
+          placeholder="备注（选填）"
+          aria-label="事项备注"
+        />
+        <button
+          type="button"
+          className="hud-module-toggle"
+          data-testid="hud-cal-add"
+          onClick={addItem}
+        >
+          ＋ 加事项
+        </button>
+      </div>
+      </div>
+      <div className="hud-module-zone-main">
       <SecHead
         title={`${year} 年 ${month} 月`}
         en="MONTH GRID"
@@ -1622,57 +1680,6 @@ function CalendarBody() {
             </div>
           );
         })}
-      </div>
-      <SecHead
-        title="事项列表"
-        en="ITEMS"
-        right={
-          <span className="hud-module-note">
-            本地保存 studio_calendar_items_v1 · 跨设备同步待后端方案
-          </span>
-        }
-      />
-      <div className="hud-module-form">
-        <input
-          className="hud-module-input hud-module-input-flex"
-          data-testid="hud-cal-title"
-          type="text"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") addItem();
-          }}
-          placeholder="新事项标题"
-          aria-label="新事项标题"
-        />
-        <input
-          className="hud-module-input hud-module-input-date"
-          data-testid="hud-cal-date"
-          type="date"
-          value={date}
-          onChange={(e) => setDate(e.target.value)}
-          aria-label="事项日期"
-        />
-        <input
-          className="hud-module-input hud-module-input-flex"
-          data-testid="hud-cal-note"
-          type="text"
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") addItem();
-          }}
-          placeholder="备注（选填）"
-          aria-label="事项备注"
-        />
-        <button
-          type="button"
-          className="hud-module-toggle"
-          data-testid="hud-cal-add"
-          onClick={addItem}
-        >
-          ＋ 加事项
-        </button>
       </div>
       {sorted.length > 0 ? (
         sorted.map((it) =>
@@ -1815,6 +1822,7 @@ function CalendarBody() {
           暂无待办票 · 作品待发与日历未完成事项都已清零
         </p>
       ) : null}
+      </div>
     </div>
   );
 }
@@ -4358,7 +4366,41 @@ function HealthBody() {
     setTrainChecks(next);
   };
   return (
-    <div>
+    <div className="hud-module-grid hud-module-grid-2">
+      <div className="hud-module-zone-side">
+      <div className="hud-ancient-bar" data-testid="hud-train-checkin">
+        <div>
+          <div className="hud-ancient-state" data-testid="hud-train-checkin-state">
+            {trainDoneToday ? "今日已打卡" : "今日待打卡"} · {todayStr}
+          </div>
+          <div className="hud-module-note">
+            主训练完成后来这里打卡 · 与晨间古法打卡分开统计
+          </div>
+        </div>
+        <button
+          type="button"
+          className={cn("hud-module-toggle", trainDoneToday && "hud-ancient-done")}
+          data-testid="hud-train-checkin-toggle"
+          aria-pressed={trainDoneToday}
+          onClick={toggleTrainToday}
+        >
+          {trainDoneToday ? "已打卡 ✓ · 点按撤销" : "今日训练打卡"}
+        </button>
+      </div>
+      <Kv k="完成记录">
+        {trainChecks.length > 0 ? (
+          <span className="hud-c-grn" data-testid="hud-train-record">
+            最近完成 {lastTrainDay} · 累计 {trainChecks.length}{" "}
+            天（只按本机打卡记录实算）
+          </span>
+        ) : (
+          <span className="hud-c-amb" data-testid="hud-train-record">
+            尚无打卡记录 · 练完点上方「今日训练打卡」记入
+          </span>
+        )}
+      </Kv>
+      </div>
+      <div className="hud-module-zone-main">
       <SecHead
         title="健康同步"
         en="HEALTH SYNC"
@@ -4448,37 +4490,6 @@ function HealthBody() {
       />
       <Kv k="计划">在家塑形 · 轻器械 × 高次数（第 1–2 周）</Kv>
       <Kv k="频率">周一 / 周三 / 周五 · 每次约 30 分钟 · 2026-10-19 起</Kv>
-      <div className="hud-ancient-bar" data-testid="hud-train-checkin">
-        <div>
-          <div className="hud-ancient-state" data-testid="hud-train-checkin-state">
-            {trainDoneToday ? "今日已打卡" : "今日待打卡"} · {todayStr}
-          </div>
-          <div className="hud-module-note">
-            主训练完成后来这里打卡 · 与晨间古法打卡分开统计
-          </div>
-        </div>
-        <button
-          type="button"
-          className={cn("hud-module-toggle", trainDoneToday && "hud-ancient-done")}
-          data-testid="hud-train-checkin-toggle"
-          aria-pressed={trainDoneToday}
-          onClick={toggleTrainToday}
-        >
-          {trainDoneToday ? "已打卡 ✓ · 点按撤销" : "今日训练打卡"}
-        </button>
-      </div>
-      <Kv k="完成记录">
-        {trainChecks.length > 0 ? (
-          <span className="hud-c-grn" data-testid="hud-train-record">
-            最近完成 {lastTrainDay} · 累计 {trainChecks.length}{" "}
-            天（只按本机打卡记录实算）
-          </span>
-        ) : (
-          <span className="hud-c-amb" data-testid="hud-train-record">
-            尚无打卡记录 · 练完点上方「今日训练打卡」记入
-          </span>
-        )}
-      </Kv>
       <Kv k="器械">{TRAINING_EQUIP.join(" · ")}</Kv>
       <div style={{ marginTop: 8 }}>
         {TRAINING_MOVES.map((m, i) => {
@@ -4565,6 +4576,7 @@ function HealthBody() {
           {data.data_cutoff_note}
         </p>
       ) : null}
+      </div>
     </div>
   );
 }
@@ -4718,7 +4730,8 @@ function OntologyBody() {
     );
   };
   return (
-    <div>
+    <div className="hud-module-grid hud-module-grid-2">
+      <div className="hud-module-zone-side">
       <SecHead
         title="本体知识库"
         en="ONTOLOGY"
@@ -4748,56 +4761,6 @@ function OntologyBody() {
           </span>
         ) : null}
       </div>
-      <Kv k="状态">
-        <span className="hud-c-amb">
-          建设中 · 库内文件 {ONTOLOGY_FILES.length} 件 · 站内笔记{" "}
-          {notes.length} 条
-        </span>
-      </Kv>
-      <Kv k="条目来源">第二大脑笔记 · goals/ai-2/hidden_files/notes/（库内文件）＋ 站内笔记（本机）</Kv>
-      <Kv k="库存现状">框架 README 已建 · 归档笔记 0 篇（用户平时不存东西，从增量起步）· 站内笔记 {notes.length} 条</Kv>
-      <Kv k="归档规则">一事一件 · 文件名 YYYY-MM-DD-主题.md · 头部带来源/日期/标签</Kv>
-      <Kv k="标签体系">灵感 / 干货 / 待办线索 / 人脉 / 消费决策 / 其他</Kv>
-      <Kv k="捕获方式">聊天里丢来的链接/截图/灵感由 Luna 归档；对话中的有价值信息同步沉淀</Kv>
-      <Kv k="回顾">暂定按需 · 每周 digest 待确认后再设</Kv>
-      <SecHead
-        title="库内文件"
-        en="VAULT FILES · OBSIDIAN 直达"
-        right={
-          <span className="hud-module-note">
-            点 [OBSIDIAN] 唤起本地 Obsidian 打开该文件
-          </span>
-        }
-      />
-      {ONTOLOGY_FILES.map((f) => (
-        <Row key={f.file} testid={`hud-onto-file-${f.file}`}>
-          <div className="hud-module-row-main">
-            <div className="hud-module-row-t">
-              {f.title}
-              <span className="hud-module-row-en">{f.file}</span>
-            </div>
-            <div className="hud-module-row-src">
-              goals/ai-2/hidden_files/notes/{f.file}
-            </div>
-          </div>
-          <span className="hud-chip hud-c-pur">{f.tag}</span>
-          <button
-            type="button"
-            className="hud-module-toggle"
-            data-testid={`hud-obsidian-open-${f.file}`}
-            onClick={(e) => {
-              e.stopPropagation();
-              openInObsidian(f.file);
-            }}
-          >
-            [ OBSIDIAN ]
-          </button>
-        </Row>
-      ))}
-      <p className="hud-module-note">
-        归档笔记仍为 0 篇——上面是库内现有的框架文件；第一条笔记落盘后
-        会按同样的行样式列进这里，[ OBSIDIAN ] 直达随行就有。
-      </p>
       <SecHead
         title="站内笔记"
         en="LOCAL NOTES"
@@ -4886,6 +4849,58 @@ function OntologyBody() {
           </div>
         </div>
       ) : null}
+      </div>
+      <div className="hud-module-zone-main">
+      <Kv k="状态">
+        <span className="hud-c-amb">
+          建设中 · 库内文件 {ONTOLOGY_FILES.length} 件 · 站内笔记{" "}
+          {notes.length} 条
+        </span>
+      </Kv>
+      <Kv k="条目来源">第二大脑笔记 · goals/ai-2/hidden_files/notes/（库内文件）＋ 站内笔记（本机）</Kv>
+      <Kv k="库存现状">框架 README 已建 · 归档笔记 0 篇（用户平时不存东西，从增量起步）· 站内笔记 {notes.length} 条</Kv>
+      <Kv k="归档规则">一事一件 · 文件名 YYYY-MM-DD-主题.md · 头部带来源/日期/标签</Kv>
+      <Kv k="标签体系">灵感 / 干货 / 待办线索 / 人脉 / 消费决策 / 其他</Kv>
+      <Kv k="捕获方式">聊天里丢来的链接/截图/灵感由 Luna 归档；对话中的有价值信息同步沉淀</Kv>
+      <Kv k="回顾">暂定按需 · 每周 digest 待确认后再设</Kv>
+      <SecHead
+        title="库内文件"
+        en="VAULT FILES · OBSIDIAN 直达"
+        right={
+          <span className="hud-module-note">
+            点 [OBSIDIAN] 唤起本地 Obsidian 打开该文件
+          </span>
+        }
+      />
+      {ONTOLOGY_FILES.map((f) => (
+        <Row key={f.file} testid={`hud-onto-file-${f.file}`}>
+          <div className="hud-module-row-main">
+            <div className="hud-module-row-t">
+              {f.title}
+              <span className="hud-module-row-en">{f.file}</span>
+            </div>
+            <div className="hud-module-row-src">
+              goals/ai-2/hidden_files/notes/{f.file}
+            </div>
+          </div>
+          <span className="hud-chip hud-c-pur">{f.tag}</span>
+          <button
+            type="button"
+            className="hud-module-toggle"
+            data-testid={`hud-obsidian-open-${f.file}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              openInObsidian(f.file);
+            }}
+          >
+            [ OBSIDIAN ]
+          </button>
+        </Row>
+      ))}
+      <p className="hud-module-note">
+        归档笔记仍为 0 篇——上面是库内现有的框架文件；第一条笔记落盘后
+        会按同样的行样式列进这里，[ OBSIDIAN ] 直达随行就有。
+      </p>
       {notes.length === 0 && !nAdding ? (
         <EmptyState
           title="暂无站内笔记"
@@ -4994,6 +5009,7 @@ function OntologyBody() {
           </Row>
         ),
       )}
+      </div>
     </div>
   );
 }
@@ -5220,7 +5236,8 @@ function InspirationBody() {
     );
   };
   return (
-    <div>
+    <div className="hud-module-grid hud-module-grid-2">
+      <div className="hud-module-zone-side">
       <SecHead
         title="执行分区"
         en="ZONES · 按谁来执行分"
@@ -5263,6 +5280,8 @@ function InspirationBody() {
           onCancel={() => setAdding(false)}
         />
       ) : null}
+      </div>
+      <div className="hud-module-zone-main">
       {FLOW_ZONES.map((z) => {
         const list = steps
           .map((s, gi) => ({ s, gi }))
@@ -5344,6 +5363,7 @@ function InspirationBody() {
         历史可恢复）；点上方『+ 新增步骤』即可在本页新建，创作空间
         看板与数据库流程索引同源同步呈现。
       </p>
+      </div>
     </div>
   );
 }
@@ -5670,10 +5690,8 @@ function StudioBody({ onOpen }: { onOpen: (id: string) => void }) {
     },
   ];
   return (
-    <div>
-      {/* 看板升主视图（2026-10-22, hud-finale）：进创作空间首屏即
-       * 三泳道看板；原 HUB 入口卡与总览降为看板下方的次级区。 */}
-      <StudioBoard />
+    <div className="hud-module-grid hud-module-grid-2">
+      <div className="hud-module-zone-side">
       <SecHead title="创作组入口" en="CREATE GROUP · 次级" />
       <div className="hud-module-hub">
         {cards.map((c) => (
@@ -5706,6 +5724,12 @@ function StudioBody({ onOpen }: { onOpen: (id: string) => void }) {
       <Kv k="技能库">{ALL_SKILLS.length} 个已装技能（grokbot 8 · Luna 5）</Kv>
       <Kv k="最近动态 · 10-18">YouTube EP001 已上传 · 待改公开</Kv>
       <Kv k="最近动态 · 10-19">视频号 ep01 配音定稿（Fish Audio 影视解说男声）· 待发布</Kv>
+      </div>
+      <div className="hud-module-zone-main">
+      {/* 看板升主视图（2026-10-22, hud-finale）：进创作空间首屏即
+       * 三泳道看板；原 HUB 入口卡与总览降为看板下方的次级区。 */}
+      <StudioBoard />
+      </div>
     </div>
   );
 }
