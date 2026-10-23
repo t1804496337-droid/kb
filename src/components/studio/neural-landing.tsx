@@ -2779,6 +2779,7 @@ export function NeuralLanding({
       data-quick={quick ? "1" : "0"}
       data-zen={zen ? "1" : "0"}
       data-msheet={msheet}
+      data-focus={sel ? "1" : undefined}
     >
       <div className="hud-wrap">
         {/* ══ TOP STATUS BAR ══ */}
