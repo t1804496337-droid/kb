@@ -2058,6 +2058,7 @@ export default function StudioPage() {
           quick={introQuick}
           stats={landingStats}
           customCards={landingCustomCards}
+          calLast={calItems.reduce((m, i) => (i.date > m ? i.date : m), "")}
         />
       )}
       <div className="xuan-watermark" aria-hidden>

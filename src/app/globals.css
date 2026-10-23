@@ -3882,6 +3882,9 @@ div.studio-orb.studio-orb-bg,
   border: var(--hud-sp-1) solid currentColor;
   letter-spacing: 0.1em;
   white-space: nowrap;
+  /* ⑥ 伪控件收口（fix-v3）：带边框 = 可点，写死成交互语义；
+   * 不可点的静态标注一律用 .hud-plain（无边框）。 */
+  cursor: pointer;
 }
 /* S5（rect-b1）：纯文字标签——无边框/无背景/无 hover 观感，
  * 给「看着像控件但不可点」的静态标注用，与真按钮彻底分开。 */
