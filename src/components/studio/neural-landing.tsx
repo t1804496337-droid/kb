@@ -1487,6 +1487,7 @@ export function NeuralLanding({
     (s) => s.stage === "review",
   ).length;
   const ovExpiredCount = expiredDecisions.length;
+  // 口径标注（同顶栏 TODAY 处）：此处为 exec 日志口径，与顶栏矩阵派生口径数据源不同，两数可不一致；后续整体收口统一。
   const ovTodayChanges = execLog.filter(
     (it) => shISOofTs(it.ts) === dayISOofNum(todayShNum()),
   ).length;
@@ -1524,6 +1525,9 @@ export function NeuralLanding({
       ovBump("mindmap", iso);
   }
   /* ⑦ fix-v3：真实 7 日序列——counts 四行逐日求和，不是画出来的。 */
+  // 口径标注（v3 批次三，用户 2026-10-23 确认暂独立存在、后续整体收口）：
+  // 顶栏 TODAY 与今昨差分源自矩阵派生 dailyTotals（OV_ROWS 四行日总量）；
+  // 左栏「今日变动」源自 exec 日志今日条数（ovTodayChanges），数据源不同，两数可不一致，非错误。
   const dailyTotals = ovDayNums.map((_, i) =>
     OV_ROWS.reduce((a, r) => a + ovCounts[r.id][i], 0),
   );
