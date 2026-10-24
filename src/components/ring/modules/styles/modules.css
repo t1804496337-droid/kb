@@ -1,13 +1,15 @@
-/* 第二主题 · 子模块暗色工作台样式（CSS Module 隔离，不进 globals.css）
+/* 第二主题 · 子模块暗色工作台样式（普通样式表 + rm- 类名前缀隔离，不进 globals.css；
+ * 注：本仓 next.config 的 Turbopack "*.css" rule 会把 .module.css 当普通 CSS 处理、
+ * JS 侧类名映射为空，故此处不用 CSS Modules、改字面量类名，见 PR #98 补充说明）
  * 定案规格：左栏 280px / 中作业区 flex:1 独立滚动 / 右详情栏 320px；
  * 深空底 + 冷青线框（方案 §02/§04 与执行纪律版口径）。 */
 
-.shell,
-.shell * {
+.rm-shell,
+.rm-shell * {
   box-sizing: border-box;
 }
 
-.shell {
+.rm-shell {
   --bg: #04060b;
   --panel: rgba(13, 18, 34, 0.42);
   --ink: #eef5ff;
@@ -34,7 +36,7 @@
 
 /* ── 左栏：模块导航 ─────────────────────────────── */
 
-.nav {
+.rm-nav {
   border-right: 1px solid var(--hair);
   padding: 22px 16px 16px;
   display: flex;
@@ -44,7 +46,7 @@
   min-height: 0;
 }
 
-.brand {
+.rm-brand {
   font-family: var(--mono);
   font-size: 10px;
   letter-spacing: 0.28em;
@@ -52,14 +54,14 @@
   margin-bottom: 6px;
 }
 
-.brandTitle {
+.rm-brandTitle {
   font-size: 19px;
   font-weight: 800;
   letter-spacing: 0.06em;
   margin-bottom: 4px;
 }
 
-.brandTitle span {
+.rm-brandTitle span {
   font-family: var(--mono);
   font-size: 10px;
   font-weight: 500;
@@ -68,7 +70,7 @@
   margin-left: 8px;
 }
 
-.navHead {
+.rm-navHead {
   font-family: var(--mono);
   font-size: 10px;
   letter-spacing: 0.22em;
@@ -76,7 +78,7 @@
   margin: 16px 4px 8px;
 }
 
-.navItem {
+.rm-navItem {
   display: flex;
   align-items: baseline;
   gap: 9px;
@@ -88,30 +90,30 @@
   font-size: 13.5px;
 }
 
-.navItem:hover {
+.rm-navItem:hover {
   border-color: var(--hair);
   color: var(--ink);
 }
 
-.navItemActive {
+.rm-navItemActive {
   border-color: var(--hair);
   border-left: 2px solid var(--cyan);
   background: rgba(0, 255, 255, 0.05);
   color: var(--ink);
 }
 
-.navItem .en {
+.rm-navItem .rm-en {
   font-family: var(--mono);
   font-size: 9.5px;
   letter-spacing: 0.14em;
   color: var(--mute);
 }
 
-.navItemActive .en {
+.rm-navItemActive .rm-en {
   color: var(--cyan);
 }
 
-.navFoot {
+.rm-navFoot {
   margin-top: auto;
   padding-top: 18px;
   display: flex;
@@ -119,7 +121,7 @@
   gap: 8px;
 }
 
-.navBack {
+.rm-navBack {
   display: block;
   padding: 9px 11px;
   border: 1px solid var(--hair2);
@@ -131,11 +133,11 @@
   text-align: center;
 }
 
-.navBack:hover {
+.rm-navBack:hover {
   background: rgba(0, 255, 255, 0.07);
 }
 
-.navBackSub {
+.rm-navBackSub {
   display: block;
   padding: 7px 11px;
   color: var(--mute);
@@ -144,20 +146,20 @@
   text-align: center;
 }
 
-.navBackSub:hover {
+.rm-navBackSub:hover {
   color: var(--ink);
 }
 
 /* ── 中区：作业区 ───────────────────────────────── */
 
-.main {
+.rm-main {
   display: flex;
   flex-direction: column;
   min-width: 0;
   min-height: 0;
 }
 
-.head {
+.rm-head {
   display: flex;
   align-items: center;
   gap: 16px;
@@ -166,13 +168,13 @@
   border-bottom: 1px solid var(--hair);
 }
 
-.headTitle {
+.rm-headTitle {
   font-size: 20px;
   font-weight: 800;
   letter-spacing: 0.04em;
 }
 
-.headEn {
+.rm-headEn {
   font-family: var(--mono);
   font-size: 10.5px;
   letter-spacing: 0.2em;
@@ -180,20 +182,20 @@
   margin-left: 10px;
 }
 
-.headMeta {
+.rm-headMeta {
   font-family: var(--mono);
   font-size: 11px;
   color: var(--mute);
   letter-spacing: 0.04em;
 }
 
-.headNote {
+.rm-headNote {
   width: 100%;
   font-size: 12px;
   color: var(--mute);
 }
 
-.cta {
+.rm-cta {
   margin-left: auto;
   font-family: var(--mono);
   font-size: 11px;
@@ -205,11 +207,11 @@
   white-space: nowrap;
 }
 
-.cta:hover {
+.rm-cta:hover {
   background: rgba(0, 255, 255, 0.07);
 }
 
-.center {
+.rm-center {
   flex: 1;
   overflow-y: auto;
   min-height: 0;
@@ -218,7 +220,7 @@
 
 /* ── 右栏：详情 ─────────────────────────────────── */
 
-.detail {
+.rm-detail {
   border-left: 1px solid var(--hair);
   overflow-y: auto;
   min-height: 0;
@@ -226,7 +228,7 @@
   background: rgba(7, 9, 14, 0.55);
 }
 
-.detailHead {
+.rm-detailHead {
   font-family: var(--mono);
   font-size: 10px;
   letter-spacing: 0.22em;
@@ -234,7 +236,7 @@
   margin-bottom: 12px;
 }
 
-.detailTitle {
+.rm-detailTitle {
   font-size: 16px;
   font-weight: 700;
   line-height: 1.45;
@@ -242,7 +244,7 @@
   word-break: break-word;
 }
 
-.fields {
+.rm-fields {
   display: grid;
   grid-template-columns: 76px minmax(0, 1fr);
   row-gap: 9px;
@@ -250,7 +252,7 @@
   margin: 0 0 16px;
 }
 
-.fields dt {
+.rm-fields dt {
   font-family: var(--mono);
   font-size: 10.5px;
   letter-spacing: 0.1em;
@@ -258,20 +260,20 @@
   padding-top: 2px;
 }
 
-.fields dd {
+.rm-fields dd {
   margin: 0;
   font-size: 13px;
   color: var(--ink2);
   word-break: break-word;
 }
 
-.fields dd a {
+.rm-fields dd a {
   color: var(--cyan);
   text-decoration: none;
   word-break: break-all;
 }
 
-.detailBody {
+.rm-detailBody {
   font-size: 13px;
   color: var(--ink2);
   white-space: pre-wrap;
@@ -280,13 +282,13 @@
   padding-top: 12px;
 }
 
-.detailBodyMono {
+.rm-detailBodyMono {
   font-family: var(--mono);
   font-size: 11px;
   line-height: 1.7;
 }
 
-.detailEmpty {
+.rm-detailEmpty {
   color: var(--mute);
   font-size: 13px;
   border: 1px dashed var(--hair);
@@ -295,11 +297,11 @@
 
 /* ── 列表 ───────────────────────────────────────── */
 
-.group {
+.rm-group {
   margin-bottom: 26px;
 }
 
-.groupHead {
+.rm-groupHead {
   font-family: var(--mono);
   font-size: 11px;
   letter-spacing: 0.18em;
@@ -309,12 +311,12 @@
   margin-bottom: 10px;
 }
 
-.groupHead b {
+.rm-groupHead b {
   color: var(--cyan);
   font-weight: 500;
 }
 
-.row {
+.rm-row {
   display: block;
   width: 100%;
   text-align: left;
@@ -328,7 +330,7 @@
   position: relative;
 }
 
-.row::before {
+.rm-row::before {
   content: "";
   position: absolute;
   left: -1px;
@@ -341,24 +343,24 @@
   opacity: 0;
 }
 
-.row:hover {
+.rm-row:hover {
   border-color: var(--hair2);
 }
 
-.row:hover::before {
+.rm-row:hover::before {
   opacity: 0.7;
 }
 
-.rowSel {
+.rm-rowSel {
   border-color: var(--hair2);
   background: rgba(0, 255, 255, 0.06);
 }
 
-.rowSel::before {
+.rm-rowSel::before {
   opacity: 1;
 }
 
-.rowTitle {
+.rm-rowTitle {
   display: block;
   font-size: 14px;
   font-weight: 600;
@@ -367,7 +369,7 @@
   padding-right: 74px;
 }
 
-.rowSub {
+.rm-rowSub {
   display: block;
   font-size: 12px;
   color: var(--mute);
@@ -376,7 +378,7 @@
   padding-right: 74px;
 }
 
-.rowChip {
+.rm-rowChip {
   position: absolute;
   right: 12px;
   top: 11px;
@@ -392,7 +394,7 @@
   white-space: nowrap;
 }
 
-.empty {
+.rm-empty {
   border: 1px dashed var(--hair);
   color: var(--mute);
   font-size: 13px;
@@ -403,18 +405,18 @@
 /* ── 响应式：窄屏堆叠 ───────────────────────────── */
 
 @media (max-width: 1180px) {
-  .shell {
+  .rm-shell {
     grid-template-columns: 220px minmax(0, 1fr) 280px;
   }
 }
 
 @media (max-width: 900px) {
-  .shell {
+  .rm-shell {
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: auto minmax(0, 1fr) auto;
   }
 
-  .nav {
+  .rm-nav {
     flex-direction: row;
     flex-wrap: wrap;
     align-items: center;
@@ -424,26 +426,26 @@
     overflow-y: visible;
   }
 
-  .brand,
-  .brandTitle,
-  .navHead {
+  .rm-brand,
+  .rm-brandTitle,
+  .rm-navHead {
     width: 100%;
     margin-bottom: 2px;
   }
 
-  .navItem {
+  .rm-navItem {
     padding: 6px 9px;
     font-size: 12.5px;
   }
 
-  .navFoot {
+  .rm-navFoot {
     margin-top: 0;
     padding-top: 6px;
     flex-direction: row;
     width: 100%;
   }
 
-  .detail {
+  .rm-detail {
     border-left: none;
     border-top: 1px solid var(--hair);
     max-height: 38vh;

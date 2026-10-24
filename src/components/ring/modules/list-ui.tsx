@@ -2,7 +2,7 @@
 
 /** 第二主题子模块共用列表 / 详情呈现（纯展示，无数据写入）。 */
 
-import styles from "./styles/modules.module.css";
+import "./styles/modules.css";
 import type { ModData, ModRow } from "./data";
 
 export function GroupList({
@@ -16,30 +16,30 @@ export function GroupList({
   selectedId: string | null;
   onSelect: (row: ModRow) => void;
 }) {
-  if (!loaded) return <div className={styles.empty}>读取中…</div>;
+  if (!loaded) return <div className={"rm-empty"}>读取中…</div>;
   const rowCount = data
     ? data.groups.reduce((n, g) => n + g.rows.length, 0)
     : 0;
   if (!data || rowCount === 0) {
-    return <div className={styles.empty}>— 暂无数据 · 待填装</div>;
+    return <div className={"rm-empty"}>— 暂无数据 · 待填装</div>;
   }
   return (
     <>
       {data.groups.map((g) => (
-        <section key={g.id} className={styles.group}>
-          <div className={styles.groupHead}>
+        <section key={g.id} className={"rm-group"}>
+          <div className={"rm-groupHead"}>
             {g.label} · <b>{g.rows.length}</b>
           </div>
           {g.rows.map((row) => (
             <button
               key={row.id}
               type="button"
-              className={`${styles.row} ${row.id === selectedId ? styles.rowSel : ""}`}
+              className={`${"rm-row"} ${row.id === selectedId ? "rm-rowSel" : ""}`}
               onClick={() => onSelect(row)}
             >
-              {row.chip ? <span className={styles.rowChip}>{row.chip}</span> : null}
-              <span className={styles.rowTitle}>{row.title}</span>
-              {row.sub ? <span className={styles.rowSub}>{row.sub}</span> : null}
+              {row.chip ? <span className={"rm-rowChip"}>{row.chip}</span> : null}
+              <span className={"rm-rowTitle"}>{row.title}</span>
+              {row.sub ? <span className={"rm-rowSub"}>{row.sub}</span> : null}
             </button>
           ))}
         </section>
@@ -52,17 +52,17 @@ export function DetailView({ row }: { row: ModRow | null }) {
   if (!row) {
     return (
       <>
-        <div className={styles.detailHead}>DETAIL · 详情</div>
-        <div className={styles.detailEmpty}>— 在中间列表选择一条查看详情</div>
+        <div className={"rm-detailHead"}>DETAIL · 详情</div>
+        <div className={"rm-detailEmpty"}>— 在中间列表选择一条查看详情</div>
       </>
     );
   }
   return (
     <>
-      <div className={styles.detailHead}>DETAIL · 详情</div>
-      <div className={styles.detailTitle}>{row.title}</div>
+      <div className={"rm-detailHead"}>DETAIL · 详情</div>
+      <div className={"rm-detailTitle"}>{row.title}</div>
       {row.fields.length > 0 && (
-        <dl className={styles.fields}>
+        <dl className={"rm-fields"}>
           {row.fields.map(([k, v]) => (
             <div key={k} style={{ display: "contents" }}>
               <dt>{k}</dt>
@@ -81,7 +81,7 @@ export function DetailView({ row }: { row: ModRow | null }) {
       )}
       {row.body ? (
         <div
-          className={`${styles.detailBody} ${row.mono ? styles.detailBodyMono : ""}`}
+          className={`${"rm-detailBody"} ${row.mono ? "rm-detailBodyMono" : ""}`}
         >
           {row.body}
         </div>
