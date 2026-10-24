@@ -949,3 +949,155 @@
     flex-direction: column;
   }
 }
+
+/* ── 第二批三模块 · 共享区块 ──────────────────────────────── */
+
+.rm-sec { margin-bottom: 28px; min-width: 0; }
+.rm-secHead {
+  display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;
+  padding-bottom: 8px; margin-bottom: 12px;
+  border-bottom: 1px solid var(--hair);
+}
+.rm-secCn { font-size: 15px; font-weight: 800; letter-spacing: 0.03em; }
+.rm-secEn {
+  font-family: var(--mono); font-size: 10px; letter-spacing: 0.2em;
+  color: var(--cyan);
+}
+.rm-secNote {
+  font-family: var(--mono); font-size: 10.5px; color: var(--mute);
+  margin-left: auto;
+}
+.rm-row {
+  display: flex; gap: 10px; align-items: flex-start;
+  padding: 9px 0; border-bottom: 1px solid var(--hair); min-width: 0;
+}
+.rm-rowMain { flex: 1; min-width: 0; }
+.rm-rowT { font-size: 14px; font-weight: 700; overflow-wrap: anywhere; }
+.rm-rowSub { font-size: 12px; color: var(--mute); overflow-wrap: anywhere; }
+.rm-miniBtn {
+  flex: none; font-family: var(--mono); font-size: 11px; letter-spacing: 0.06em;
+  padding: 6px 10px; border: 1px solid var(--hair2); background: none;
+  color: var(--ink2); cursor: pointer;
+}
+.rm-miniBtn:hover { background: rgba(0, 255, 255, 0.07); color: var(--ink); }
+.rm-miniBtnDanger { border-color: rgba(255, 77, 94, 0.55); color: var(--bad); }
+.rm-miniBtnOn {
+  background: rgba(0, 255, 255, 0.12); border-color: rgba(0, 255, 255, 0.5);
+  color: var(--cyan);
+}
+.rm-b2FormGrid {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px;
+}
+.rm-statLine {
+  font-family: var(--mono); font-size: 12px; color: var(--ink2);
+  display: flex; gap: 18px; flex-wrap: wrap;
+}
+.rm-statLine b { color: var(--gold); font-variant-numeric: tabular-nums; }
+
+/* ── 日历 · 月历网格与待办票 ──────────────────────────────── */
+
+.rm-calHead { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.rm-calTitle { font-size: 15px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.rm-calGrid {
+  display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px;
+}
+.rm-calDow {
+  font-family: var(--mono); font-size: 10px; letter-spacing: 0.1em;
+  color: var(--mute); text-align: center; padding: 4px 0;
+}
+.rm-calCell {
+  border: 1px solid var(--hair); min-height: 64px; padding: 6px 7px;
+  background: rgba(2, 4, 10, 0.35); min-width: 0;
+}
+.rm-calCellBlank { border-color: transparent; background: transparent; }
+.rm-calCellToday { border-color: var(--cyan); box-shadow: inset 0 0 0 1px rgba(0, 255, 255, 0.35); }
+.rm-calCellHas { background: rgba(0, 255, 255, 0.06); }
+.rm-calDay { font-family: var(--mono); font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.rm-calDayToday { color: var(--cyan); font-weight: 700; }
+.rm-calCount {
+  font-family: var(--mono); font-size: 9.5px; color: var(--gold);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.rm-ticketOwner {
+  flex: none; font-family: var(--mono); font-size: 10px; letter-spacing: 0.06em;
+  border: 1px solid var(--hair); padding: 2px 7px; color: var(--cyan);
+}
+.rm-ticketOwnerWorks { color: var(--gold); }
+
+/* ── 灵感池 · 三泳道看板 ──────────────────────────────────── */
+
+.rm-flowLanes {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px;
+  align-items: start;
+}
+.rm-flowLane { border: 1px solid var(--hair); padding: 12px; min-width: 0; background: rgba(2, 4, 10, 0.3); }
+.rm-flowLaneHead {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
+  padding-bottom: 8px; margin-bottom: 10px; border-bottom: 1px solid var(--hair);
+}
+.rm-flowLaneTitle { font-size: 14px; font-weight: 800; }
+.rm-flowLaneCount { font-family: var(--mono); font-size: 10.5px; color: var(--mute); }
+.rm-flowCard {
+  border: 1px solid var(--hair); background: rgba(10, 16, 26, 0.6);
+  padding: 10px 12px; margin-bottom: 10px; min-width: 0; cursor: pointer;
+}
+.rm-flowCardActive { border-color: var(--cyan); }
+.rm-flowCardTitle { font-size: 13.5px; font-weight: 700; overflow-wrap: anywhere; }
+.rm-flowCardNote { font-size: 12px; color: var(--mute); overflow-wrap: anywhere; }
+.rm-flowChips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+.rm-stageChip {
+  font-family: var(--mono); font-size: 10px; letter-spacing: 0.06em;
+  padding: 4px 8px; border: 1px solid var(--hair2); background: none;
+  color: var(--ink2); cursor: pointer;
+}
+.rm-stageChipOn {
+  background: rgba(0, 255, 255, 0.12); border-color: rgba(0, 255, 255, 0.5);
+  color: var(--cyan);
+}
+
+/* ── 健康 · 打卡卡与古法格子 ──────────────────────────────── */
+
+.rm-hlBig {
+  border: 1px solid var(--hair2); background: rgba(2, 4, 10, 0.55);
+  padding: 18px; display: flex; align-items: center; gap: 16px;
+  flex-wrap: wrap; justify-content: space-between;
+}
+.rm-hlBigState { font-size: 17px; font-weight: 800; }
+.rm-hlBigSub { font-family: var(--mono); font-size: 11px; color: var(--mute); }
+.rm-hlBigBtn {
+  font-family: var(--mono); font-size: 13px; font-weight: 700; letter-spacing: 0.08em;
+  padding: 12px 20px; border: 1px solid rgba(0, 255, 255, 0.5);
+  background: rgba(0, 255, 255, 0.12); color: var(--cyan); cursor: pointer;
+}
+.rm-hlBigBtnDone { border-color: rgba(60, 230, 154, 0.55); background: rgba(60, 230, 154, 0.1); color: var(--good); }
+.rm-hlKv {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px;
+}
+.rm-hlKvCard { border: 1px solid var(--hair); background: rgba(10, 16, 26, 0.6); padding: 10px 12px; min-width: 0; }
+.rm-hlKvK { font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.1em; color: var(--mute); }
+.rm-hlKvV {
+  font-family: var(--mono); font-size: 19px; font-weight: 700; color: var(--gold);
+  font-variant-numeric: tabular-nums; margin-top: 4px; overflow-wrap: anywhere;
+}
+.rm-hlKvS { font-family: var(--mono); font-size: 9.5px; color: var(--mute); margin-top: 3px; }
+.rm-hlGrid14 {
+  display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px;
+}
+.rm-hlCell {
+  border: 1px solid var(--hair); background: rgba(2, 4, 10, 0.35);
+  padding: 9px 4px; text-align: center; cursor: pointer; min-width: 0;
+}
+.rm-hlCellOn {
+  border-color: var(--cyan); background: rgba(0, 255, 255, 0.12);
+}
+.rm-hlCellDate { font-family: var(--mono); font-size: 11px; font-variant-numeric: tabular-nums; }
+.rm-hlCellMark { font-family: var(--mono); font-size: 10px; color: var(--cyan); }
+.rm-hlCellMarkOff { color: var(--mute); }
+
+/* ── 第二批 · 1180px 单列降级（月历与古法格子保持 7 列，日历格子单列无意义） ── */
+
+@media (max-width: 1180px) {
+  .rm-b2FormGrid { grid-template-columns: minmax(0, 1fr); }
+  .rm-flowLanes { grid-template-columns: minmax(0, 1fr); }
+  .rm-hlKv { grid-template-columns: minmax(0, 1fr); }
+}
