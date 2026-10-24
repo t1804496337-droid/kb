@@ -20,6 +20,8 @@ export default function RingModuleShell({
   src,
   count,
   note,
+  status,
+  statusOk,
   children,
   detail,
 }: {
@@ -32,6 +34,10 @@ export default function RingModuleShell({
   count: number | null;
   /** 头部状态说明（种子兜底、键未落盘等）。 */
   note?: string;
+  /** 左栏底部状态行（可选）：不传则不渲染，其余模块页零变化。 */
+  status?: string;
+  /** 状态行绿色修饰（如保存成功）。 */
+  statusOk?: boolean;
   children: ReactNode;
   detail?: ReactNode;
 }) {
@@ -63,6 +69,13 @@ export default function RingModuleShell({
             ← 返回星环
           </Link>
           <ThemeSwitcher active="ring" />
+          {status ? (
+            <div
+              className={`rm-navStatus${statusOk ? " rm-navStatusOk" : ""}`}
+            >
+              {status}
+            </div>
+          ) : null}
         </div>
       </aside>
 
@@ -75,9 +88,6 @@ export default function RingModuleShell({
           <span className={"rm-headMeta"}>
             {src} · {count === null ? "读取中" : `${count} 条`}
           </span>
-          <Link href="/studio" className={"rm-cta"}>
-            回第一主题录入
-          </Link>
           {note ? <div className={"rm-headNote"}>{note}</div> : null}
         </header>
         <div className={"rm-center"}>{children}</div>
