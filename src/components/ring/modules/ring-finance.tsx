@@ -1434,7 +1434,7 @@ export default function RingFinance() {
         )}
         {subs.length === 0 ? (
           <div className="rm-empty">
-            暂无订阅记录 · 可在第一主题订阅管理中添加
+            暂无活跃订阅
           </div>
         ) : (
           subs.map((s) => (
