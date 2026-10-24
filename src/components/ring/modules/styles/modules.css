@@ -1101,3 +1101,137 @@
   .rm-flowLanes { grid-template-columns: minmax(0, 1fr); }
   .rm-hlKv { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* ── 第三批四模块 · 通用筹 ──────────────────────────────── */
+
+.rm-chip {
+  flex: none; font-family: var(--mono); font-size: 10px; letter-spacing: 0.06em;
+  border: 1px solid var(--hair); padding: 2px 7px; color: var(--ink2);
+  white-space: nowrap;
+}
+.rm-chipCyan { color: var(--cyan); border-color: rgba(0, 255, 255, 0.4); }
+.rm-chipPur { color: #c792ea; border-color: rgba(199, 146, 234, 0.4); }
+.rm-chipGrn { color: var(--good); border-color: rgba(60, 230, 154, 0.4); }
+.rm-chipPink { color: #ff6ec7; border-color: rgba(255, 110, 199, 0.4); }
+.rm-chipYel { color: var(--gold); border-color: rgba(255, 210, 63, 0.4); }
+.rm-chipAmb { color: #ffb020; border-color: rgba(255, 176, 32, 0.4); }
+.rm-chipDim { color: var(--mute); }
+
+/* ── 作品库 ──────────────────────────────────────────────── */
+
+.rm-worksCard {
+  border: 1px solid var(--hair); background: rgba(10, 16, 26, 0.6);
+  padding: 10px 12px; margin-bottom: 10px; min-width: 0; cursor: pointer;
+}
+.rm-worksCardActive { border-color: var(--cyan); }
+.rm-worksCardTitle { font-size: 13.5px; font-weight: 700; overflow-wrap: anywhere; }
+.rm-worksCardNote { font-size: 12px; color: var(--mute); overflow-wrap: anywhere; }
+.rm-worksLink {
+  font-family: var(--mono); font-size: 11px; color: var(--cyan);
+  overflow-wrap: anywhere; display: inline-block; margin-top: 2px;
+}
+.rm-worksChips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+
+/* ── 数据库 · 分段条与卡片 ──────────────────────────────── */
+
+.rm-dbSeg { display: flex; gap: 6px; flex-wrap: wrap; }
+.rm-dbSegBtn {
+  font-family: var(--mono); font-size: 11px; letter-spacing: 0.06em;
+  padding: 8px 12px; border: 1px solid var(--hair2); background: none;
+  color: var(--ink2); cursor: pointer; display: flex; gap: 8px; align-items: baseline;
+}
+.rm-dbSegBtn.is-on {
+  background: rgba(0, 255, 255, 0.12); border-color: rgba(0, 255, 255, 0.5);
+  color: var(--cyan);
+}
+.rm-dbSegEn { font-size: 9.5px; color: var(--mute); letter-spacing: 0.14em; }
+.rm-dbSegN { font-size: 12px; color: var(--gold); font-variant-numeric: tabular-nums; }
+.rm-dbGrid {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px;
+}
+.rm-dbList { display: flex; flex-direction: column; gap: 10px; }
+.rm-dbCard {
+  border: 1px solid var(--hair); background: rgba(10, 16, 26, 0.6);
+  padding: 10px 12px; min-width: 0; cursor: pointer;
+  display: flex; gap: 10px; align-items: flex-start;
+}
+.rm-dbCardActive { border-color: var(--cyan); }
+
+/* ── 本体 · 库名条与笔记卡 ──────────────────────────────── */
+
+.rm-ontoVault {
+  display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+  border: 1px solid var(--hair2); background: rgba(2, 4, 10, 0.55);
+  padding: 12px 14px; margin-bottom: 26px;
+}
+.rm-ontoVaultLabel {
+  font-family: var(--mono); font-size: 10px; letter-spacing: 0.2em; color: var(--mute);
+  flex: none;
+}
+.rm-ontoVault .rm-input { flex: 1; min-width: 200px; }
+.rm-ontoVaultHint { font-family: var(--mono); font-size: 11px; color: var(--bad); }
+.rm-ontoNote {
+  border: 1px solid var(--hair); background: rgba(10, 16, 26, 0.6);
+  padding: 10px 12px; margin-bottom: 10px; min-width: 0; cursor: pointer;
+}
+.rm-ontoNoteActive { border-color: var(--cyan); }
+.rm-ontoNoteTitle { font-size: 13.5px; font-weight: 700; overflow-wrap: anywhere; }
+.rm-ontoNoteBody { font-size: 12px; color: var(--mute); overflow-wrap: anywhere; }
+.rm-ontoKv { border: 1px solid var(--hair); background: rgba(2, 4, 10, 0.35); padding: 4px 14px; }
+
+/* ── 创作空间 · 看板与入口卡 ─────────────────────────────── */
+
+.rm-studioBoard {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px;
+  align-items: start;
+}
+.rm-studioLane { border: 1px solid var(--hair); padding: 12px; min-width: 0; background: rgba(2, 4, 10, 0.3); }
+.rm-studioLaneHead {
+  display: flex; align-items: baseline; gap: 8px;
+  padding-bottom: 8px; margin-bottom: 10px; border-bottom: 1px solid var(--hair);
+}
+.rm-studioLaneTitle { font-size: 14px; font-weight: 800; }
+.rm-studioLaneCount { font-family: var(--mono); font-size: 10.5px; color: var(--mute); margin-left: auto; }
+.rm-studioChip {
+  border: 1px solid var(--hair); background: rgba(10, 16, 26, 0.6);
+  padding: 10px 12px; margin-bottom: 10px; min-width: 0; cursor: grab;
+  display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+  touch-action: none;
+}
+.rm-studioChipActive { border-color: var(--cyan); }
+.rm-studioChipDrag { border-color: var(--cyan); box-shadow: 0 0 0 1px rgba(0, 255, 255, 0.35); opacity: 0.9; }
+.rm-studioChipMain { flex: 1; min-width: 120px; }
+.rm-studioChipTitle { font-size: 13.5px; font-weight: 700; overflow-wrap: anywhere; }
+.rm-studioHandle { font-size: 13px; color: var(--mute); letter-spacing: 0.1em; }
+.rm-studioArrow {
+  flex: none; font-family: var(--mono); font-size: 16px; line-height: 1;
+  padding: 4px 8px; border: 1px solid var(--hair2); background: none;
+  color: var(--ink2); cursor: pointer;
+}
+.rm-studioArrow:disabled { opacity: 0.35; cursor: default; }
+.rm-studioPlat {
+  flex: none; font-family: var(--mono); font-size: 11px; color: var(--ink2);
+  background: rgba(2, 4, 10, 0.6); border: 1px solid var(--hair2); padding: 4px 6px;
+  color-scheme: dark;
+}
+.rm-studioHub {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px;
+}
+.rm-studioHubCard {
+  border: 1px solid var(--hair); background: rgba(10, 16, 26, 0.6);
+  padding: 12px 14px; min-width: 0; text-align: left; color: var(--ink);
+  text-decoration: none; cursor: pointer; font-family: inherit; display: block;
+}
+button.rm-studioHubCard:disabled { opacity: 0.6; cursor: default; }
+.rm-studioHubTitle { font-size: 14px; font-weight: 800; }
+.rm-studioHubMeta { font-family: var(--mono); font-size: 11px; color: var(--gold); margin-top: 8px; }
+
+/* ── 第三批 · 1180px 单列降级（不新增第三断点） ── */
+
+@media (max-width: 1180px) {
+  .rm-dbGrid { grid-template-columns: minmax(0, 1fr); }
+  .rm-studioBoard { grid-template-columns: minmax(0, 1fr); }
+  .rm-studioHub { grid-template-columns: minmax(0, 1fr); }
+  .rm-ontoVault { flex-direction: column; align-items: stretch; }
+  .rm-ontoVault .rm-input { min-width: 0; }
+}
