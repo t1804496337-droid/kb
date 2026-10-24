@@ -18,6 +18,9 @@
   --hair: rgba(0, 255, 255, 0.14);
   --hair2: rgba(0, 255, 255, 0.32);
   --cyan: #00ffff;
+  --gold: #ffd23f;
+  --good: #3ce69a;
+  --bad: #ff4d5e;
   --mono: "JetBrains Mono", ui-monospace, "SF Mono", Consolas, monospace;
   --cjk: "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
 
@@ -610,5 +613,339 @@
 @media (max-width: 900px) {
   .rm-formGrid {
     grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ── 财务全量重构 · rm-fin- ────────────────────────────────
+ * 方案 §03 逐字 token：金黄金额 / 冷青结构线 / 红只用于超预算与负净额 /
+ * 绿只用于正净额；数值 tabular-nums 等宽对齐。断点统一 1180px 单列降级。 */
+
+.rm-fin-sec {
+  margin-top: 22px;
+}
+.rm-fin-sec:first-of-type {
+  margin-top: 0;
+}
+.rm-fin-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--hair2);
+  margin-bottom: 10px;
+}
+.rm-fin-headCn {
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--ink);
+}
+.rm-fin-headEn {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  color: var(--mute);
+  margin-left: 8px;
+}
+.rm-fin-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.rm-fin-card {
+  border: 1px solid var(--hair);
+  background: rgba(10, 16, 26, 0.6);
+  padding: 10px 12px;
+  min-width: 0;
+}
+.rm-fin-k {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  line-height: 1.3;
+  letter-spacing: 0.1em;
+  color: var(--mute);
+}
+.rm-fin-v {
+  font-family: var(--mono);
+  font-size: 20px;
+  line-height: 1.15;
+  font-weight: 700;
+  color: var(--gold);
+  font-variant-numeric: tabular-nums;
+  margin-top: 4px;
+  overflow-wrap: anywhere;
+}
+.rm-fin-v.sm {
+  font-size: 12.5px;
+  line-height: 1.4;
+  font-weight: 500;
+}
+.rm-fin-v.neg {
+  color: var(--bad);
+}
+.rm-fin-v.pos {
+  color: var(--good);
+}
+.rm-fin-card.neg .rm-fin-v {
+  color: var(--bad);
+}
+.rm-fin-card.pos .rm-fin-v {
+  color: var(--good);
+}
+.rm-fin-s {
+  font-family: var(--mono);
+  font-size: 9px;
+  line-height: 1.5;
+  color: var(--mute);
+  margin-top: 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.rm-fin-note {
+  font-size: 12px;
+  color: var(--mute);
+  margin: 8px 0;
+  line-height: 1.7;
+}
+.rm-fin-sum {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--ink2);
+  margin-bottom: 10px;
+  overflow-wrap: anywhere;
+}
+
+/* 报表控制条 */
+.rm-fin-ctl {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  margin-bottom: 8px;
+}
+.rm-fin-ctlLabel {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: 0.14em;
+  color: var(--mute);
+}
+.rm-fin-ctlLabel .rm-input {
+  width: auto;
+}
+.rm-fin-pickRow {
+  display: flex;
+  gap: 6px;
+}
+.rm-fin-pickbtn {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  padding: 8px 12px;
+  border: 1px solid var(--hair2);
+  background: none;
+  color: var(--ink2);
+  cursor: pointer;
+}
+.rm-fin-pickbtn.on {
+  border-color: rgba(0, 255, 255, 0.5);
+  background: rgba(0, 255, 255, 0.12);
+  color: var(--cyan);
+}
+
+/* 分类小计泳道 */
+.rm-fin-cat {
+  display: grid;
+  grid-template-columns: 120px minmax(60px, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--hair);
+}
+.rm-fin-catName {
+  font-size: 13px;
+  color: var(--ink2);
+  overflow-wrap: anywhere;
+}
+.rm-fin-catbar {
+  height: 4px;
+  background: rgba(0, 255, 255, 0.1);
+  position: relative;
+}
+.rm-fin-catbar i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: linear-gradient(90deg, rgba(0, 255, 255, 0.5), var(--cyan));
+}
+.rm-fin-catAmt {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--ink2);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 台账行 */
+.rm-fin-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--hair);
+}
+.rm-fin-rowMain {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.rm-fin-rowTitle {
+  font-size: 13.5px;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.rm-fin-rowSub {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--mute);
+  overflow-wrap: anywhere;
+}
+.rm-fin-chip {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--cyan);
+  border: 1px solid var(--hair2);
+  padding: 1px 6px;
+  margin-left: 8px;
+  white-space: nowrap;
+}
+.rm-fin-rowBtns {
+  display: flex;
+  gap: 6px;
+  flex: none;
+}
+.rm-fin-miniBtn {
+  font-family: var(--mono);
+  font-size: 11px;
+  padding: 6px 10px;
+  border: 1px solid var(--hair2);
+  background: none;
+  color: var(--ink2);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.rm-fin-miniBtn:hover {
+  background: rgba(0, 255, 255, 0.07);
+  color: var(--ink);
+}
+.rm-fin-miniBtn.danger {
+  border-color: rgba(255, 77, 94, 0.6);
+  color: var(--bad);
+  background: rgba(255, 77, 94, 0.1);
+}
+
+/* 行内录入表单：负债 3 列 × 2 行，资产 4 列 × 1 行；1180 以下单列 */
+.rm-fin-form {
+  border: 1px solid var(--hair);
+  background: rgba(2, 4, 10, 0.55);
+  padding: 14px 16px;
+  margin-bottom: 14px;
+}
+.rm-fin-formgrid {
+  display: grid;
+  gap: 10px;
+}
+.rm-fin-formgrid.liab {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.rm-fin-formgrid.asset {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.rm-fin-form .rm-input {
+  color-scheme: dark;
+}
+.rm-form .rm-input {
+  color-scheme: dark;
+}
+
+/* 右栏监控卡 */
+.rm-fin-sidecard {
+  border: 1px solid var(--hair);
+  background: rgba(10, 16, 26, 0.6);
+  padding: 12px 14px;
+  margin-bottom: 16px;
+}
+.rm-fin-sideHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink);
+  margin-bottom: 8px;
+}
+.rm-fin-sideEn {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: 0.14em;
+  color: var(--mute);
+  font-weight: 400;
+}
+.rm-fin-sidecard .rm-fin-v {
+  font-size: 19px;
+}
+.rm-fin-budgetbar {
+  height: 6px;
+  background: rgba(0, 255, 255, 0.1);
+  position: relative;
+  margin: 8px 0;
+}
+.rm-fin-budgetbar i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--gold);
+  box-shadow: 0 0 8px rgba(255, 210, 63, 0.5);
+}
+.rm-fin-budgetbar.over i {
+  background: var(--bad);
+  box-shadow: 0 0 8px rgba(255, 77, 94, 0.6);
+}
+.rm-fin-budgetForm {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+}
+.rm-fin-budgetForm .rm-input {
+  color-scheme: dark;
+}
+.rm-fin-budgetBtns {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* 1180px 单列降级（断点统一，不新增第三断点） */
+@media (max-width: 1180px) {
+  .rm-fin-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .rm-fin-formgrid.liab,
+  .rm-fin-formgrid.asset {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .rm-fin-cat {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .rm-fin-catAmt {
+    grid-column: 1 / -1;
+  }
+  .rm-fin-row {
+    flex-direction: column;
   }
 }
