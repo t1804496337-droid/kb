@@ -20,6 +20,7 @@ import {
 } from "@/components/studio/bus";
 import { RadialMenu } from "@/components/studio/radial-menu";
 import { MindMap } from "@/components/studio/mind-map";
+import { ThemeSwitcher } from "@/components/theme-switcher";
 import {
   loadManualHealth,
   saveManualHealth,
@@ -2856,6 +2857,7 @@ export function NeuralLanding({
               )}{" "}
               · HEALTH-SYNC → MAIN
             </div>
+            <ThemeSwitcher active="flat" />
             <div className="hud-snap-group">
               <button
                 type="button"

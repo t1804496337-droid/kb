@@ -11,6 +11,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import "./styles/modules.css";
 import { MODULES } from "./meta";
+import { ThemeSwitcher } from "../../theme-switcher";
 
 export default function RingModuleShell({
   active,
@@ -42,13 +43,18 @@ export default function RingModuleShell({
           神经星环<span>NEURAL RING</span>
         </div>
         <div className={"rm-navHead"}>MODULES · 子模块</div>
-        {MODULES.map((m) => (
+        {MODULES.map((m, i) => (
           <Link
             key={m.id}
             href={`/studio/ring/${m.id}`}
             className={`${"rm-navItem"} ${m.id === active ? "rm-navItemActive" : ""}`}
           >
-            {m.cn}
+            <span className={"rm-navLine1"}>
+              <span className={"rm-navIdx"}>
+                {String(i + 1).padStart(2, "0")}
+              </span>
+              <span className={"rm-navCn"}>{m.cn}</span>
+            </span>
             <span className={"rm-en"}>{m.en}</span>
           </Link>
         ))}
@@ -56,9 +62,7 @@ export default function RingModuleShell({
           <Link href="/studio/ring" className={"rm-navBack"}>
             ← 返回星环
           </Link>
-          <Link href="/studio" className={"rm-navBackSub"}>
-            回第一主题
-          </Link>
+          <ThemeSwitcher active="ring" />
         </div>
       </aside>
 

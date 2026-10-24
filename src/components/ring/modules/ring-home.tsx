@@ -11,6 +11,7 @@
 import { useCallback } from "react";
 import { useRouter } from "next/navigation";
 import NeuralRing from "@/components/ring/final/NeuralRing";
+import { ThemeSwitcher } from "@/components/theme-switcher";
 
 const FACE_ROUTES: Record<string, string> = {
   HUB: "/studio/ring/studio",
@@ -37,5 +38,10 @@ export default function RingHome() {
     },
     [router],
   );
-  return <NeuralRing onSelect={onSelect} />;
+  return (
+    <>
+      <NeuralRing onSelect={onSelect} />
+      <ThemeSwitcher active="ring" variant="overlay" />
+    </>
+  );
 }
