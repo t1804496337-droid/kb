@@ -37,9 +37,11 @@ export function GroupList({
               className={`${"rm-row"} ${row.id === selectedId ? "rm-rowSel" : ""}`}
               onClick={() => onSelect(row)}
             >
+              <span className={"rm-rowText"}>
+                <span className={"rm-rowTitle"}>{row.title}</span>
+                {row.sub ? <span className={"rm-rowSub"}>{row.sub}</span> : null}
+              </span>
               {row.chip ? <span className={"rm-rowChip"}>{row.chip}</span> : null}
-              <span className={"rm-rowTitle"}>{row.title}</span>
-              {row.sub ? <span className={"rm-rowSub"}>{row.sub}</span> : null}
             </button>
           ))}
         </section>
