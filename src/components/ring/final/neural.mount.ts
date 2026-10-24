@@ -607,6 +607,12 @@ try {
   renderer = new THREE.WebGLRenderer({canvas: cv, antialias: true, powerPreference: 'high-performance'});
   renderer.setClearColor(0x03050a, 1);
   pr = Math.min(window.devicePixelRatio || 1, 1.75);
+  /* 大屏起步降档（2026-10-24）：CSS 面积超 300 万像素（如 2560×1440
+   * 及上）时起步 pr 不超 1——否则满载缓冲 + 辉光开局即卡，降档链
+   * 要 9 秒以上才追得上。1920×1080 及下不受影响。 */
+  try {
+    if (host.clientWidth * host.clientHeight > 3000000) pr = Math.min(pr, 1);
+  } catch (e) {}
   renderer.setPixelRatio(pr);
   scene = new THREE.Scene();
   camera = new THREE.PerspectiveCamera(38, 16 / 9, .05, 200);
@@ -1109,7 +1115,12 @@ function frame(now){
   if (fpsT >= 1) {
     fps = Math.round(fpsN / fpsT); fpsN = 0; fpsT = 0;
     if (!paused && fps < 30) lowT++; else lowT = 0;
-    if (lowT >= 3) { lowT = 0; if (pr > 1) { pr = 1; autoNote = ' · 已自动降清晰度'; layout(); } else if (pr > .75) { pr = .75; autoNote = ' · 已自动降清晰度'; layout(); } else if (partScale > .5) { partScale = .5; autoNote = ' · 已自动减少粒子'; } }
+    /* 降档链补 rung（2026-10-24）：旧链在 pr .75 + 粒子生成率减半处
+     * 到底——partScale 只影响生成率、辉光（UnrealBloomPass，全屏多
+     * pass，最大头成本）从未被 shed，弱 GPU / 大屏上会永久卡在
+     * 个位数帧率。故在 pr 到底后先关辉光（frame 已有 bloomOn 分支
+     * 切 renderer.render，无需其它改动），再降 pr 至 .5，最后减粒子。 */
+    if (lowT >= 3) { lowT = 0; if (pr > 1) { pr = 1; autoNote = ' · 已自动降清晰度'; layout(); } else if (pr > .75) { pr = .75; autoNote = ' · 已自动降清晰度'; layout(); } else if (bloomOn) { bloomOn = false; autoNote = ' · 已关闭辉光'; } else if (pr > .5) { pr = .5; autoNote = ' · 已自动降清晰度'; layout(); } else if (partScale > .5) { partScale = .5; autoNote = ' · 已自动减少粒子'; } }
   }
   if (hover >= 0 && !tip.hidden) showTip(hover);
 }

@@ -7,6 +7,7 @@
  * 任何页面挂载时都不读该键跳转，切换只由用户点击触发。
  */
 
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import "./theme-switcher.css";
 
@@ -22,10 +23,34 @@ export function ThemeSwitcher({
   variant = "inline",
 }: {
   active: ThemeKey;
-  /** inline = 随父容器排版；overlay = fixed 顶中悬浮（星环首页用）。 */
+  /** inline = 随父容器排版；overlay = fixed 右上角操作区悬浮（星环首页用）。 */
   variant?: "inline" | "overlay";
 }) {
   const router = useRouter();
+  /* overlay 定位（2026-10-24 修复：旧版 fixed 顶中正压住模板中央
+   * .cap「最近一次脉冲」仪表区）：改为贴 .tools 工具条同行左邻。
+   * 模板 board 按 bs = min((vw-32)/1920, vh/1080) 缩放，.tools 位于
+   * board 右 24px、顶 22px，实测宽约 131px（1728 宽屏量测）；故
+   * top = 22×bs、right = 16（.fit 侧边距）+ (24 + 131 + 20 安全隙)×bs。
+   * 纯 CSS 表达不了 min() 跨轴，故用 resize 监听实算；CSS 默认值
+   * 按 1920 宽屏给（top 22 / right 188），水合后一帧内校正。 */
+  const [overlayPos, setOverlayPos] = useState<{
+    top: number;
+    right: number;
+  } | null>(null);
+  useEffect(() => {
+    if (variant !== "overlay") return;
+    const calc = () => {
+      const bs = Math.min(
+        (window.innerWidth - 32) / 1920,
+        window.innerHeight / 1080,
+      );
+      setOverlayPos({ top: Math.round(22 * bs), right: Math.round(16 + 175 * bs) });
+    };
+    calc();
+    window.addEventListener("resize", calc);
+    return () => window.removeEventListener("resize", calc);
+  }, [variant]);
   const go = (t: ThemeKey) => {
     if (t === active) return;
     try {
@@ -38,6 +63,11 @@ export function ThemeSwitcher({
   return (
     <div
       className={`ts-root${variant === "overlay" ? " ts-overlay" : ""}`}
+      style={
+        variant === "overlay" && overlayPos
+          ? { top: overlayPos.top, right: overlayPos.right, left: "auto", transform: "none" }
+          : undefined
+      }
       role="group"
       aria-label="主题切换"
     >
