@@ -1,0 +1,453 @@
+/* 第二主题 · 子模块暗色工作台样式（普通样式表 + rm- 类名前缀隔离，不进 globals.css；
+ * 注：本仓 next.config 的 Turbopack "*.css" rule 会把 .module.css 当普通 CSS 处理、
+ * JS 侧类名映射为空，故此处不用 CSS Modules、改字面量类名，见 PR #98 补充说明）
+ * 定案规格：左栏 280px / 中作业区 flex:1 独立滚动 / 右详情栏 320px；
+ * 深空底 + 冷青线框（方案 §02/§04 与执行纪律版口径）。 */
+
+.rm-shell,
+.rm-shell * {
+  box-sizing: border-box;
+}
+
+.rm-shell {
+  --bg: #04060b;
+  --panel: rgba(13, 18, 34, 0.42);
+  --ink: #eef5ff;
+  --ink2: #aebfdd;
+  --mute: #5f7194;
+  --hair: rgba(0, 255, 255, 0.14);
+  --hair2: rgba(0, 255, 255, 0.32);
+  --cyan: #00ffff;
+  --mono: "JetBrains Mono", ui-monospace, "SF Mono", Consolas, monospace;
+  --cjk: "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+
+  position: fixed;
+  inset: 0;
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr) 320px;
+  background:
+    radial-gradient(1200px 700px at 70% -10%, rgba(0, 60, 80, 0.25), transparent 60%),
+    var(--bg);
+  color: var(--ink);
+  font-family: var(--cjk);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── 左栏：模块导航 ─────────────────────────────── */
+
+.rm-nav {
+  border-right: 1px solid var(--hair);
+  padding: 22px 16px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.rm-brand {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.28em;
+  color: var(--mute);
+  margin-bottom: 6px;
+}
+
+.rm-brandTitle {
+  font-size: 19px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  margin-bottom: 4px;
+}
+
+.rm-brandTitle span {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.2em;
+  color: var(--cyan);
+  margin-left: 8px;
+}
+
+.rm-navHead {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.22em;
+  color: var(--mute);
+  margin: 16px 4px 8px;
+}
+
+.rm-navItem {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  padding: 9px 11px;
+  border: 1px solid transparent;
+  border-left: 2px solid transparent;
+  color: var(--ink2);
+  text-decoration: none;
+  font-size: 13.5px;
+}
+
+.rm-navItem:hover {
+  border-color: var(--hair);
+  color: var(--ink);
+}
+
+.rm-navItemActive {
+  border-color: var(--hair);
+  border-left: 2px solid var(--cyan);
+  background: rgba(0, 255, 255, 0.05);
+  color: var(--ink);
+}
+
+.rm-navItem .rm-en {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: 0.14em;
+  color: var(--mute);
+}
+
+.rm-navItemActive .rm-en {
+  color: var(--cyan);
+}
+
+.rm-navFoot {
+  margin-top: auto;
+  padding-top: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.rm-navBack {
+  display: block;
+  padding: 9px 11px;
+  border: 1px solid var(--hair2);
+  color: var(--ink);
+  text-decoration: none;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  letter-spacing: 0.08em;
+  text-align: center;
+}
+
+.rm-navBack:hover {
+  background: rgba(0, 255, 255, 0.07);
+}
+
+.rm-navBackSub {
+  display: block;
+  padding: 7px 11px;
+  color: var(--mute);
+  text-decoration: none;
+  font-size: 12px;
+  text-align: center;
+}
+
+.rm-navBackSub:hover {
+  color: var(--ink);
+}
+
+/* ── 中区：作业区 ───────────────────────────────── */
+
+.rm-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.rm-head {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 16px 22px 13px;
+  border-bottom: 1px solid var(--hair);
+}
+
+.rm-headTitle {
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+.rm-headEn {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.2em;
+  color: var(--cyan);
+  margin-left: 10px;
+}
+
+.rm-headMeta {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--mute);
+  letter-spacing: 0.04em;
+}
+
+.rm-headNote {
+  width: 100%;
+  font-size: 12px;
+  color: var(--mute);
+}
+
+.rm-cta {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--ink);
+  border: 1px solid var(--hair2);
+  padding: 7px 12px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.rm-cta:hover {
+  background: rgba(0, 255, 255, 0.07);
+}
+
+.rm-center {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+  padding: 18px 22px 40px;
+}
+
+/* ── 右栏：详情 ─────────────────────────────────── */
+
+.rm-detail {
+  border-left: 1px solid var(--hair);
+  overflow-y: auto;
+  min-height: 0;
+  padding: 20px 18px 32px;
+  background: rgba(7, 9, 14, 0.55);
+}
+
+.rm-detailHead {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.22em;
+  color: var(--mute);
+  margin-bottom: 12px;
+}
+
+.rm-detailTitle {
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.45;
+  margin-bottom: 14px;
+  word-break: break-word;
+}
+
+.rm-fields {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr);
+  row-gap: 9px;
+  column-gap: 12px;
+  margin: 0 0 16px;
+}
+
+.rm-fields dt {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.1em;
+  color: var(--mute);
+  padding-top: 2px;
+}
+
+.rm-fields dd {
+  margin: 0;
+  font-size: 13px;
+  color: var(--ink2);
+  word-break: break-word;
+}
+
+.rm-fields dd a {
+  color: var(--cyan);
+  text-decoration: none;
+  word-break: break-all;
+}
+
+.rm-detailBody {
+  font-size: 13px;
+  color: var(--ink2);
+  white-space: pre-wrap;
+  word-break: break-word;
+  border-top: 1px dashed var(--hair);
+  padding-top: 12px;
+}
+
+.rm-detailBodyMono {
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1.7;
+}
+
+.rm-detailEmpty {
+  color: var(--mute);
+  font-size: 13px;
+  border: 1px dashed var(--hair);
+  padding: 16px 14px;
+}
+
+/* ── 列表 ───────────────────────────────────────── */
+
+.rm-group {
+  margin-bottom: 26px;
+}
+
+.rm-groupHead {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  color: var(--mute);
+  border-bottom: 1px solid var(--hair);
+  padding-bottom: 7px;
+  margin-bottom: 10px;
+}
+
+.rm-groupHead b {
+  color: var(--cyan);
+  font-weight: 500;
+}
+
+.rm-row {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: var(--panel);
+  border: 1px solid var(--hair);
+  color: var(--ink);
+  padding: 10px 13px;
+  margin-bottom: 8px;
+  cursor: pointer;
+  font-family: inherit;
+  position: relative;
+}
+
+.rm-row::before {
+  content: "";
+  position: absolute;
+  left: -1px;
+  top: -1px;
+  width: 9px;
+  height: 9px;
+  border-color: var(--cyan);
+  border-style: solid;
+  border-width: 1.5px 0 0 1.5px;
+  opacity: 0;
+}
+
+.rm-row:hover {
+  border-color: var(--hair2);
+}
+
+.rm-row:hover::before {
+  opacity: 0.7;
+}
+
+.rm-rowSel {
+  border-color: var(--hair2);
+  background: rgba(0, 255, 255, 0.06);
+}
+
+.rm-rowSel::before {
+  opacity: 1;
+}
+
+.rm-rowTitle {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.5;
+  word-break: break-word;
+  padding-right: 74px;
+}
+
+.rm-rowSub {
+  display: block;
+  font-size: 12px;
+  color: var(--mute);
+  margin-top: 2px;
+  word-break: break-word;
+  padding-right: 74px;
+}
+
+.rm-rowChip {
+  position: absolute;
+  right: 12px;
+  top: 11px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  color: var(--cyan);
+  border: 1px solid var(--hair);
+  padding: 2px 7px;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rm-empty {
+  border: 1px dashed var(--hair);
+  color: var(--mute);
+  font-size: 13px;
+  padding: 22px 16px;
+  text-align: center;
+}
+
+/* ── 响应式：窄屏堆叠 ───────────────────────────── */
+
+@media (max-width: 1180px) {
+  .rm-shell {
+    grid-template-columns: 220px minmax(0, 1fr) 280px;
+  }
+}
+
+@media (max-width: 900px) {
+  .rm-shell {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr) auto;
+  }
+
+  .rm-nav {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    border-right: none;
+    border-bottom: 1px solid var(--hair);
+    padding: 12px;
+    overflow-y: visible;
+  }
+
+  .rm-brand,
+  .rm-brandTitle,
+  .rm-navHead {
+    width: 100%;
+    margin-bottom: 2px;
+  }
+
+  .rm-navItem {
+    padding: 6px 9px;
+    font-size: 12.5px;
+  }
+
+  .rm-navFoot {
+    margin-top: 0;
+    padding-top: 6px;
+    flex-direction: row;
+    width: 100%;
+  }
+
+  .rm-detail {
+    border-left: none;
+    border-top: 1px solid var(--hair);
+    max-height: 38vh;
+  }
+}
