@@ -3919,7 +3919,7 @@ div.studio-orb.studio-orb-bg,
   display: flex;
   align-items: center;
   gap: var(--hud-sp-14);
-  padding: 0 var(--hud-sp-12);
+  padding: 0 20px 0 var(--hud-sp-12);
 }
 .hud-logo {
   font-size: var(--hud-sp-13);
@@ -5154,10 +5154,36 @@ div.studio-orb.studio-orb-bg,
    metric — including the clock — stays on screen, in the base state
    and in the wider import-confirm state alike. Same shedding idea as
    the ≤1100px spark rule below, one tier up. */
+/* Topbar fit tier (2026-10-24, 实机顶栏溢出修复): above 1600px the
+   bar content (~1732px) still exceeds the box at 1728px, so the ACT
+   spark steps aside, gaps tighten and the snapshot buttons fall back
+   to their short labels — same shedding idea as the 1600px tier, one
+   tier up. Keeps the right cluster fully visible with ≥20px clearance
+   at 1728px without touching the 1920px layout. */
+@media (max-width: 1780px) {
+  .hud-spark-act { display: none; }
+  .hud-topbar { gap: var(--hud-sp-10); }
+  .hud-top-right { gap: var(--hud-sp-10); }
+  .hud-snap-long { display: none; }
+  .hud-snap-short { display: inline; }
+}
+
 @media (max-width: 1600px) {
   .hud-top-hex { display: none; }
   .hud-spark-act { display: none; }
+  .hud-spark { display: none; }
+  .hud-metric-skills { display: none; }
   .hud-top-right { gap: var(--hud-sp-10); }
+}
+
+/* Topbar wrap tier (2026-10-24): below 1440px even the shed bar does
+   not fit single-line, so only the topbar wraps (right cluster drops
+   to line 2) instead of clipping past the viewport edge. The main
+   3-column HUD below is untouched; the ≤1100px full-stack tier still
+   applies under it. */
+@media (max-width: 1439px) {
+  .hud-topbar { height: auto; flex-wrap: wrap; row-gap: var(--hud-sp-6); }
+  .hud-top-right { margin-left: 0; flex-wrap: wrap; }
 }
 
 /* Breakpoint is 1100px, not a phone width: some in-app webviews lay out
