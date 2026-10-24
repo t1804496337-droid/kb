@@ -48,13 +48,16 @@
   opacity: 0.75;
 }
 
-/* 星环首页悬浮变体：fixed 顶中，只占自身盒子，不挡画布其余点击。
- * 背景近实色：避免画布顶部扇区标签透过胶囊形成重影。 */
+/* 星环首页悬浮变体：fixed 右上角操作区（.tools 工具条同行左邻），
+ * 2026-10-24 由顶中移出——旧顶中正压住模板中央 .cap「最近一次脉冲」
+ * 仪表区。JS 在挂载后按 board 缩放比 bs 实算 top/right（见 tsx）；
+ * 此处默认值按 1920 宽屏给（top 22 / right 188），水合前不闪回中央。 */
 .ts-overlay {
   position: fixed;
-  top: 14px;
-  left: 50%;
-  transform: translateX(-50%);
+  top: 22px;
+  right: 188px;
+  left: auto;
+  transform: none;
   z-index: 60;
   background: rgba(4, 7, 12, 0.95);
   box-shadow: 0 4px 24px rgba(0, 0, 0, 0.45);

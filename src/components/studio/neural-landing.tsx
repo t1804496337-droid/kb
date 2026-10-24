@@ -2816,7 +2816,7 @@ export function NeuralLanding({
               {!yestComplete && <sup>?</sup>}
             </span>
           </div>
-          <div className="hud-metric">
+          <div className="hud-metric hud-metric-skills">
             SKILLS <b>{skillsN}</b>
           </div>
           <div className="hud-metric">
