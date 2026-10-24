@@ -1235,3 +1235,117 @@ button.rm-studioHubCard:disabled { opacity: 0.6; cursor: default; }
   .rm-ontoVault { flex-direction: column; align-items: stretch; }
   .rm-ontoVault .rm-input { min-width: 0; }
 }
+
+/* ── 第四批 · 技能库（ring-skills）─────────────────────────────── */
+
+.rm-sk-sync {
+  display: flex; gap: 12px; align-items: center; flex-wrap: wrap;
+  font-family: var(--mono); font-size: 11.5px; color: var(--ink2);
+  padding-bottom: 10px; margin-bottom: 12px; border-bottom: 1px solid var(--hair);
+}
+.rm-sk-syncRight { margin-left: auto; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.rm-sk-agentDist { color: var(--gold); }
+.rm-sk-refresh {
+  font-family: var(--mono); font-size: 11.5px; color: var(--cyan);
+  background: none; border: 1px solid var(--hair2); padding: 4px 10px; cursor: pointer;
+}
+.rm-sk-refresh:disabled { opacity: 0.5; cursor: default; }
+.rm-sk-seg { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 12px 0 16px; }
+.rm-sk-segBtn {
+  font-family: var(--mono); font-size: 11.5px; letter-spacing: 0.08em;
+  color: var(--ink2); background: none; border: 1px solid var(--hair2);
+  padding: 5px 12px; cursor: pointer;
+}
+.rm-sk-segBtn.on { color: var(--cyan); border-color: var(--cyan); }
+.rm-sk-segNote { font-family: var(--mono); font-size: 10.5px; color: var(--mute); margin-left: auto; }
+.rm-sk-center { min-width: 0; }
+.rm-sk-group { margin-bottom: 26px; }
+.rm-sk-groupH {
+  display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+  padding: 8px 0; border-bottom: 1px solid var(--hair2); cursor: pointer;
+}
+.rm-sk-groupN { font-size: 15px; font-weight: 800; }
+.rm-sk-groupMeta { font-family: var(--mono); font-size: 11px; color: var(--mute); }
+.rm-sk-groupArrow { margin-left: auto; color: var(--mute); font-size: 13px; }
+.rm-sk-grow {
+  min-height: 46px; padding: 9px 0; border-bottom: 1px solid var(--hair);
+  cursor: pointer; min-width: 0;
+}
+.rm-sk-grow.on { background: rgba(0, 255, 255, 0.08); box-shadow: inset 2px 0 0 var(--cyan); }
+.rm-sk-growMain { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.rm-sk-growZh { font-size: 14px; font-weight: 700; }
+.rm-sk-growEn { font-family: var(--mono); font-size: 11.5px; color: var(--cyan); overflow-wrap: anywhere; }
+.rm-sk-growOp { margin-left: auto; color: var(--mute); }
+.rm-sk-growSub { font-size: 12.5px; color: var(--ink2); margin-top: 3px; overflow-wrap: anywhere; }
+.rm-sk-growSrc { font-family: var(--mono); font-size: 11px; color: var(--mute); margin-top: 2px; overflow-wrap: anywhere; }
+.rm-sk-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) 72px minmax(0, 1.1fr) 52px;
+  gap: 8px;
+}
+.rm-sk-gridHead {
+  font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.12em; color: var(--mute);
+  border-bottom: 1px solid var(--hair2); padding-bottom: 6px;
+}
+.rm-sk-gridHead > * { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rm-sk-row {
+  min-height: 30px; align-items: center;
+  font-variant-numeric: tabular-nums; border-bottom: 1px solid var(--hair);
+  cursor: pointer; min-width: 0;
+}
+.rm-sk-row.on { background: rgba(0, 255, 255, 0.08); box-shadow: inset 2px 0 0 var(--cyan); }
+.rm-sk-row > * { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rm-sk-rowZh { font-size: 13.5px; font-weight: 700; }
+.rm-sk-rowEn { font-family: var(--mono); font-size: 11.5px; color: var(--cyan); }
+.rm-sk-rowTag { font-family: var(--mono); font-size: 11.5px; color: var(--ink2); }
+.rm-sk-rowSrc { font-family: var(--mono); font-size: 11px; color: var(--mute); }
+.rm-sk-rowOp { color: var(--mute); text-align: right; }
+.rm-sk-empty { border: 1px dashed var(--hair); padding: 16px 14px; }
+.rm-sk-emptyT { font-size: 14px; font-weight: 700; }
+.rm-sk-emptyS { font-size: 12.5px; color: var(--mute); margin-top: 4px; }
+.rm-sk-mono { font-family: var(--mono); }
+.rm-sk-copyBtn {
+  font-family: var(--mono); font-size: 12px; letter-spacing: 0.06em;
+  color: var(--cyan); background: rgba(0, 255, 255, 0.06);
+  border: 1px solid var(--hair2); padding: 8px 14px; cursor: pointer;
+}
+.rm-sk-copyNote { font-size: 12px; color: var(--mute); margin-top: 8px; }
+.rm-sk-detailPre {
+  font-family: var(--mono); font-size: 11px; line-height: 1.7; color: var(--ink2);
+  white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word;
+  max-height: 46vh; overflow-y: auto; overflow-x: hidden;
+  border-top: 1px dashed var(--hair); padding-top: 12px; margin: 0; min-width: 0;
+}
+.rm-sk-syncLine { font-family: var(--mono); font-size: 11px; color: var(--ink2); overflow-wrap: anywhere; }
+.rm-sk-drawerClose { display: none; }
+.rm-sk-scrim { display: none; }
+
+/* ── 第四批 · 1180px 单列降级 + 右栏抽屉（本页专属，不动其他模块的堆叠规则） ── */
+
+@media (max-width: 1180px) {
+  .rm-sk-grid { grid-template-columns: 1fr; }
+  .rm-sk-row { grid-template-columns: 1fr; min-height: auto; padding: 6px 0; }
+  .rm-sk-gridHead { display: none; }
+  .rm-sk-syncRight { margin-left: 0; }
+  .rm-sk-segNote { margin-left: 0; }
+  body[data-sk-page="skills"] .rm-detail {
+    position: fixed; top: 0; right: 0; bottom: 0;
+    width: min(360px, 92vw); max-height: none;
+    border-left: 1px solid var(--hair2); border-top: none;
+    background: rgba(7, 9, 14, 0.97); z-index: 60;
+    transform: translateX(105%); transition: transform 0.18s ease;
+    overflow-y: auto;
+  }
+  body[data-sk-page="skills"][data-sk-drawer="open"] .rm-detail {
+    transform: translateX(0);
+  }
+  body[data-sk-page="skills"][data-sk-drawer="open"] .rm-sk-scrim {
+    display: block; position: fixed; inset: 0; z-index: 55;
+    background: rgba(0, 0, 0, 0.5);
+  }
+  .rm-sk-drawerClose {
+    display: block; margin: 0 0 14px auto;
+    font-family: var(--mono); font-size: 12px; color: var(--ink2);
+    background: none; border: 1px solid var(--hair2); padding: 6px 12px; cursor: pointer;
+  }
+}
