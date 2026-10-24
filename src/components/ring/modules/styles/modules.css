@@ -220,22 +220,6 @@
   color: var(--mute);
 }
 
-.rm-cta {
-  margin-left: auto;
-  font-family: var(--mono);
-  font-size: 11px;
-  letter-spacing: 0.08em;
-  color: var(--ink);
-  border: 1px solid var(--hair2);
-  padding: 7px 12px;
-  text-decoration: none;
-  white-space: nowrap;
-}
-
-.rm-cta:hover {
-  background: rgba(0, 255, 255, 0.07);
-}
-
 .rm-center {
   flex: 1;
   overflow-y: auto;
@@ -483,5 +467,148 @@
     border-left: none;
     border-top: 1px solid var(--hair);
     max-height: 38vh;
+  }
+}
+
+/* ── 财务原生记账表单（ring-finance）＋ 左栏状态行 ──
+ * --bad/--good 未在本作用域定义，取星环本体同色值作 var 兜底。 */
+
+.rm-form {
+  border: 1px solid var(--hair);
+  background: rgba(2, 4, 10, 0.55);
+  padding: 14px 16px;
+  margin-bottom: 20px;
+}
+
+.rm-formGrid {
+  display: grid;
+  grid-template-columns: 1.1fr 0.9fr 1fr 1.1fr;
+  gap: 10px;
+}
+
+.rm-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.rm-field label {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: 0.14em;
+  color: var(--mute);
+}
+
+.rm-field label b {
+  color: var(--cyan);
+  font-weight: 500;
+}
+
+.rm-fieldWide {
+  grid-column: 1 / -1;
+}
+
+.rm-input {
+  background: rgba(2, 6, 12, 0.9);
+  border: 1px solid var(--hair2);
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 12.5px;
+  padding: 8px 10px;
+  outline: none;
+  width: 100%;
+  min-width: 0;
+  color-scheme: dark;
+}
+
+.rm-input:focus {
+  border-color: var(--cyan);
+  box-shadow: 0 0 0 1px rgba(0, 255, 255, 0.35);
+}
+
+.rm-input.err {
+  border-color: var(--bad, #ff4d5e);
+}
+
+.rm-err {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--bad, #ff4d5e);
+}
+
+.rm-formFoot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--hair);
+}
+
+.rm-formHint {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--mute);
+}
+
+.rm-formBtns {
+  display: flex;
+  gap: 8px;
+}
+
+.rm-formBtn {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  padding: 9px 14px;
+  border: 1px solid var(--hair2);
+  background: none;
+  color: var(--ink2);
+  cursor: pointer;
+}
+
+.rm-formBtn:hover {
+  background: rgba(0, 255, 255, 0.07);
+  color: var(--ink);
+}
+
+.rm-formBtnPrimary {
+  background: rgba(0, 255, 255, 0.12);
+  border-color: rgba(0, 255, 255, 0.5);
+  color: var(--cyan);
+}
+
+.rm-formToggle {
+  display: block;
+  width: 100%;
+  text-align: left;
+  margin-bottom: 14px;
+}
+
+.rm-navStatus {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  color: var(--mute);
+  text-align: center;
+}
+
+.rm-navStatusOk {
+  color: var(--good, #3ce69a);
+}
+
+@media (max-width: 1180px) {
+  .rm-formGrid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 900px) {
+  .rm-formGrid {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
